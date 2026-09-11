@@ -47,11 +47,24 @@ Component.register('sw6oidc-rp-id-field', {
 
     computed: {
         effectivePlaceholder() {
-            if (window.location.hostname) {
-                return this.$tc('sw6oidc.passkeySettings.rpIdPlaceholderWithHost', 0, { host: window.location.hostname });
+            const host = window.location.hostname;
+
+            if (!host) {
+                return this.placeholder;
             }
 
-            return this.placeholder;
+            const translationKey = 'sw6oidc.passkeySettings.rpIdPlaceholderWithHost';
+            const translated = this.$tc(translationKey, 0, { host });
+
+            // Defensive fallback: if the admin snippet bundle is stale/hasn't
+            // been rebuilt, $tc() returns the raw key instead of throwing —
+            // never show that to the user, fall back to a plain hardcoded
+            // string instead.
+            if (!translated || translated === translationKey) {
+                return `Defaults to: ${host}`;
+            }
+
+            return translated;
         },
     },
 
