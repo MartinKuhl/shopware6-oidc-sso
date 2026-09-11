@@ -25,11 +25,11 @@ use Webauthn\TokenBinding\TokenBindingNotSupportedHandler;
  * Attestation conveyance is always 'none' (same deliberate trade-off as the
  * Magento module: broad authenticator compatibility over hardware provenance).
  *
- * Constructor styles here (plain `new X(...)` vs. `X::create(...)`) are
- * matched to what's confirmed to work against the version range this plugin
- * targets — verify against whichever web-auth/webauthn-lib version composer
- * actually resolves (see composer.json's version-spike comment) before relying
- * on this in production.
+ * web-auth/webauthn-lib is pinned to ^4.7 in composer.json deliberately: 5.x
+ * removed the PublicKeyCredentialSourceRepository-based validator
+ * constructors and the repository interface itself entirely (replaced by a
+ * CredentialRecord-based design with a different check() signature), which
+ * PasskeyCredentialRepository and the constructors below depend on.
  */
 class WebauthnCeremonyFactory
 {

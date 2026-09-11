@@ -30,10 +30,10 @@ use Webauthn\PublicKeyCredentialUserEntity;
  *    on our behalf — only the application knows which user_type/user_id/
  *    nickname a brand-new credential belongs to.
  *
- * NOTE: PublicKeyCredentialSourceRepository's exact interface shape has
- * shifted slightly across web-auth/webauthn-lib 4.x/5.x majors — verify
- * method signatures against whichever version composer actually resolves
- * (see composer.json's version-spike comment) before relying on this.
+ * web-auth/webauthn-lib is pinned to ^4.7 in composer.json: this interface
+ * (and the repository-based validator constructors in
+ * WebauthnCeremonyFactory) was removed entirely in 5.x in favor of a
+ * CredentialRecord-based design, so this class only works against 4.x.
  */
 class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
 {
