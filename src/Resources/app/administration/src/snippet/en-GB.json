@@ -101,6 +101,7 @@
         },
         "passkeySettings": {
             "moduleTitle": "Passkey Settings",
+            "rpIdPlaceholderWithHost": "Defaults to: {host}",
             "list": {
                 "columnUserType": "Account type",
                 "columnNickname": "Nickname",

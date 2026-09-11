@@ -30,15 +30,22 @@
             <helpText lang="de-DE">Der Name, den der Passkey-Dialog von Browser bzw. Betriebssystem anzeigt (zum Beispiel "Weiter zu ..."). Leer lassen, um den Shopnamen zu verwenden.</helpText>
         </input-field>
 
-        <input-field type="text">
+        {#
+            Custom component instead of a plain input-field: it looks up this
+            shop's actual current host (via PasskeyDefaultHostController) and
+            shows it directly in the placeholder, e.g. "Defaults to:
+            shop.example.com", rather than only generic descriptive text.
+            See Resources/app/administration/src/component/sw6oidc-rp-id-field.
+        #}
+        <component name="sw6oidc-rp-id-field">
             <name>passkeyRpId</name>
             <label>Relying Party ID (domain) override</label>
             <label lang="de-DE">Relying-Party-ID (Domain), Override</label>
-            <placeholder>Defaults to the Storefront/Administration host. A single RP ID means passkeys are not portable across different shop domains.</placeholder>
-            <placeholder lang="de-DE">Standardmaessig der Storefront-/Administration-Host. Eine einzelne RP-ID bedeutet, dass Passkeys nicht domainuebergreifend nutzbar sind.</placeholder>
-            <helpText>The registrable domain (for example "example.com") passkeys are bound to. Leave blank to use the current Storefront/Administration host automatically. Changing this invalidates every passkey already registered, since a passkey registered under one domain never authenticates on a different one.</helpText>
-            <helpText lang="de-DE">Die Domain (zum Beispiel "example.com"), an die Passkeys gebunden werden. Leer lassen, um automatisch den aktuellen Storefront-/Administration-Host zu verwenden. Eine Aenderung macht alle bereits registrierten Passkeys ungueltig, da ein unter einer Domain registrierter Passkey auf keiner anderen Domain funktioniert.</helpText>
-        </input-field>
+            <placeholder>Defaults to the current shop host</placeholder>
+            <placeholder lang="de-DE">Standardmaessig der aktuelle Shop-Host</placeholder>
+            <helpText>The registrable domain (for example "example.com") passkeys are bound to. Leave blank to use this shop's current host automatically (shown above once resolved). Changing this invalidates every passkey already registered, since a passkey registered under one domain never authenticates on a different one.</helpText>
+            <helpText lang="de-DE">Die Domain (zum Beispiel "example.com"), an die Passkeys gebunden werden. Leer lassen, um automatisch den aktuellen Host dieses Shops zu verwenden (wird oben angezeigt, sobald ermittelt). Eine Aenderung macht alle bereits registrierten Passkeys ungueltig, da ein unter einer Domain registrierter Passkey auf keiner anderen Domain funktioniert.</helpText>
+        </component>
     </card>
 
     <card>

@@ -101,6 +101,7 @@
         },
         "passkeySettings": {
             "moduleTitle": "Passkey-Einstellungen",
+            "rpIdPlaceholderWithHost": "Standardmaessig: {host}",
             "list": {
                 "columnUserType": "Kontotyp",
                 "columnNickname": "Bezeichnung",
