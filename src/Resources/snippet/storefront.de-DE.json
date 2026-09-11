@@ -1,0 +1,12 @@
+{
+    "sw6oidc": {
+        "login": {
+            "button": "Mit SSO anmelden",
+            "providerUnavailable": "Single Sign-on ist derzeit nicht verfuegbar. Bitte melden Sie sich mit E-Mail und Passwort an.",
+            "failed": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit E-Mail und Passwort an."
+        },
+        "passkey": {
+            "button": "Mit Passkey anmelden"
+        }
+    }
+}

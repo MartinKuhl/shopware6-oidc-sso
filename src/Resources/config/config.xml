@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/shopware/shopware/trunk/src/Core/System/SystemConfig/Schema/config.xsd">
+
+    <card>
+        <title>Passkey settings</title>
+        <title lang="de-DE">Passkey-Einstellungen</title>
+
+        <input-field type="bool">
+            <name>passkeyEnabledAdmin</name>
+            <label>Enable Passkey login for Administration users</label>
+            <label lang="de-DE">Passkey-Anmeldung fuer Administration-Benutzer aktivieren</label>
+            <defaultValue>false</defaultValue>
+        </input-field>
+
+        <input-field type="bool">
+            <name>passkeyEnabledCustomer</name>
+            <label>Enable Passkey login for Storefront customers</label>
+            <label lang="de-DE">Passkey-Anmeldung fuer Storefront-Kunden aktivieren</label>
+            <defaultValue>false</defaultValue>
+        </input-field>
+
+        <input-field type="text">
+            <name>passkeyRpName</name>
+            <label>Relying Party name</label>
+            <label lang="de-DE">Relying-Party-Name</label>
+            <helpText>Shown by the browser/OS passkey prompt. Defaults to the shop name when empty.</helpText>
+        </input-field>
+
+        <input-field type="text">
+            <name>passkeyRpId</name>
+            <label>Relying Party ID (domain) override</label>
+            <label lang="de-DE">Relying-Party-ID (Domain), Override</label>
+            <helpText>The registrable domain passkeys are bound to. Defaults to the sales channel/Administration base URL host when empty. Keep this stable once set — see the Magento module's passkey docs for the same single-domain caveat.</helpText>
+        </input-field>
+    </card>
+
+    <card>
+        <title>Debug logging</title>
+        <title lang="de-DE">Debug-Protokollierung</title>
+
+        <input-field type="bool">
+            <name>debugLoggingEnabled</name>
+            <label>Enable debug logging</label>
+            <label lang="de-DE">Debug-Protokollierung aktivieren</label>
+            <helpText>Writes detailed OIDC/Passkey flow logs to var/log/sw6oidc-*.log.</helpText>
+            <defaultValue>false</defaultValue>
+        </input-field>
+    </card>
+</config>

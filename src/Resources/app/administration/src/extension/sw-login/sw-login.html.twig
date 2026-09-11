@@ -1,0 +1,29 @@
+{#
+    VERIFICATION NEEDED: the block name(s) below are a best guess at where
+    Shopware 6.7's own sw-login template exposes an extension point — confirm
+    against the actual installed `sw-login/index.html.twig` and adjust the
+    block name(s) so this renders in the right spot (below the password form,
+    above the footer). See index.js for the accompanying logic; the SSO
+    button itself only needs `sw6oidcStartLogin()` wired to a click handler
+    wherever it ends up living.
+#}
+{% block sw_login_login_card_password_form %}
+    {% parent %}
+
+    <div class="sw6oidc-login-actions">
+        <sw-button
+            block
+            size="default"
+            @click="sw6oidcStartLogin"
+        >
+            {{ $tc('sw6oidc.login.ssoButton') }}
+        </sw-button>
+
+        <sw-alert
+            v-if="sw6oidcExchangeError"
+            variant="error"
+        >
+            {{ $tc('sw6oidc.login.error') }}
+        </sw-alert>
+    </div>
+{% endblock %}

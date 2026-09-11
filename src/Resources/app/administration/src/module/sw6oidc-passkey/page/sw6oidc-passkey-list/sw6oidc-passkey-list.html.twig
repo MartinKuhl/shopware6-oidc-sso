@@ -1,0 +1,19 @@
+{% block sw6oidc_passkey_list %}
+<sw-page class="sw6oidc-passkey-list">
+    {% block sw6oidc_passkey_list_content %}
+    <template #content>
+        <sw-entity-listing
+            v-if="credentials"
+            :items="credentials"
+            :repository="credentialRepository"
+            :columns="columns"
+            :is-loading="isLoading"
+            :show-selection="false"
+            :allow-edit="false"
+            :allow-view="false"
+            @update-records="getList"
+        />
+    </template>
+    {% endblock %}
+</sw-page>
+{% endblock %}

@@ -1,0 +1,111 @@
+{
+    "sw6oidc": {
+        "login": {
+            "ssoButton": "Mit SSO anmelden",
+            "error": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
+            "passkeyButton": "Mit Passkey anmelden"
+        },
+        "provider": {
+            "moduleTitle": "OIDC-Anbieter",
+            "list": {
+                "buttonAdd": "Anbieter hinzufuegen",
+                "columnDisplayName": "Anzeigename",
+                "columnAppName": "Technischer Name",
+                "columnLoginType": "Anmeldetyp",
+                "columnActive": "Aktiv"
+            },
+            "detail": {
+                "buttonSave": "Speichern",
+                "buttonCancel": "Abbrechen",
+                "saveError": "Der Anbieter konnte nicht gespeichert werden.",
+                "cardGeneral": "Allgemein",
+                "cardOAuth": "OAuth-/OIDC-Einstellungen",
+                "cardProvisioning": "Provisionierung & Synchronisierung",
+                "cardAttributeMapping": "Attributzuordnung",
+                "cardRoleMapping": "Rollen-/Gruppenzuordnung",
+                "appName": "Technischer Name",
+                "displayName": "Anzeigename",
+                "sortOrder": "Sortierung",
+                "isActive": "Aktiv",
+                "showCustomerLink": "SSO-Button im Storefront anzeigen",
+                "showAdminLink": "SSO-Button in der Administration anzeigen",
+                "clientId": "Client-ID",
+                "clientSecret": "Client-Secret",
+                "wellKnownConfigUrl": "Well-Known-Konfigurations-URL (Auto-Discovery)",
+                "authorizeEndpoint": "Authorize-Endpunkt",
+                "accessTokenEndpoint": "Access-Token-Endpunkt",
+                "userInfoEndpoint": "Userinfo-Endpunkt",
+                "jwksEndpoint": "JWKS-Endpunkt",
+                "endSessionEndpoint": "End-Session-Endpunkt (Logout)",
+                "revocationEndpoint": "Token-Revocation-Endpunkt",
+                "issuer": "Issuer",
+                "scope": "Scope",
+                "groupAttribute": "Name des Gruppen-/Rollen-Claims",
+                "pkceFlow": "PKCE-Methode",
+                "claimEncoding": "Claim-Kodierung",
+                "publicClient": "Public Client (PKCE, ohne Client-Secret)",
+                "httpTimeout": "HTTP-Timeout (Sekunden)",
+                "jwksCacheTtl": "JWKS-Cache-TTL (Sekunden)",
+                "autoCreateCustomer": "Kunden automatisch anlegen",
+                "autoCreateAdmin": "Administration-Benutzer automatisch anlegen",
+                "disableNonOidcCustomerLogin": "Nicht-OIDC-Kundenanmeldung deaktivieren",
+                "disableNonOidcAdminLogin": "Nicht-OIDC-Administration-Anmeldung deaktivieren",
+                "syncCustomerProfileOnSso": "Kundenprofil bei jeder Anmeldung synchronisieren",
+                "syncCustomerAddressOnSso": "Kundenadresse bei jeder Anmeldung synchronisieren",
+                "syncCustomerGroupOnSso": "Kundengruppe bei jeder Anmeldung synchronisieren",
+                "syncAdminProfileOnSso": "Admin-Profil bei jeder Anmeldung synchronisieren",
+                "syncAdminRoleOnSso": "Admin-Rolle bei jeder Anmeldung synchronisieren",
+                "attributeClaimName": "OIDC-Claim-Name",
+                "syncOnSso": "Bei jeder Anmeldung synchronisieren",
+                "addAttributeMapping": "Attributzuordnung hinzufuegen",
+                "oidcGroup": "OIDC-Gruppen-/Rollenwert",
+                "target": "Ziel",
+                "targetPlaceholderRole": "Administration-Rolle auswaehlen...",
+                "targetPlaceholderGroup": "Kundengruppe auswaehlen...",
+                "addRoleMapping": "Rollenzuordnung hinzufuegen",
+                "remove": "Entfernen",
+                "loginType": {
+                    "label": "Anmeldetyp",
+                    "both": "Storefront + Administration",
+                    "customer": "Nur Storefront",
+                    "admin": "Nur Administration"
+                },
+                "mappingType": {
+                    "label": "Zuordnungstyp",
+                    "admin_role": "Administration-Rolle",
+                    "customer_group": "Kundengruppe"
+                },
+                "attributeType": {
+                    "label": "Feld",
+                    "email": "E-Mail",
+                    "username": "Benutzername",
+                    "firstname": "Vorname",
+                    "lastname": "Nachname",
+                    "birthday": "Geburtsdatum",
+                    "gender": "Anrede / Geschlecht",
+                    "phone": "Telefon",
+                    "billing_street": "Rechnung: Strasse",
+                    "billing_zipcode": "Rechnung: PLZ",
+                    "billing_city": "Rechnung: Ort",
+                    "billing_state": "Rechnung: Bundesland",
+                    "billing_country": "Rechnung: Land",
+                    "billing_phone": "Rechnung: Telefon",
+                    "shipping_street": "Versand: Strasse",
+                    "shipping_zipcode": "Versand: PLZ",
+                    "shipping_city": "Versand: Ort",
+                    "shipping_state": "Versand: Bundesland",
+                    "shipping_country": "Versand: Land",
+                    "shipping_phone": "Versand: Telefon"
+                }
+            }
+        },
+        "passkeySettings": {
+            "moduleTitle": "Passkey-Einstellungen",
+            "list": {
+                "columnUserType": "Kontotyp",
+                "columnNickname": "Bezeichnung",
+                "columnCreatedAt": "Registriert am"
+            }
+        }
+    }
+}

@@ -1,0 +1,111 @@
+{
+    "sw6oidc": {
+        "login": {
+            "ssoButton": "Login with SSO",
+            "error": "Single sign-on login failed. Please try again or log in with your username and password.",
+            "passkeyButton": "Login with Passkey"
+        },
+        "provider": {
+            "moduleTitle": "OIDC Providers",
+            "list": {
+                "buttonAdd": "Add provider",
+                "columnDisplayName": "Display name",
+                "columnAppName": "Technical name",
+                "columnLoginType": "Login type",
+                "columnActive": "Active"
+            },
+            "detail": {
+                "buttonSave": "Save",
+                "buttonCancel": "Cancel",
+                "saveError": "The provider could not be saved.",
+                "cardGeneral": "General",
+                "cardOAuth": "OAuth / OIDC settings",
+                "cardProvisioning": "Provisioning & sync",
+                "cardAttributeMapping": "Attribute mapping",
+                "cardRoleMapping": "Role / group mapping",
+                "appName": "Technical name",
+                "displayName": "Display name",
+                "sortOrder": "Sort order",
+                "isActive": "Active",
+                "showCustomerLink": "Show Storefront SSO button",
+                "showAdminLink": "Show Administration SSO button",
+                "clientId": "Client ID",
+                "clientSecret": "Client secret",
+                "wellKnownConfigUrl": "Well-known configuration URL (auto-discovery)",
+                "authorizeEndpoint": "Authorize endpoint",
+                "accessTokenEndpoint": "Access token endpoint",
+                "userInfoEndpoint": "User info endpoint",
+                "jwksEndpoint": "JWKS endpoint",
+                "endSessionEndpoint": "End-session (logout) endpoint",
+                "revocationEndpoint": "Token revocation endpoint",
+                "issuer": "Issuer",
+                "scope": "Scope",
+                "groupAttribute": "Group/role claim name",
+                "pkceFlow": "PKCE method",
+                "claimEncoding": "Claim encoding",
+                "publicClient": "Public client (PKCE, no client secret)",
+                "httpTimeout": "HTTP timeout (seconds)",
+                "jwksCacheTtl": "JWKS cache TTL (seconds)",
+                "autoCreateCustomer": "Auto-create customers",
+                "autoCreateAdmin": "Auto-create Administration users",
+                "disableNonOidcCustomerLogin": "Disable non-OIDC customer logins",
+                "disableNonOidcAdminLogin": "Disable non-OIDC Administration logins",
+                "syncCustomerProfileOnSso": "Sync customer profile on every login",
+                "syncCustomerAddressOnSso": "Sync customer address on every login",
+                "syncCustomerGroupOnSso": "Sync customer group on every login",
+                "syncAdminProfileOnSso": "Sync admin profile on every login",
+                "syncAdminRoleOnSso": "Sync admin role on every login",
+                "attributeClaimName": "OIDC claim name",
+                "syncOnSso": "Sync on every login",
+                "addAttributeMapping": "Add attribute mapping",
+                "oidcGroup": "OIDC group/role value",
+                "target": "Target",
+                "targetPlaceholderRole": "Select an Administration role...",
+                "targetPlaceholderGroup": "Select a customer group...",
+                "addRoleMapping": "Add role mapping",
+                "remove": "Remove",
+                "loginType": {
+                    "label": "Login type",
+                    "both": "Storefront + Administration",
+                    "customer": "Storefront only",
+                    "admin": "Administration only"
+                },
+                "mappingType": {
+                    "label": "Mapping type",
+                    "admin_role": "Administration role",
+                    "customer_group": "Customer group"
+                },
+                "attributeType": {
+                    "label": "Field",
+                    "email": "Email",
+                    "username": "Username",
+                    "firstname": "First name",
+                    "lastname": "Last name",
+                    "birthday": "Date of birth",
+                    "gender": "Salutation / gender",
+                    "phone": "Phone",
+                    "billing_street": "Billing: street",
+                    "billing_zipcode": "Billing: zip code",
+                    "billing_city": "Billing: city",
+                    "billing_state": "Billing: state",
+                    "billing_country": "Billing: country",
+                    "billing_phone": "Billing: phone",
+                    "shipping_street": "Shipping: street",
+                    "shipping_zipcode": "Shipping: zip code",
+                    "shipping_city": "Shipping: city",
+                    "shipping_state": "Shipping: state",
+                    "shipping_country": "Shipping: country",
+                    "shipping_phone": "Shipping: phone"
+                }
+            }
+        },
+        "passkeySettings": {
+            "moduleTitle": "Passkey Settings",
+            "list": {
+                "columnUserType": "Account type",
+                "columnNickname": "Nickname",
+                "columnCreatedAt": "Registered at"
+            }
+        }
+    }
+}

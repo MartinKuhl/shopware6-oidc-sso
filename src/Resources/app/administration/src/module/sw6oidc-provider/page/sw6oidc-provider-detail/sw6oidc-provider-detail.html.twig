@@ -1,0 +1,199 @@
+{% block sw6oidc_provider_detail %}
+<sw-page class="sw6oidc-provider-detail">
+    {% block sw6oidc_provider_detail_smart_bar_actions %}
+    <template #smart-bar-actions>
+        <sw-button :router-link="{ name: 'sw6oidc.provider.index' }">
+            {{ $tc('sw6oidc.provider.detail.buttonCancel') }}
+        </sw-button>
+        <sw-button-process
+            variant="primary"
+            :is-loading="isLoading"
+            :process-success="isSaveSuccessful"
+            @click="onClickSave"
+        >
+            {{ $tc('sw6oidc.provider.detail.buttonSave') }}
+        </sw-button-process>
+    </template>
+    {% endblock %}
+
+    {% block sw6oidc_provider_detail_content %}
+    <template #content>
+        <sw-card-view v-if="provider">
+            <sw-card :title="$tc('sw6oidc.provider.detail.cardGeneral')">
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-text-field v-model="provider.appName" :label="$tc('sw6oidc.provider.detail.appName')" required />
+                    <sw-text-field v-model="provider.displayName" :label="$tc('sw6oidc.provider.detail.displayName')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-single-select
+                        v-model:value="provider.loginType"
+                        :label="$tc('sw6oidc.provider.detail.loginType.label')"
+                        :options="loginTypeOptions"
+                    />
+                    <sw-number-field v-model="provider.sortOrder" :label="$tc('sw6oidc.provider.detail.sortOrder')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr 1fr" gap="0 30px">
+                    <sw-switch-field v-model:value="provider.isActive" :label="$tc('sw6oidc.provider.detail.isActive')" />
+                    <sw-switch-field v-model:value="provider.showCustomerLink" :label="$tc('sw6oidc.provider.detail.showCustomerLink')" />
+                    <sw-switch-field v-model:value="provider.showAdminLink" :label="$tc('sw6oidc.provider.detail.showAdminLink')" />
+                </sw-container>
+            </sw-card>
+
+            <sw-card :title="$tc('sw6oidc.provider.detail.cardOAuth')">
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-text-field v-model="provider.clientId" :label="$tc('sw6oidc.provider.detail.clientId')" required />
+                    <sw-password-field v-model="provider.clientSecret" :label="$tc('sw6oidc.provider.detail.clientSecret')" required />
+                </sw-container>
+                <sw-text-field v-model="provider.wellKnownConfigUrl" :label="$tc('sw6oidc.provider.detail.wellKnownConfigUrl')" />
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-text-field v-model="provider.authorizeEndpoint" :label="$tc('sw6oidc.provider.detail.authorizeEndpoint')" />
+                    <sw-text-field v-model="provider.accessTokenEndpoint" :label="$tc('sw6oidc.provider.detail.accessTokenEndpoint')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-text-field v-model="provider.userInfoEndpoint" :label="$tc('sw6oidc.provider.detail.userInfoEndpoint')" />
+                    <sw-text-field v-model="provider.jwksEndpoint" :label="$tc('sw6oidc.provider.detail.jwksEndpoint')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-text-field v-model="provider.endSessionEndpoint" :label="$tc('sw6oidc.provider.detail.endSessionEndpoint')" />
+                    <sw-text-field v-model="provider.revocationEndpoint" :label="$tc('sw6oidc.provider.detail.revocationEndpoint')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr 1fr" gap="0 30px">
+                    <sw-text-field v-model="provider.issuer" :label="$tc('sw6oidc.provider.detail.issuer')" />
+                    <sw-text-field v-model="provider.scope" :label="$tc('sw6oidc.provider.detail.scope')" />
+                    <sw-text-field v-model="provider.groupAttribute" :label="$tc('sw6oidc.provider.detail.groupAttribute')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr 1fr" gap="0 30px">
+                    <sw-single-select v-model:value="provider.pkceFlow" :label="$tc('sw6oidc.provider.detail.pkceFlow')" :options="pkceFlowOptions" />
+                    <sw-single-select v-model:value="provider.claimEncoding" :label="$tc('sw6oidc.provider.detail.claimEncoding')" :options="claimEncodingOptions" />
+                    <sw-switch-field v-model:value="provider.publicClient" :label="$tc('sw6oidc.provider.detail.publicClient')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-number-field v-model="provider.httpTimeout" :label="$tc('sw6oidc.provider.detail.httpTimeout')" />
+                    <sw-number-field v-model="provider.jwksCacheTtl" :label="$tc('sw6oidc.provider.detail.jwksCacheTtl')" />
+                </sw-container>
+            </sw-card>
+
+            <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioning')">
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-switch-field v-model:value="provider.autoCreateCustomer" :label="$tc('sw6oidc.provider.detail.autoCreateCustomer')" />
+                    <sw-switch-field v-model:value="provider.autoCreateAdmin" :label="$tc('sw6oidc.provider.detail.autoCreateAdmin')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-switch-field v-model:value="provider.disableNonOidcCustomerLogin" :label="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLogin')" />
+                    <sw-switch-field v-model:value="provider.disableNonOidcAdminLogin" :label="$tc('sw6oidc.provider.detail.disableNonOidcAdminLogin')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr 1fr" gap="0 30px">
+                    <sw-switch-field v-model:value="provider.syncCustomerProfileOnSso" :label="$tc('sw6oidc.provider.detail.syncCustomerProfileOnSso')" />
+                    <sw-switch-field v-model:value="provider.syncCustomerAddressOnSso" :label="$tc('sw6oidc.provider.detail.syncCustomerAddressOnSso')" />
+                    <sw-switch-field v-model:value="provider.syncCustomerGroupOnSso" :label="$tc('sw6oidc.provider.detail.syncCustomerGroupOnSso')" />
+                </sw-container>
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-switch-field v-model:value="provider.syncAdminProfileOnSso" :label="$tc('sw6oidc.provider.detail.syncAdminProfileOnSso')" />
+                    <sw-switch-field v-model:value="provider.syncAdminRoleOnSso" :label="$tc('sw6oidc.provider.detail.syncAdminRoleOnSso')" />
+                </sw-container>
+            </sw-card>
+
+            {% block sw6oidc_provider_detail_attribute_mappings %}
+            <sw-card
+                v-if="provider.attributeMappings"
+                :title="$tc('sw6oidc.provider.detail.cardAttributeMapping')"
+            >
+                <sw-data-grid
+                    :data-source="provider.attributeMappings"
+                    :columns="[
+                        { property: 'attributeType', label: $tc('sw6oidc.provider.detail.attributeType.label') },
+                        { property: 'attributeName', label: $tc('sw6oidc.provider.detail.attributeClaimName') },
+                        { property: 'syncOnSso', label: $tc('sw6oidc.provider.detail.syncOnSso') },
+                    ]"
+                    :show-selection="false"
+                >
+                    <template #column-attributeType="{ item }">
+                        <sw-single-select v-model:value="item.attributeType" :options="attributeTypeOptions" size="small" />
+                    </template>
+                    <template #column-attributeName="{ item }">
+                        <sw-text-field v-model="item.attributeName" size="small" placeholder="e.g. preferred_username" />
+                    </template>
+                    <template #column-syncOnSso="{ item }">
+                        <sw-switch-field v-model:value="item.syncOnSso" />
+                    </template>
+                    <template #actions="{ item }">
+                        <sw-context-menu-item variant="danger" @click="onRemoveAttributeMapping(item)">
+                            {{ $tc('sw6oidc.provider.detail.remove') }}
+                        </sw-context-menu-item>
+                    </template>
+                </sw-data-grid>
+                <sw-button size="small" @click="onAddAttributeMapping">
+                    {{ $tc('sw6oidc.provider.detail.addAttributeMapping') }}
+                </sw-button>
+            </sw-card>
+            {% endblock %}
+
+            {% block sw6oidc_provider_detail_role_mappings %}
+            <sw-card
+                v-if="provider.roleMappings"
+                :title="$tc('sw6oidc.provider.detail.cardRoleMapping')"
+            >
+                <sw-data-grid
+                    :data-source="provider.roleMappings"
+                    :columns="[
+                        { property: 'mappingType', label: $tc('sw6oidc.provider.detail.mappingType.label') },
+                        { property: 'oidcGroup', label: $tc('sw6oidc.provider.detail.oidcGroup') },
+                        { property: 'target', label: $tc('sw6oidc.provider.detail.target') },
+                        { property: 'sortOrder', label: $tc('sw6oidc.provider.detail.sortOrder') },
+                    ]"
+                    :show-selection="false"
+                >
+                    <template #column-mappingType="{ item }">
+                        <sw-single-select
+                            v-model:value="item.mappingType"
+                            :options="mappingTypeOptions"
+                            size="small"
+                            @update:value="onMappingTypeChange(item)"
+                        />
+                    </template>
+                    <template #column-oidcGroup="{ item }">
+                        <sw-text-field v-model="item.oidcGroup" size="small" />
+                    </template>
+                    {#
+                        Two separate selects, toggled by mappingType, rather than
+                        one shared component — acl_role and customer_group are
+                        different entities with no common base, so the picker
+                        itself has to switch, not just its bound value.
+                    #}
+                    <template #column-target="{ item }">
+                        <sw-entity-single-select
+                            v-if="item.mappingType === 'admin_role'"
+                            v-model:value="item.aclRoleId"
+                            entity="acl_role"
+                            label-property="name"
+                            size="small"
+                            :placeholder="$tc('sw6oidc.provider.detail.targetPlaceholderRole')"
+                        />
+                        <sw-entity-single-select
+                            v-else
+                            v-model:value="item.customerGroupId"
+                            entity="customer_group"
+                            label-property="name"
+                            size="small"
+                            :placeholder="$tc('sw6oidc.provider.detail.targetPlaceholderGroup')"
+                        />
+                    </template>
+                    <template #column-sortOrder="{ item }">
+                        <sw-number-field v-model="item.sortOrder" size="small" />
+                    </template>
+                    <template #actions="{ item }">
+                        <sw-context-menu-item variant="danger" @click="onRemoveRoleMapping(item)">
+                            {{ $tc('sw6oidc.provider.detail.remove') }}
+                        </sw-context-menu-item>
+                    </template>
+                </sw-data-grid>
+                <sw-button size="small" @click="onAddRoleMapping">
+                    {{ $tc('sw6oidc.provider.detail.addRoleMapping') }}
+                </sw-button>
+            </sw-card>
+            {% endblock %}
+        </sw-card-view>
+    </template>
+    {% endblock %}
+</sw-page>
+{% endblock %}

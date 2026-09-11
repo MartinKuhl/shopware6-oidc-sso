@@ -1,0 +1,29 @@
+{% block sw6oidc_provider_list %}
+<sw-page class="sw6oidc-provider-list">
+    {% block sw6oidc_provider_list_smart_bar_actions %}
+    <template #smart-bar-actions>
+        <sw-button-process
+            variant="primary"
+            :router-link="{ name: 'sw6oidc.provider.create' }"
+            v-if="acl.can('sw6oidc_provider.creator')"
+        >
+            {{ $tc('sw6oidc.provider.list.buttonAdd') }}
+        </sw-button-process>
+    </template>
+    {% endblock %}
+
+    {% block sw6oidc_provider_list_content %}
+    <template #content>
+        <sw-entity-listing
+            v-if="providers"
+            :items="providers"
+            :repository="providerRepository"
+            :columns="columns"
+            :is-loading="isLoading"
+            detail-route="sw6oidc.provider.detail"
+            @update-records="getList"
+        />
+    </template>
+    {% endblock %}
+</sw-page>
+{% endblock %}

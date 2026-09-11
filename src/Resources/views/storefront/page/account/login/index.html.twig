@@ -1,0 +1,25 @@
+{#
+    VERIFICATION NEEDED: `page_account_login_form` is the commonly-documented
+    extension point for the Storefront login form, but confirm it against the
+    actual installed theme's `@Storefront/storefront/page/account/login/index.html.twig`
+    before relying on this — Storefront block names are more stable than
+    Administration internals but still theme/version dependent.
+#}
+{% sw_extends '@Storefront/storefront/page/account/login/index.html.twig' %}
+
+{% block page_account_login_form %}
+    {{ parent() }}
+
+    <div class="sw6oidc-login-actions mt-3">
+        <a href="{{ path('frontend.sw6oidc.login', { redirectTo: app.request.get('redirectTo') }) }}"
+           class="btn btn-secondary btn-block">
+            {{ 'sw6oidc.login.button'|trans|sw_sanitize }}
+        </a>
+
+        <button type="button"
+                class="btn btn-secondary btn-block mt-2"
+                data-sw6oidc-passkey-login="true">
+            {{ 'sw6oidc.passkey.button'|trans|sw_sanitize }}
+        </button>
+    </div>
+{% endblock %}
