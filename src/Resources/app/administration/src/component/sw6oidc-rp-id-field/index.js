@@ -4,10 +4,14 @@ const { Component } = Shopware;
 
 /**
  * Custom config.xml component backing the Passkey "Relying Party ID (domain)"
- * field: fetches and shows this shop's actual current host as the field's
- * placeholder, instead of only generic descriptive text — registered via
- * <component name="sw6oidc-rp-id-field"> in config.xml, backed by
- * Controller/Api/PasskeyDefaultHostController.php.
+ * field: shows this shop's actual current host as the field's placeholder
+ * instead of only generic descriptive text — registered via
+ * <component name="sw6oidc-rp-id-field"> in config.xml.
+ *
+ * The host is just `window.location.hostname` — the Administration itself is
+ * already being loaded from this shop's real domain, so no backend round
+ * trip (or guessing at APP_URL vs. the actual Storefront domain, which can
+ * differ in multi-sales-channel/reverse-proxy setups) is needed to show it.
  *
  * VERIFICATION NEEDED: the exact prop contract `sw-system-config` passes to a
  * custom config.xml <component> isn't fully documented — this accepts the
@@ -17,8 +21,6 @@ const { Component } = Shopware;
  */
 Component.register('sw6oidc-rp-id-field', {
     template,
-
-    inject: ['httpClient'],
 
     props: {
         value: {
@@ -43,38 +45,17 @@ Component.register('sw6oidc-rp-id-field', {
         },
     },
 
-    data() {
-        return {
-            resolvedHost: null,
-        };
-    },
-
     computed: {
         effectivePlaceholder() {
-            if (this.resolvedHost) {
-                return this.$tc('sw6oidc.passkeySettings.rpIdPlaceholderWithHost', 0, { host: this.resolvedHost });
+            if (window.location.hostname) {
+                return this.$tc('sw6oidc.passkeySettings.rpIdPlaceholderWithHost', 0, { host: window.location.hostname });
             }
 
             return this.placeholder;
         },
     },
 
-    created() {
-        this.fetchDefaultHost();
-    },
-
     methods: {
-        async fetchDefaultHost() {
-            try {
-                const response = await this.httpClient.get('/_action/sw6oidc/passkey/default-rp-host');
-                this.resolvedHost = response.data?.host || null;
-            } catch (error) {
-                // Non-fatal: the field just falls back to the generic
-                // placeholder text authored in config.xml.
-                this.resolvedHost = null;
-            }
-        },
-
         onInput(newValue) {
             this.$emit('update:value', newValue);
         },

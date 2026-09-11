@@ -30,13 +30,14 @@
             <helpText lang="de-DE">Der Name, den der Passkey-Dialog von Browser bzw. Betriebssystem anzeigt (zum Beispiel "Weiter zu ..."). Leer lassen, um den Shopnamen zu verwenden.</helpText>
         </input-field>
 
-        {#
-            Custom component instead of a plain input-field: it looks up this
-            shop's actual current host (via PasskeyDefaultHostController) and
-            shows it directly in the placeholder, e.g. "Defaults to:
-            shop.example.com", rather than only generic descriptive text.
-            See Resources/app/administration/src/component/sw6oidc-rp-id-field.
-        #}
+        <!--
+            Custom component instead of a plain input-field: it reads
+            window.location.hostname (the Administration is already loaded
+            from this shop's real domain) and shows it directly in the
+            placeholder, e.g. "Defaults to: shop.example.com", rather than
+            only generic descriptive text. See
+            Resources/app/administration/src/component/sw6oidc-rp-id-field.
+        -->
         <component name="sw6oidc-rp-id-field">
             <name>passkeyRpId</name>
             <label>Relying Party ID (domain) override</label>
