@@ -3,7 +3,8 @@
         "login": {
             "ssoButton": "Login with SSO",
             "error": "Single sign-on login failed. Please try again or log in with your username and password.",
-            "passkeyButton": "Login with Passkey"
+            "passkeyButton": "Login with Passkey",
+            "passkeyError": "Passkey login failed. Please try again or log in with your username and password."
         },
         "provider": {
             "moduleTitle": "OIDC Providers",
@@ -102,6 +103,11 @@
         "passkeySettings": {
             "moduleTitle": "Passkey Settings",
             "rpIdPlaceholderWithHost": "Defaults to: {host}",
+            "registerButton": "Register new passkey",
+            "registerNicknamePrompt": "Nickname for this passkey (optional)",
+            "registerSuccess": "Passkey registered successfully.",
+            "registerError": "The passkey could not be registered. Please try again.",
+            "registerNoSupport": "This browser does not support passkeys (WebAuthn).",
             "list": {
                 "columnUserType": "Account type",
                 "columnNickname": "Nickname",

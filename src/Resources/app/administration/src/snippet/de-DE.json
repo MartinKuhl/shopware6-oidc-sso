@@ -3,7 +3,8 @@
         "login": {
             "ssoButton": "Mit SSO anmelden",
             "error": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
-            "passkeyButton": "Mit Passkey anmelden"
+            "passkeyButton": "Mit Passkey anmelden",
+            "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an."
         },
         "provider": {
             "moduleTitle": "OIDC-Anbieter",
@@ -102,6 +103,11 @@
         "passkeySettings": {
             "moduleTitle": "Passkey-Einstellungen",
             "rpIdPlaceholderWithHost": "Standardmaessig: {host}",
+            "registerButton": "Neuen Passkey registrieren",
+            "registerNicknamePrompt": "Bezeichnung fuer diesen Passkey (optional)",
+            "registerSuccess": "Passkey erfolgreich registriert.",
+            "registerError": "Der Passkey konnte nicht registriert werden. Bitte versuchen Sie es erneut.",
+            "registerNoSupport": "Dieser Browser unterstuetzt keine Passkeys (WebAuthn).",
             "list": {
                 "columnUserType": "Kontotyp",
                 "columnNickname": "Bezeichnung",

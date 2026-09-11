@@ -19,11 +19,28 @@
             {{ $tc('sw6oidc.login.ssoButton') }}
         </sw-button>
 
+        <sw-button
+            block
+            size="default"
+            :is-loading="sw6oidcPasskeyPending"
+            :disabled="sw6oidcPasskeyPending"
+            @click="sw6oidcStartPasskeyLogin"
+        >
+            {{ $tc('sw6oidc.login.passkeyButton') }}
+        </sw-button>
+
         <sw-alert
             v-if="sw6oidcExchangeError"
             variant="error"
         >
             {{ $tc('sw6oidc.login.error') }}
+        </sw-alert>
+
+        <sw-alert
+            v-if="sw6oidcPasskeyError"
+            variant="error"
+        >
+            {{ $tc('sw6oidc.login.passkeyError') }}
         </sw-alert>
     </div>
 {% endblock %}

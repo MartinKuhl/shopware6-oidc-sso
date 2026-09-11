@@ -13,6 +13,10 @@
  * confirm the SPA ends up with a real, working access token").
  */
 import template from './sw-login.html.twig';
+import {
+    preparePublicKeyRequestOptions,
+    serializeAssertionCredential,
+} from '../../service/webauthn-codec';
 
 const { Component } = Shopware;
 
@@ -24,6 +28,8 @@ Component.override('sw-login', {
     data() {
         return {
             sw6oidcExchangeError: null,
+            sw6oidcPasskeyError: null,
+            sw6oidcPasskeyPending: false,
         };
     },
 
@@ -34,6 +40,68 @@ Component.override('sw-login', {
     methods: {
         sw6oidcStartLogin() {
             window.location.href = '/api/sw6oidc/admin/login';
+        },
+
+        async sw6oidcStartPasskeyLogin() {
+            if (!window.PublicKeyCredential) {
+                this.sw6oidcPasskeyError = 'not_supported';
+                return;
+            }
+
+            this.sw6oidcPasskeyError = null;
+            this.sw6oidcPasskeyPending = true;
+
+            try {
+                const optionsResponse = await fetch('/api/sw6oidc/admin/passkey/login-options', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams(),
+                });
+
+                if (!optionsResponse.ok) {
+                    throw new Error(`Passkey options request failed with status ${optionsResponse.status}`);
+                }
+
+                const { sessionId, options } = await optionsResponse.json();
+
+                // No allowCredentials hint is sent (email-less), so this
+                // relies on discoverable/resident credentials: the browser
+                // shows an account chooser from any passkey registered for
+                // this Relying Party ID, exactly as registered via
+                // sw6oidc-passkey-list's residentKeyAuthenticatorSelection().
+                const assertion = await navigator.credentials.get({
+                    publicKey: preparePublicKeyRequestOptions(options),
+                });
+
+                const verifyResponse = await fetch('/api/sw6oidc/admin/passkey/login-verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        sessionId,
+                        credential: JSON.stringify(serializeAssertionCredential(assertion)),
+                    }),
+                });
+
+                if (!verifyResponse.ok) {
+                    throw new Error(`Passkey login failed with status ${verifyResponse.status}`);
+                }
+
+                const tokenData = await verifyResponse.json();
+
+                this.loginService.setBearerAuthentication({
+                    access: tokenData.access_token,
+                    refresh: tokenData.refresh_token,
+                    expiry: tokenData.expires_in,
+                });
+
+                this.$router.push({ name: 'core' });
+            } catch (exception) {
+                this.sw6oidcPasskeyError = 'login_failed';
+                // eslint-disable-next-line no-console
+                console.error('sw6oidc: admin passkey login failed', exception);
+            } finally {
+                this.sw6oidcPasskeyPending = false;
+            }
         },
 
         async sw6oidcHandleCallback() {

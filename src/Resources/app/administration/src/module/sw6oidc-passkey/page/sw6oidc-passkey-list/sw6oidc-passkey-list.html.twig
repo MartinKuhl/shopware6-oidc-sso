@@ -1,5 +1,18 @@
 {% block sw6oidc_passkey_list %}
 <sw-page class="sw6oidc-passkey-list">
+    {% block sw6oidc_passkey_list_smart_bar_actions %}
+    <template #smart-bar-actions>
+        <sw-button
+            variant="primary"
+            :is-loading="isRegistering"
+            :disabled="isRegistering"
+            @click="registerPasskey"
+        >
+            {{ $tc('sw6oidc.passkeySettings.registerButton') }}
+        </sw-button>
+    </template>
+    {% endblock %}
+
     {% block sw6oidc_passkey_list_content %}
     <template #content>
         <sw-entity-listing
