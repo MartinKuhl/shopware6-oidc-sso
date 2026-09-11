@@ -18,6 +18,12 @@ const { Component } = Shopware;
  * commonly-used value/label/helpText/placeholder prop names and emits
  * `update:value`, matching the standard Shopware form-field convention.
  * Adjust prop names here if the real render call passes something different.
+ *
+ * effectivePlaceholder() resolves the translated template with $tc() but
+ * does NOT rely on $tc's own interpolation for the {host} token - passing
+ * it as $tc's third (values) argument silently produced an empty string in
+ * testing instead of the host. Substituting it into the resolved string
+ * manually with String.replace sidesteps that.
  */
 Component.register('sw6oidc-rp-id-field', {
     template,
@@ -54,17 +60,17 @@ Component.register('sw6oidc-rp-id-field', {
             }
 
             const translationKey = 'sw6oidc.passkeySettings.rpIdPlaceholderWithHost';
-            const translated = this.$tc(translationKey, 0, { host });
+            const translated = this.$tc(translationKey);
 
             // Defensive fallback: if the admin snippet bundle is stale/hasn't
             // been rebuilt, $tc() returns the raw key instead of throwing —
             // never show that to the user, fall back to a plain hardcoded
             // string instead.
-            if (!translated || translated === translationKey) {
+            if (!translated || translated === translationKey || !translated.includes('{host}')) {
                 return `Defaults to: ${host}`;
             }
 
-            return translated;
+            return translated.replace('{host}', host);
         },
     },
 

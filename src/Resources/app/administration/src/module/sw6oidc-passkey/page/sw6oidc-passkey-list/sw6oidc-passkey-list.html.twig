@@ -17,14 +17,14 @@
     <template #content>
         <sw-entity-listing
             v-if="credentials"
-            :items="credentials"
+            :data-source="credentials"
             :repository="credentialRepository"
             :columns="columns"
             :is-loading="isLoading"
+            :disable-data-fetching="true"
             :show-selection="false"
             :allow-edit="false"
             :allow-view="false"
-            @update-records="getList"
         />
     </template>
     {% endblock %}

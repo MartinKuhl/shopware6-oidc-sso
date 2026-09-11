@@ -16,12 +16,12 @@
     <template #content>
         <sw-entity-listing
             v-if="providers"
-            :items="providers"
+            :data-source="providers"
             :repository="providerRepository"
             :columns="columns"
             :is-loading="isLoading"
+            :disable-data-fetching="true"
             detail-route="sw6oidc.provider.detail"
-            @update-records="getList"
         />
     </template>
     {% endblock %}
