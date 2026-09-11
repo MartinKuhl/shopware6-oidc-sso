@@ -24,14 +24,20 @@
             <name>passkeyRpName</name>
             <label>Relying Party name</label>
             <label lang="de-DE">Relying-Party-Name</label>
-            <helpText>Shown by the browser/OS passkey prompt. Defaults to the shop name when empty.</helpText>
+            <placeholder>Defaults to the shop name</placeholder>
+            <placeholder lang="de-DE">Standardmaessig der Shopname</placeholder>
+            <helpText>The name shown by the browser's or operating system's passkey prompt (for example "Continue to ..."). Leave empty to use the shop name.</helpText>
+            <helpText lang="de-DE">Der Name, den der Passkey-Dialog von Browser bzw. Betriebssystem anzeigt (zum Beispiel "Weiter zu ..."). Leer lassen, um den Shopnamen zu verwenden.</helpText>
         </input-field>
 
         <input-field type="text">
             <name>passkeyRpId</name>
             <label>Relying Party ID (domain) override</label>
             <label lang="de-DE">Relying-Party-ID (Domain), Override</label>
-            <helpText>The registrable domain passkeys are bound to. Defaults to the sales channel/Administration base URL host when empty. Keep this stable once set — see the Magento module's passkey docs for the same single-domain caveat.</helpText>
+            <placeholder>Defaults to the Storefront/Administration host. A single RP ID means passkeys are not portable across different shop domains.</placeholder>
+            <placeholder lang="de-DE">Standardmaessig der Storefront-/Administration-Host. Eine einzelne RP-ID bedeutet, dass Passkeys nicht domainuebergreifend nutzbar sind.</placeholder>
+            <helpText>The registrable domain (for example "example.com") passkeys are bound to. Leave blank to use the current Storefront/Administration host automatically. Changing this invalidates every passkey already registered, since a passkey registered under one domain never authenticates on a different one.</helpText>
+            <helpText lang="de-DE">Die Domain (zum Beispiel "example.com"), an die Passkeys gebunden werden. Leer lassen, um automatisch den aktuellen Storefront-/Administration-Host zu verwenden. Eine Aenderung macht alle bereits registrierten Passkeys ungueltig, da ein unter einer Domain registrierter Passkey auf keiner anderen Domain funktioniert.</helpText>
         </input-field>
     </card>
 
@@ -43,7 +49,8 @@
             <name>debugLoggingEnabled</name>
             <label>Enable debug logging</label>
             <label lang="de-DE">Debug-Protokollierung aktivieren</label>
-            <helpText>Writes detailed OIDC/Passkey flow logs to var/log/sw6oidc-*.log.</helpText>
+            <helpText>Writes detailed OIDC and Passkey flow logs to var/log/sw6oidc-*.log for troubleshooting. Disable again once you're done, since these logs can contain sensitive claim data.</helpText>
+            <helpText lang="de-DE">Schreibt detaillierte OIDC- und Passkey-Ablaufprotokolle zur Fehlersuche nach var/log/sw6oidc-*.log. Nach Abschluss der Fehlersuche wieder deaktivieren, da diese Protokolle sensible Claim-Daten enthalten koennen.</helpText>
             <defaultValue>false</defaultValue>
         </input-field>
     </card>
