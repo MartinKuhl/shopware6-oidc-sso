@@ -25,8 +25,12 @@
     registered long before sw-login-login mounts, so it resolves here the
     same as it does for the real "Anmelden" button right above.
 #}
-<div class="sw6oidc-login-actions">
+<div
+    v-if="sw6oidcSsoAvailable || sw6oidcPasskeyAvailable"
+    class="sw6oidc-login-actions"
+>
     <mt-button
+        v-if="sw6oidcSsoAvailable"
         class="sw6oidc-login-actions__sso-button"
         variant="primary"
         size="default"
@@ -38,6 +42,7 @@
     </mt-button>
 
     <mt-button
+        v-if="sw6oidcPasskeyAvailable"
         class="sw6oidc-login-actions__passkey-button"
         variant="primary"
         size="default"

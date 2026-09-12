@@ -12,6 +12,7 @@
  * `mt-banner` are used below instead of the older `sw-button` / `sw-alert`.
  */
 import template from './sw-login.html.twig';
+import './sw-login.scss';
 import {
     preparePublicKeyRequestOptions,
     serializeAssertionCredential,
@@ -29,16 +30,71 @@ Component.override('sw-login-login', {
             sw6oidcExchangeError: null,
             sw6oidcPasskeyError: null,
             sw6oidcPasskeyPending: false,
+            sw6oidcSsoAvailable: false,
+            sw6oidcPasskeyAvailable: false,
         };
     },
 
     created() {
         this.sw6oidcHandleCallback();
+        this.sw6oidcLoadLoginOptions();
     },
 
     methods: {
+        /**
+         * Shopware's own bootLogin() (core/application.ts) always stamps
+         * sessionStorage['sw-login-should-reload'] = 'true' the moment the
+         * pre-auth login screen boots, precisely because bootLogin() skips
+         * loadPlugins() and the rest of the full-app initializers (see
+         * index.html.twig's own comment on this) - a normal password login's
+         * handleLoginSuccess() checks that flag after routing to 'core' and
+         * does a full window reload so bootFullApplication() actually runs
+         * this time. Our own login paths (passkey, OIDC nonce exchange) skip
+         * straight to router.push() and never reload, which is exactly why
+         * the dashboard renders as a blank white page until a manual F5 -
+         * the SPA never re-initialized any of the modules/stores/menu that
+         * only bootFullApplication() sets up. Mirror core's own sequence
+         * here instead of just navigating.
+         */
+        async sw6oidcFinishLogin() {
+            await this.$router.push({ name: 'core' });
+
+            const shouldReload = sessionStorage.getItem('sw-login-should-reload');
+
+            if (shouldReload) {
+                sessionStorage.removeItem('sw-login-should-reload');
+                window.location.reload();
+            }
+        },
+
         sw6oidcStartLogin() {
             window.location.href = '/api/sw6oidc/admin/login';
+        },
+
+        /**
+         * This endpoint is anonymous (no user is known yet), so it can only
+         * ever answer "is SSO/Passkey login configured/enabled at all" — not
+         * "does the person about to log in have one." Both buttons default
+         * to hidden (see data()) and only appear once this resolves true;
+         * any error here (network, non-2xx) leaves them hidden rather than
+         * risking showing a button for a feature that isn't actually set up.
+         */
+        async sw6oidcLoadLoginOptions() {
+            try {
+                const response = await fetch('/api/sw6oidc/admin/login-options');
+
+                if (!response.ok) {
+                    return;
+                }
+
+                const { ssoAvailable, passkeyAvailable } = await response.json();
+
+                this.sw6oidcSsoAvailable = Boolean(ssoAvailable);
+                this.sw6oidcPasskeyAvailable = Boolean(passkeyAvailable);
+            } catch (exception) {
+                // eslint-disable-next-line no-console
+                console.error('sw6oidc: failed to load admin login options', exception);
+            }
         },
 
         async sw6oidcStartPasskeyLogin() {
@@ -93,7 +149,7 @@ Component.override('sw-login-login', {
                     expiry: tokenData.expires_in,
                 });
 
-                this.$router.push({ name: 'core' });
+                await this.sw6oidcFinishLogin();
             } catch (exception) {
                 this.sw6oidcPasskeyError = 'login_failed';
                 // eslint-disable-next-line no-console
@@ -146,7 +202,7 @@ Component.override('sw-login-login', {
                 });
 
                 this.sw6oidcCleanUrl();
-                this.$router.push({ name: 'core' });
+                await this.sw6oidcFinishLogin();
             } catch (exception) {
                 this.sw6oidcExchangeError = 'exchange_failed';
                 this.sw6oidcCleanUrl();

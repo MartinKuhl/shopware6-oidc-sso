@@ -285,6 +285,7 @@
             <argument type="service" id="Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory" />
             <argument>%env(APP_URL)%/admin</argument>
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>

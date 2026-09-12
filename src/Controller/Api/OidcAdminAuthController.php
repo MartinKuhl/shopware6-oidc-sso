@@ -7,6 +7,7 @@ use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
+use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
@@ -15,6 +16,7 @@ use Shopware\Core\Framework\Context;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -41,7 +43,31 @@ class OidcAdminAuthController extends AbstractController
         private readonly PsrHttpFactory $psrHttpFactory,
         private readonly string $administrationBaseUrl,
         private readonly LoggerInterface $logger,
+        private readonly PasskeyConfig $passkeyConfig,
     ) {
+    }
+
+    /**
+     * Called by the `sw-login` override on mount so it only shows the "Login
+     * with SSO"/"Login with Passkey" buttons when something is actually
+     * configured — this endpoint is anonymous (it runs before any user is
+     * known), so "available" here only ever means "at least one active
+     * admin-scoped provider exists" / "passkey login is enabled", never
+     * anything about which passkeys a not-yet-identified visitor might hold.
+     */
+    #[Route(
+        path: '/api/sw6oidc/admin/login-options',
+        name: 'api.action.sw6oidc.admin.login-options',
+        methods: ['GET'],
+    )]
+    public function loginOptions(): JsonResponse
+    {
+        $context = Context::createDefaultContext();
+
+        return new JsonResponse([
+            'ssoAvailable' => $this->providerResolver->getActiveProviders('admin', $context) !== [],
+            'passkeyAvailable' => $this->passkeyConfig->isEnabledForAdmin(),
+        ]);
     }
 
     #[Route(
