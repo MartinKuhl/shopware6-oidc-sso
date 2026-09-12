@@ -16,6 +16,7 @@
  */
 import './component/sw6oidc-rp-id-field';
 import './extension/sw-login';
+import './extension/sw-inactivity-login';
 import './extension/sw-profile';
 import './module/sw6oidc-provider';
 import './module/sw6oidc-passkey';

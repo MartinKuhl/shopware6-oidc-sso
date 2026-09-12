@@ -1,0 +1,75 @@
+{#
+    Only one block exists in the real v6.7.14.0 source
+    (module/sw-inactivity-login/page/index/sw-inactivity-login.html.twig) -
+    sw_inactivity_login wraps the entire component including the <sw-modal>
+    itself, so there's no finer block to append our button to without it
+    rendering outside the modal card. Reproducing the full markup here
+    (rather than {% parent %} + sibling markup, as sw-login-login's override
+    does) is the only way to place our passkey button actually inside the
+    dialog.
+#}
+{% block sw_inactivity_login %}
+<div class="sw-inactivity-login">
+
+    <sw-modal
+        v-if="lastKnownUser"
+        class="sw-inactivity-login__modal"
+        :title="$t('global.sw-inactivity-login.modal.title')"
+        :closable="false"
+    >
+        <mt-password-field
+            v-model="password"
+            v-autofocus
+            :label="$t('sw-login.index.labelPassword')"
+            :disabled="isLoading"
+            :error="passwordError"
+            @keydown.enter="loginUserWithPassword"
+        />
+
+        <mt-checkbox
+            v-model:checked="rememberMe"
+            :label="$t('sw-login.index.labelKeepLoggedIn')"
+        />
+
+        <mt-button
+            v-if="sw6oidcPasskeyAvailable"
+            class="sw6oidc-inactivity-login__passkey-button"
+            variant="secondary"
+            size="default"
+            :block="true"
+            type="button"
+            :disabled="sw6oidcPasskeyPending"
+            :is-loading="sw6oidcPasskeyPending"
+            @click="sw6oidcStartPasskeyLogin"
+        >
+            {{ $t('sw6oidc.login.passkeyButton') }}
+        </mt-button>
+
+        <div
+            v-if="sw6oidcPasskeyError"
+            class="sw6oidc-inactivity-login__error"
+        >
+            {{ $t('sw6oidc.login.passkeyError') }}
+        </div>
+
+        <template #modal-footer>
+            <a
+                role="link"
+                tabindex="0"
+                @click="onBackToLogin"
+                @keydown.enter="onBackToLogin"
+            >
+                {{ $t('global.sw-inactivity-login.modal.actions.backToLogin') }}
+            </a>
+
+            <mt-button
+                variant="primary"
+                :is-loading="isLoading"
+                @click="loginUserWithPassword"
+            >
+                {{ $t('sw-login.index.buttonLogin') }}
+            </mt-button>
+        </template>
+    </sw-modal>
+</div>
+{% endblock %}
