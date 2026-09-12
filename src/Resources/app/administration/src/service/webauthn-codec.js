@@ -59,9 +59,17 @@ export function preparePublicKeyRequestOptions(options) {
 }
 
 export function serializeAttestationCredential(credential) {
+    // `id` is derived from `rawId` with our own encoder rather than trusting
+    // credential.id verbatim - webauthn-lib decodes `id` via a stricter path
+    // (sodium's no-padding urlsafe variant) than `rawId`, and it requires
+    // both to decode to the exact same bytes. Deriving both from the same
+    // source with the same encoder guarantees that instead of depending on
+    // the browser's own `.id` string formatting exactly matching.
+    const rawId = bufferToBase64Url(credential.rawId);
+
     return {
-        id: credential.id,
-        rawId: bufferToBase64Url(credential.rawId),
+        id: rawId,
+        rawId,
         type: credential.type,
         response: {
             attestationObject: bufferToBase64Url(credential.response.attestationObject),
@@ -71,9 +79,13 @@ export function serializeAttestationCredential(credential) {
 }
 
 export function serializeAssertionCredential(credential) {
+    // See serializeAttestationCredential() above for why `id` is derived from
+    // `rawId` instead of read directly off the credential.
+    const rawId = bufferToBase64Url(credential.rawId);
+
     return {
-        id: credential.id,
-        rawId: bufferToBase64Url(credential.rawId),
+        id: rawId,
+        rawId,
         type: credential.type,
         response: {
             authenticatorData: bufferToBase64Url(credential.response.authenticatorData),
