@@ -19,16 +19,33 @@
 {% block component_account_login_form %}
     {{ parent() }}
 
-    <div class="sw6oidc-login-actions mt-3">
-        <a href="{{ path('frontend.sw6oidc.login', { redirectTo: app.request.get('redirectTo') }) }}"
-           class="btn btn-secondary btn-block">
-            {{ 'sw6oidc.login.button'|trans|sw_sanitize }}
-        </a>
+    {% set sw6oidcSsoAvailable = sw6oidc_storefront_sso_available(context) %}
+    {% set sw6oidcPasskeyAvailable = sw6oidc_storefront_passkey_available(context) %}
 
-        <button type="button"
-                class="btn btn-secondary btn-block mt-2"
-                data-sw6oidc-passkey-login="true">
-            {{ 'sw6oidc.passkey.button'|trans|sw_sanitize }}
-        </button>
-    </div>
+    {% if sw6oidcSsoAvailable or sw6oidcPasskeyAvailable %}
+        {#
+            Bootstrap 5 (this theme ships 5.3.8) removed `.btn-block` -
+            it silently does nothing here, so both buttons fell back to
+            inline-block sizing and sat side by side instead of stacking.
+            `.d-grid` + `.gap-2` on the wrapper is the Bootstrap-5-idiomatic
+            replacement: each child becomes a full-width grid row with
+            consistent spacing, no per-button width/margin classes needed.
+        #}
+        <div class="sw6oidc-login-actions d-grid gap-2 mt-3">
+            {% if sw6oidcSsoAvailable %}
+                <a href="{{ path('frontend.sw6oidc.login', { redirectTo: app.request.get('redirectTo') }) }}"
+                   class="btn btn-secondary">
+                    {{ 'sw6oidc.login.button'|trans|sw_sanitize }}
+                </a>
+            {% endif %}
+
+            {% if sw6oidcPasskeyAvailable %}
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-sw6oidc-passkey-login="true">
+                    {{ 'sw6oidc.passkey.button'|trans|sw_sanitize }}
+                </button>
+            {% endif %}
+        </div>
+    {% endif %}
 {% endblock %}
