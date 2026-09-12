@@ -1,6 +1,5 @@
 import './page/sw6oidc-passkey-list';
-
-const { Module } = Shopware;
+import { registerModuleWhenReady } from '../../service/defer-module-register';
 
 /**
  * Lockout-recovery grid: lists every registered Passkey credential (admin +
@@ -9,8 +8,11 @@ const { Module } = Shopware;
  * Shopware already renders a config form for them under this plugin's own
  * entry in Settings > System > Plugins, matching the plan's "Passkey settings
  * ... stored via SystemConfigService" note.
+ *
+ * Registered via registerModuleWhenReady() rather than a bare
+ * Shopware.Module.register() call - see that function's own comment for why.
  */
-Module.register('sw6oidc-passkey', {
+registerModuleWhenReady('sw6oidc-passkey', {
     type: 'plugin',
     name: 'sw6oidc-passkey',
     title: 'sw6oidc.passkeySettings.moduleTitle',

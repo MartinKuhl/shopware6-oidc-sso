@@ -1,7 +1,6 @@
 import './page/sw6oidc-provider-list';
 import './page/sw6oidc-provider-detail';
-
-const { Module } = Shopware;
+import { registerModuleWhenReady } from '../../service/defer-module-register';
 
 /**
  * Administration module for managing OIDC providers (+ nested attribute/role
@@ -9,8 +8,11 @@ const { Module } = Shopware;
  * here is enough for Shopware to auto-generate the standard CRUD privileges
  * (sw6oidc_provider.viewer/editor/creator/deleter) without any separate ACL
  * XML, exactly as the plan's Administration settings UI section describes.
+ *
+ * Registered via registerModuleWhenReady() rather than a bare
+ * Shopware.Module.register() call - see that function's own comment for why.
  */
-Module.register('sw6oidc-provider', {
+registerModuleWhenReady('sw6oidc-provider', {
     type: 'plugin',
     name: 'sw6oidc-provider',
     title: 'sw6oidc.provider.moduleTitle',
