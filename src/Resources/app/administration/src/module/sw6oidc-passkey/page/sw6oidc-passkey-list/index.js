@@ -15,8 +15,16 @@ const { Criteria } = Shopware.Data;
  * a passkey has no dedicated DAL "create" form — a public key can't be
  * hand-typed — so this button, not sw-entity-listing's own create route, is
  * the only way to add a credential.
+ *
+ * Registered as a lazy factory (matching how Shopware's own core components
+ * are registered), not a plain object, so that Mixin.getByName('notification')
+ * below is only evaluated once Shopware actually builds this component -
+ * never during this plugin's forced-early script execution on the login
+ * screen (see Resources/views/administration/index.html.twig), where the
+ * "notification" mixin isn't registered yet and this component is never
+ * rendered anyway.
  */
-Component.register('sw6oidc-passkey-list', {
+Component.register('sw6oidc-passkey-list', () => Promise.resolve({
     template,
 
     inject: ['repositoryFactory', 'acl', 'loginService'],
@@ -126,4 +134,4 @@ Component.register('sw6oidc-passkey-list', {
             });
         },
     },
-});
+}));

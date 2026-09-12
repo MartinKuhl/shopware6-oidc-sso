@@ -11,7 +11,16 @@ const { Criteria } = Shopware.Data;
  * installed Shopware 6.7 Administration core before relying on it — see the
  * plan's Verification section.
  */
-Component.register('sw6oidc-provider-detail', {
+/**
+ * Registered as a lazy factory (matching how Shopware's own core components
+ * are registered), not a plain object, so that Mixin.getByName('notification')
+ * below is only evaluated once Shopware actually builds this component -
+ * never during this plugin's forced-early script execution on the login
+ * screen (see Resources/views/administration/index.html.twig), where the
+ * "notification" mixin isn't registered yet and this component is never
+ * rendered anyway.
+ */
+Component.register('sw6oidc-provider-detail', () => Promise.resolve({
     template,
 
     inject: ['repositoryFactory'],
@@ -173,4 +182,4 @@ Component.register('sw6oidc-provider-detail', {
             }
         },
     },
-});
+}));
