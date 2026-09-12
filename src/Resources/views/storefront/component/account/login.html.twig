@@ -1,0 +1,34 @@
+{#
+    Shopware resolves a plugin's Storefront template override by matching
+    this file's own path (relative to Resources/views/storefront/) against
+    the target template's namespaced path - `sw_extends` alone is not
+    enough, the file has to live at the exact same relative path as the
+    template it overrides for the bundle-chain resolution to link them at
+    all. This file previously lived at
+    page/account/login/index.html.twig, extending a page template that
+    doesn't exist in the real theme (there is no standalone login "page" -
+    the login form is a reusable COMPONENT embedded wherever needed, e.g.
+    the account page and the checkout guest/login step). Confirmed against
+    the exact v6.7.14.0 source
+    (storefront/component/account/login.html.twig): moved here, and its
+    outermost form block is `component_account_login_form`, not
+    `page_account_login_form`.
+#}
+{% sw_extends '@Storefront/storefront/component/account/login.html.twig' %}
+
+{% block component_account_login_form %}
+    {{ parent() }}
+
+    <div class="sw6oidc-login-actions mt-3">
+        <a href="{{ path('frontend.sw6oidc.login', { redirectTo: app.request.get('redirectTo') }) }}"
+           class="btn btn-secondary btn-block">
+            {{ 'sw6oidc.login.button'|trans|sw_sanitize }}
+        </a>
+
+        <button type="button"
+                class="btn btn-secondary btn-block mt-2"
+                data-sw6oidc-passkey-login="true">
+            {{ 'sw6oidc.passkey.button'|trans|sw_sanitize }}
+        </button>
+    </div>
+{% endblock %}
