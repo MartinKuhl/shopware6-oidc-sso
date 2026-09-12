@@ -6,7 +6,20 @@
             "failed": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit E-Mail und Passwort an."
         },
         "passkey": {
-            "button": "Mit Passkey anmelden"
+            "button": "Mit Passkey anmelden",
+            "pageTitle": "Passkeys",
+            "pageIntro": "Verwalten Sie die Passkeys, mit denen Sie sich ohne Passwort anmelden koennen.",
+            "registerButton": "Neuen Passkey registrieren",
+            "columnNickname": "Bezeichnung",
+            "columnCreatedAt": "Registriert am",
+            "deleteButton": "Loeschen",
+            "deleteConfirm": "Diesen Passkey loeschen? Er kann danach nicht mehr zur Anmeldung verwendet werden.",
+            "deleteSuccess": "Passkey geloescht.",
+            "deleteError": "Der Passkey konnte nicht geloescht werden. Bitte versuchen Sie es erneut.",
+            "emptyState": "Sie haben noch keine Passkeys registriert.",
+            "noSupport": "Dieser Browser unterstuetzt keine Passkeys (WebAuthn).",
+            "nicknamePrompt": "Bezeichnung fuer diesen Passkey (optional)",
+            "registerError": "Der Passkey konnte nicht registriert werden. Bitte versuchen Sie es erneut."
         }
     }
 }

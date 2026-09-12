@@ -6,7 +6,20 @@
             "failed": "Single sign-on login failed. Please try again or log in with your email and password."
         },
         "passkey": {
-            "button": "Login with Passkey"
+            "button": "Login with Passkey",
+            "pageTitle": "Passkeys",
+            "pageIntro": "Manage the passkeys you can use to log in without a password.",
+            "registerButton": "Register new passkey",
+            "columnNickname": "Nickname",
+            "columnCreatedAt": "Registered at",
+            "deleteButton": "Delete",
+            "deleteConfirm": "Delete this passkey? You will no longer be able to use it to log in.",
+            "deleteSuccess": "Passkey deleted.",
+            "deleteError": "The passkey could not be deleted. Please try again.",
+            "emptyState": "You haven't registered any passkeys yet.",
+            "noSupport": "This browser does not support passkeys (WebAuthn).",
+            "nicknamePrompt": "Nickname for this passkey (optional)",
+            "registerError": "The passkey could not be registered. Please try again."
         }
     }
 }

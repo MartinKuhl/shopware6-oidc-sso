@@ -1,0 +1,22 @@
+{#
+    Shopware resolves a plugin's Storefront template override by matching
+    this file's own path (relative to Resources/views/storefront/) against
+    the target's namespaced path - this file mirrors the real
+    page/account/sidebar.html.twig path so it links into that same
+    per-bundle template chain. page_account_sidebar_link_orders is the last
+    of the (non-block-wrapped-as-a-group) nav item blocks in the real
+    v6.7.14.0 source, so appending our own link after it via {% parent %}
+    keeps it inside the same <nav> the other items render in.
+#}
+{% sw_extends '@Storefront/storefront/page/account/sidebar.html.twig' %}
+
+{% block page_account_sidebar_link_orders %}
+    {{ parent() }}
+
+    <a href="{{ path('frontend.account.passkey.page') }}"
+       title="{{ 'sw6oidc.passkey.pageTitle'|trans|striptags }}"
+       class="list-group-item list-group-item-action account-aside-item{% if activeRoute is same as('frontend.account.passkey.page') %} is-active{% endif %}"
+       {% if activeRoute is same as('frontend.account.passkey.page') %} aria-current="page"{% endif %}>
+        {{ 'sw6oidc.passkey.pageTitle'|trans|sw_sanitize }}
+    </a>
+{% endblock %}

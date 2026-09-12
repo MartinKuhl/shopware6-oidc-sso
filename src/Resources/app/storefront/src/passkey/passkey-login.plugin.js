@@ -1,4 +1,8 @@
 import Plugin from 'src/plugin-system/plugin.class';
+import {
+    preparePublicKeyRequestOptions,
+    serializeAssertionCredential,
+} from './webauthn-codec';
 
 /**
  * Usernameless/discoverable Passkey login on the Storefront login page. Calls
@@ -26,33 +30,17 @@ export default class Sw6OidcPasskeyLoginPlugin extends Plugin {
             });
             const { sessionId, options } = await optionsResponse.json();
 
-            const publicKey = {
-                ...options,
-                challenge: base64UrlToBuffer(options.challenge),
-                allowCredentials: (options.allowCredentials || []).map((credential) => ({
-                    ...credential,
-                    id: base64UrlToBuffer(credential.id),
-                })),
-            };
-
-            const assertion = await navigator.credentials.get({ publicKey });
-
-            const credentialJson = JSON.stringify({
-                id: assertion.id,
-                rawId: bufferToBase64Url(assertion.rawId),
-                type: assertion.type,
-                response: {
-                    clientDataJSON: bufferToBase64Url(assertion.response.clientDataJSON),
-                    authenticatorData: bufferToBase64Url(assertion.response.authenticatorData),
-                    signature: bufferToBase64Url(assertion.response.signature),
-                    userHandle: assertion.response.userHandle ? bufferToBase64Url(assertion.response.userHandle) : null,
-                },
+            const assertion = await navigator.credentials.get({
+                publicKey: preparePublicKeyRequestOptions(options),
             });
 
             const verifyResponse = await fetch('/sw6oidc/passkey/login-verify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ sessionId, credential: credentialJson }),
+                body: new URLSearchParams({
+                    sessionId,
+                    credential: JSON.stringify(serializeAssertionCredential(assertion)),
+                }),
             });
             const result = await verifyResponse.json();
 
@@ -76,27 +64,4 @@ export default class Sw6OidcPasskeyLoginPlugin extends Plugin {
         // A dedicated flash-message partial is a follow-up; a console error
         // plus leaving the button re-enabled is the safe minimum for now.
     }
-}
-
-function base64UrlToBuffer(value) {
-    const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(value.length + ((4 - (value.length % 4)) % 4), '=');
-    const binary = window.atob(padded);
-    const buffer = new Uint8Array(binary.length);
-
-    for (let i = 0; i < binary.length; i += 1) {
-        buffer[i] = binary.charCodeAt(i);
-    }
-
-    return buffer.buffer;
-}
-
-function bufferToBase64Url(buffer) {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-
-    bytes.forEach((byte) => {
-        binary += String.fromCharCode(byte);
-    });
-
-    return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }

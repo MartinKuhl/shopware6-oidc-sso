@@ -1,0 +1,58 @@
+{% sw_extends '@Storefront/storefront/page/account/_page.html.twig' %}
+
+{% block page_account_main_content %}
+    <div class="account-passkey">
+        <div class="account-welcome">
+            <h1>{{ 'sw6oidc.passkey.pageTitle'|trans|sw_sanitize }}</h1>
+            <p>{{ 'sw6oidc.passkey.pageIntro'|trans|sw_sanitize }}</p>
+        </div>
+
+        <div class="card account-passkey-list mb-3">
+            <div class="card-body">
+                {% if sw6oidcPasskeyEnabled %}
+                    <button type="button"
+                            class="btn btn-secondary mb-3"
+                            data-sw6oidc-passkey-register="true"
+                            data-sw6oidc-no-support-text="{{ 'sw6oidc.passkey.noSupport'|trans|striptags }}"
+                            data-sw6oidc-nickname-prompt-text="{{ 'sw6oidc.passkey.nicknamePrompt'|trans|striptags }}"
+                            data-sw6oidc-error-text="{{ 'sw6oidc.passkey.registerError'|trans|striptags }}">
+                        {{ 'sw6oidc.passkey.registerButton'|trans|sw_sanitize }}
+                    </button>
+                {% endif %}
+
+                {% if sw6oidcCredentials|length %}
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>{{ 'sw6oidc.passkey.columnNickname'|trans|sw_sanitize }}</th>
+                                <th>{{ 'sw6oidc.passkey.columnCreatedAt'|trans|sw_sanitize }}</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for credential in sw6oidcCredentials %}
+                                <tr>
+                                    <td>{{ credential.nickname ?: '-' }}</td>
+                                    <td>{{ credential.createdAt|format_date('medium') }}</td>
+                                    <td class="text-end">
+                                        <form action="{{ path('frontend.account.passkey.delete', {credentialId: credential.id}) }}"
+                                              method="post"
+                                              data-sw6oidc-passkey-delete-form="true"
+                                              data-sw6oidc-confirm-text="{{ 'sw6oidc.passkey.deleteConfirm'|trans|striptags }}">
+                                            <button type="submit" class="btn btn-sm btn-link p-0">
+                                                {% sw_icon 'trash' style {'size': 'xs'} %}
+                                                {{ 'sw6oidc.passkey.deleteButton'|trans|sw_sanitize }}
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>{{ 'sw6oidc.passkey.emptyState'|trans|sw_sanitize }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endblock %}
