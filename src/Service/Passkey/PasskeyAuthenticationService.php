@@ -73,15 +73,22 @@ class PasskeyAuthenticationService
             throw new PasskeyCeremonyException('Expected a WebAuthn assertion (login) response.');
         }
 
-        $credentialIdBase64 = base64_encode($publicKeyCredential->getRawId());
+        $rawId = $publicKeyCredential->getRawId();
+        $credentialIdBase64 = base64_encode($rawId);
         $entity = $this->credentialRepository->findEntityByCredentialId($credentialIdBase64);
 
         if ($entity === null) {
             throw new PasskeyCeremonyException('This passkey is not registered.');
         }
 
+        // check()'s first argument, when passed as a string, gets forwarded
+        // as-is to PasskeyCredentialRepository::findOneByCredentialId(),
+        // which base64-encodes it itself to match how credentialId is
+        // stored - passing the already-encoded $credentialIdBase64 here
+        // double-encodes it, so the lookup never matches and check() throws
+        // "The credential ID is invalid." Raw bytes only.
         $this->ceremonyFactory->assertionResponseValidator()->check(
-            $credentialIdBase64,
+            $rawId,
             $response,
             $options,
             $request,
