@@ -31,13 +31,19 @@
     assumption) hasn't been confirmed by seeing this actually run - watch for
     the SSO/Passkey buttons appearing, or a JS console error, on the next
     deploy.
+
+    A script tag without the page's CSP nonce gets silently blocked by
+    Shopware's Content-Security-Policy (confirmed live: showed as
+    "(blocked:csp)" in the network panel) - every other script tag in this
+    template carries the cspNonce variable as its nonce attribute, ours
+    needs it too.
 #}
 {% sw_extends '@Administration/administration/index.html.twig' %}
 
 {% block administration_login_scripts %}
     {{ parent() }}
     {% for js in sw6oidc_admin_scripts() %}
-        <script type="module" src="{{ asset('', 'asset') }}{{ js }}"></script>
+        <script nonce="{{ cspNonce }}" type="module" src="{{ asset('', 'asset') }}{{ js }}"></script>
     {% endfor %}
     {% for css in sw6oidc_admin_styles() %}
         <link rel="stylesheet" href="{{ asset('', 'asset') }}{{ css }}">
