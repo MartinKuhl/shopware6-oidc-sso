@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
 use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Exception\OAuthServerException;
+use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
@@ -85,6 +86,48 @@ class PasskeyAdminController extends AbstractController
 
             return new JsonResponse(['status' => false, 'message' => $exception->getMessage()], 400);
         }
+    }
+
+    /**
+     * Self-service listing for the "My passkeys" tab on the admin's own
+     * profile page — deliberately scoped to the currently authenticated user
+     * only (never accepts a userId param), unlike the cross-user recovery
+     * grid in Settings, which lists everyone's credentials via the plain
+     * entity API and is gated on that entity's ACL privilege instead.
+     */
+    #[Route(path: '/api/sw6oidc/admin/passkey/my-credentials', name: 'api.action.sw6oidc.admin.passkey.my-credentials', methods: ['GET'])]
+    public function myCredentials(Context $context): JsonResponse
+    {
+        $user = $this->currentUser($context);
+
+        $credentials = $this->passkeyCredentialRepository->findAllForOwner('admin', $user->getId(), $context);
+
+        return new JsonResponse([
+            'credentials' => array_map(static fn (Sw6OidcPasskeyCredentialEntity $credential) => [
+                'id' => $credential->getId(),
+                'nickname' => $credential->getNickname(),
+                'createdAt' => $credential->getCreatedAt()?->format(\DATE_ATOM),
+            ], $credentials),
+        ]);
+    }
+
+    /**
+     * Deletes one of the *currently authenticated* admin's own passkeys.
+     * Ownership is enforced by PasskeyCredentialRepository::deleteOwnedByUser()
+     * itself, not just by this endpoint being auth_required — the passed
+     * credential id is never trusted to belong to the caller.
+     */
+    #[Route(path: '/api/sw6oidc/admin/passkey/delete', name: 'api.action.sw6oidc.admin.passkey.delete', methods: ['POST'])]
+    public function deleteCredential(Request $request, Context $context): JsonResponse
+    {
+        $user = $this->currentUser($context);
+        $id = (string) $request->request->get('id');
+
+        if ($id === '' || !$this->passkeyCredentialRepository->deleteOwnedByUser($id, 'admin', $user->getId(), $context)) {
+            return new JsonResponse(['status' => false, 'message' => 'Passkey not found.'], 404);
+        }
+
+        return new JsonResponse(['status' => true]);
     }
 
     #[Route(path: '/api/sw6oidc/admin/passkey/login-options', name: 'api.action.sw6oidc.admin.passkey.login-options', defaults: ['auth_required' => false], methods: ['POST'])]

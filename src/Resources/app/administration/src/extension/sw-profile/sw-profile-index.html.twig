@@ -1,0 +1,10 @@
+{% block sw_profile_index_tabs_item_general %}
+{% parent %}
+
+<sw-tabs-item
+    :route="{ name: 'sw.profile.index.sw6oidcPasskey' }"
+    :title="$t('sw6oidc.passkeySettings.profileTabTitle')"
+>
+    {{ $t('sw6oidc.passkeySettings.profileTabTitle') }}
+</sw-tabs-item>
+{% endblock %}

@@ -8,6 +8,7 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Webauthn\PublicKeyCredentialSource;
 use Webauthn\PublicKeyCredentialSourceRepository;
@@ -114,6 +115,48 @@ class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
             'userHandle' => bin2hex($publicKeyCredentialSource->getUserHandle()),
             'nickname' => $nickname,
         ]], $this->context);
+    }
+
+    /**
+     * Self-service listing for the "My passkeys" section on a user's own
+     * profile page — deliberately separate from findAllForUserEntity(),
+     * which takes the library's opaque WebAuthn user handle; this one is
+     * keyed by our own userType/userId so callers never need to recompute
+     * that handle just to list what a user already owns.
+     *
+     * @return Sw6OidcPasskeyCredentialEntity[]
+     */
+    public function findAllForOwner(string $userType, string $userId, Context $context): array
+    {
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('userType', $userType));
+        $criteria->addFilter(new EqualsFilter('userId', $userId));
+        $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::DESCENDING));
+
+        return array_values(iterator_to_array($this->passkeyCredentialRepository->search($criteria, $context)->getEntities()));
+    }
+
+    /**
+     * Deletes a credential only if it actually belongs to the given owner —
+     * self-service delete must never let a user remove another user's
+     * passkey merely by guessing/enumerating an id, so ownership is checked
+     * here rather than trusting the caller (unlike the cross-user recovery
+     * grid in Settings, which is gated on the entity's own ACL privilege
+     * instead).
+     */
+    public function deleteOwnedByUser(string $id, string $userType, string $userId, Context $context): bool
+    {
+        $criteria = new Criteria([$id]);
+        $criteria->addFilter(new EqualsFilter('userType', $userType));
+        $criteria->addFilter(new EqualsFilter('userId', $userId));
+
+        if ($this->passkeyCredentialRepository->search($criteria, $context)->first() === null) {
+            return false;
+        }
+
+        $this->passkeyCredentialRepository->delete([['id' => $id]], $context);
+
+        return true;
     }
 
     public function findEntityByCredentialId(string $base64CredentialId): ?Sw6OidcPasskeyCredentialEntity

@@ -9,7 +9,7 @@
         "provider": {
             "moduleTitle": "OIDC-Anbieter",
             "list": {
-                "buttonAdd": "Anbieter hinzufuegen",
+                "buttonAdd": "Anbieter hinzufügen",
                 "columnDisplayName": "Anzeigename",
                 "columnAppName": "Technischer Name",
                 "columnLoginType": "Anmeldetyp",
@@ -58,12 +58,12 @@
                 "syncAdminRoleOnSso": "Admin-Rolle bei jeder Anmeldung synchronisieren",
                 "attributeClaimName": "OIDC-Claim-Name",
                 "syncOnSso": "Bei jeder Anmeldung synchronisieren",
-                "addAttributeMapping": "Attributzuordnung hinzufuegen",
+                "addAttributeMapping": "Attributzuordnung hinzufügen",
                 "oidcGroup": "OIDC-Gruppen-/Rollenwert",
                 "target": "Ziel",
-                "targetPlaceholderRole": "Administration-Rolle auswaehlen...",
-                "targetPlaceholderGroup": "Kundengruppe auswaehlen...",
-                "addRoleMapping": "Rollenzuordnung hinzufuegen",
+                "targetPlaceholderRole": "Administration-Rolle auswählen...",
+                "targetPlaceholderGroup": "Kundengruppe auswählen...",
+                "addRoleMapping": "Rollenzuordnung hinzufügen",
                 "remove": "Entfernen",
                 "loginType": {
                     "label": "Anmeldetyp",
@@ -102,14 +102,21 @@
         },
         "passkeySettings": {
             "moduleTitle": "Passkey-Einstellungen",
-            "rpIdPlaceholderWithHost": "Standardmaessig: {host}",
+            "rpIdPlaceholderWithHost": "Standardmäßig: {host}",
             "registerButton": "Neuen Passkey registrieren",
-            "registerNicknamePrompt": "Bezeichnung fuer diesen Passkey (optional)",
+            "registerNicknamePrompt": "Bezeichnung für diesen Passkey (optional)",
             "registerSuccess": "Passkey erfolgreich registriert.",
             "registerError": "Der Passkey konnte nicht registriert werden. Bitte versuchen Sie es erneut.",
-            "registerNoSupport": "Dieser Browser unterstuetzt keine Passkeys (WebAuthn).",
+            "registerNoSupport": "Dieser Browser unterstützt keine Passkeys (WebAuthn).",
+            "deleteConfirm": "Diesen Passkey löschen? Er kann danach nicht mehr zur Anmeldung verwendet werden.",
+            "deleteSuccess": "Passkey gelöscht.",
+            "deleteError": "Der Passkey konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
+            "profileTabTitle": "Passkeys",
+            "profileCardTitle": "Meine Passkeys",
+            "profileEmptyState": "Sie haben noch keine Passkeys registriert.",
             "list": {
                 "columnUserType": "Kontotyp",
+                "columnOwner": "Besitzer",
                 "columnNickname": "Bezeichnung",
                 "columnCreatedAt": "Registriert am"
             }

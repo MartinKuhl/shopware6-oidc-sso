@@ -25,7 +25,11 @@
             :show-selection="false"
             :allow-edit="false"
             :allow-view="false"
-        />
+        >
+            <template #column-owner="{ item }">
+                {{ ownerName(item) }}
+            </template>
+        </sw-entity-listing>
     </template>
     {% endblock %}
 </sw-page>

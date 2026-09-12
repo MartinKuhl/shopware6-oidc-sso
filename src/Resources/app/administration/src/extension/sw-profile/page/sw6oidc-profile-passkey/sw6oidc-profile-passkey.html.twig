@@ -1,0 +1,46 @@
+{% block sw6oidc_profile_passkey %}
+<div class="sw6oidc-profile-passkey">
+    <sw-card
+        :title="$t('sw6oidc.passkeySettings.profileCardTitle')"
+        position-identifier="sw6oidc-profile-passkey"
+    >
+        <mt-button
+            class="sw6oidc-profile-passkey__register-button"
+            variant="primary"
+            size="small"
+            :is-loading="isRegistering"
+            :disabled="isRegistering"
+            @click="registerPasskey"
+        >
+            {{ $t('sw6oidc.passkeySettings.registerButton') }}
+        </mt-button>
+
+        <sw-data-grid
+            v-if="credentials.length"
+            class="sw6oidc-profile-passkey__grid"
+            :data-source="credentials"
+            :columns="columns"
+            :show-selection="false"
+            :show-actions="true"
+            :is-loading="isLoading"
+        >
+            <template #actions="{ item }">
+                <sw-context-menu-item
+                    variant="danger"
+                    :disabled="deletingId === item.id"
+                    @click="deleteCredential(item)"
+                >
+                    {{ $t('global.default.delete') }}
+                </sw-context-menu-item>
+            </template>
+        </sw-data-grid>
+
+        <p
+            v-else-if="!isLoading"
+            class="sw6oidc-profile-passkey__empty-state"
+        >
+            {{ $t('sw6oidc.passkeySettings.profileEmptyState') }}
+        </p>
+    </sw-card>
+</div>
+{% endblock %}

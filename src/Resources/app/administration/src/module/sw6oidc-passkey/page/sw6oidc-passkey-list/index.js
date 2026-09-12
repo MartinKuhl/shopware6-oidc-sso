@@ -36,6 +36,12 @@ Component.register('sw6oidc-passkey-list', () => Promise.resolve({
             credentials: null,
             isLoading: true,
             isRegistering: false,
+            // Keyed by `${userType}:${userId}` -> a human-readable label.
+            // sw6oidc_passkey_credential has no association to user/customer
+            // (it's a polymorphic userType/userId pair, not a real FK), so
+            // there's nothing the Admin API's own search can join in here -
+            // this is resolved with a couple of extra lookups instead.
+            ownerNames: {},
         };
     },
 
@@ -50,9 +56,18 @@ Component.register('sw6oidc-passkey-list', () => Promise.resolve({
             return this.repositoryFactory.create('sw6oidc_passkey_credential');
         },
 
+        userRepository() {
+            return this.repositoryFactory.create('user');
+        },
+
+        customerRepository() {
+            return this.repositoryFactory.create('customer');
+        },
+
         columns() {
             return [
                 { property: 'userType', label: this.$tc('sw6oidc.passkeySettings.list.columnUserType') },
+                { property: 'owner', label: this.$tc('sw6oidc.passkeySettings.list.columnOwner') },
                 { property: 'nickname', label: this.$tc('sw6oidc.passkeySettings.list.columnNickname') },
                 { property: 'createdAt', label: this.$tc('sw6oidc.passkeySettings.list.columnCreatedAt') },
             ];
@@ -69,10 +84,39 @@ Component.register('sw6oidc-passkey-list', () => Promise.resolve({
             const criteria = new Criteria(1, 25);
             criteria.addSorting(Criteria.sort('createdAt', 'DESC'));
 
-            return this.credentialRepository.search(criteria, Shopware.Context.api).then((result) => {
+            return this.credentialRepository.search(criteria, Shopware.Context.api).then(async (result) => {
                 this.credentials = result;
+                await this.loadOwnerNames(result);
                 this.isLoading = false;
             });
+        },
+
+        async loadOwnerNames(credentials) {
+            const adminIds = [...new Set(credentials.filter((credential) => credential.userType === 'admin').map((credential) => credential.userId))];
+            const customerIds = [...new Set(credentials.filter((credential) => credential.userType === 'customer').map((credential) => credential.userId))];
+
+            const [admins, customers] = await Promise.all([
+                adminIds.length
+                    ? this.userRepository.search(new Criteria(1, adminIds.length).addFilter(Criteria.equalsAny('id', adminIds)), Shopware.Context.api)
+                    : Promise.resolve([]),
+                customerIds.length
+                    ? this.customerRepository.search(new Criteria(1, customerIds.length).addFilter(Criteria.equalsAny('id', customerIds)), Shopware.Context.api)
+                    : Promise.resolve([]),
+            ]);
+
+            const names = {};
+            admins.forEach((admin) => {
+                names[`admin:${admin.id}`] = admin.username;
+            });
+            customers.forEach((customer) => {
+                names[`customer:${customer.id}`] = `${customer.firstName} ${customer.lastName}`.trim() || customer.email;
+            });
+
+            this.ownerNames = names;
+        },
+
+        ownerName(item) {
+            return this.ownerNames[`${item.userType}:${item.userId}`] || item.userId;
         },
 
         async registerPasskey() {
