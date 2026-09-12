@@ -19,14 +19,19 @@
     for core's own "Anmelden" button right above - most likely because
     whatever registers/styles them for real isn't ready yet on this
     forced-early render path either (see index.html.twig for why this
-    plugin's JS runs this early at all). sw-login__login-action is the real,
-    already-loaded CSS class core's own submit button uses, so reusing it
-    directly sidesteps depending on Meteor component resolution entirely.
+    plugin's JS runs this early at all). The class list below is copied
+    verbatim from that real, working "Anmelden" button (inspected live) -
+    mt-button's actual visual styling comes from these plain CSS classes,
+    not from sw-login__login-action alone, so applying them directly to a
+    plain <button> sidesteps depending on Meteor component resolution
+    entirely. mt-button--primary/--block always apply; mt-button--disabled
+    is added conditionally to match the real button's own behavior, and
+    :disabled prevents the click itself while pending.
 #}
 <div class="sw6oidc-login-actions">
     <button
         type="button"
-        class="sw-login__login-action sw6oidc-login-actions__sso-button"
+        class="mt-button mt-button--primary mt-button--default mt-button--block sw6oidc-login-actions__sso-button"
         @click="sw6oidcStartLogin"
     >
         {{ sw6oidcTranslate('sw6oidc.login.ssoButton', 'Login with SSO') }}
@@ -34,7 +39,8 @@
 
     <button
         type="button"
-        class="sw-login__login-action sw6oidc-login-actions__passkey-button"
+        class="mt-button mt-button--primary mt-button--default mt-button--block sw6oidc-login-actions__passkey-button"
+        :class="{ 'mt-button--disabled': sw6oidcPasskeyPending }"
         :disabled="sw6oidcPasskeyPending"
         @click="sw6oidcStartPasskeyLogin"
     >

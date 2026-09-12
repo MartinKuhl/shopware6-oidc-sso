@@ -118,6 +118,12 @@ class PasskeyAdminController extends AbstractController
 
             $request->attributes->set(AdminOidcGrant::REQUEST_ATTRIBUTE_USER_ID, $resolved['userId']);
             $request->request->set('grant_type', AdminOidcGrant::GRANT_IDENTIFIER);
+            // League's AuthorizationServer validates client_id before our
+            // grant's validateUser() ever runs - the OIDC nonce-exchange
+            // flow's JS sends this explicitly, this endpoint never received
+            // anything client_id-shaped at all, so League rejected the
+            // request outright as malformed.
+            $request->request->set('client_id', 'administration');
 
             $psrRequest = $this->psrHttpFactory->createRequest($request);
             $psrResponse = $this->psrHttpFactory->createResponse(new Response());
