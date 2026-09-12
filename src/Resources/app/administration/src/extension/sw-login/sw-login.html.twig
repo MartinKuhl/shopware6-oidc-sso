@@ -1,46 +1,52 @@
 {#
-    VERIFICATION NEEDED: the block name(s) below are a best guess at where
-    Shopware 6.7's own sw-login template exposes an extension point — confirm
-    against the actual installed `sw-login/index.html.twig` and adjust the
-    block name(s) so this renders in the right spot (below the password form,
-    above the footer). See index.js for the accompanying logic; the SSO
-    button itself only needs `sw6oidcStartLogin()` wired to a click handler
-    wherever it ends up living.
+    sw_login_login_sso is the real extension point in sw-login-login: it
+    wraps Shopware's own native SSO-forwarding button and sits outside the
+    `v-if="loginConfig.useDefault"` block, so our buttons render regardless
+    of whether password login itself is enabled - matching how the native
+    SSO button behaves.
 #}
-{% block sw_login_login_card_password_form %}
-    {% parent %}
+{% block sw_login_login_sso %}
+{% parent %}
 
-    <div class="sw6oidc-login-actions">
-        <sw-button
-            block
-            size="default"
-            @click="sw6oidcStartLogin"
-        >
-            {{ $tc('sw6oidc.login.ssoButton') }}
-        </sw-button>
+<div class="sw6oidc-login-actions">
+    <mt-button
+        class="sw6oidc-login-actions__sso-button"
+        :block="true"
+        size="default"
+        variant="secondary"
+        @click="sw6oidcStartLogin"
+    >
+        {{ $tc('sw6oidc.login.ssoButton') }}
+    </mt-button>
 
-        <sw-button
-            block
-            size="default"
-            :is-loading="sw6oidcPasskeyPending"
-            :disabled="sw6oidcPasskeyPending"
-            @click="sw6oidcStartPasskeyLogin"
-        >
-            {{ $tc('sw6oidc.login.passkeyButton') }}
-        </sw-button>
+    <mt-button
+        class="sw6oidc-login-actions__passkey-button"
+        :is-loading="sw6oidcPasskeyPending"
+        :disabled="sw6oidcPasskeyPending"
+        :block="true"
+        size="default"
+        variant="secondary"
+        @click="sw6oidcStartPasskeyLogin"
+    >
+        {{ $tc('sw6oidc.login.passkeyButton') }}
+    </mt-button>
 
-        <sw-alert
-            v-if="sw6oidcExchangeError"
-            variant="error"
-        >
-            {{ $tc('sw6oidc.login.error') }}
-        </sw-alert>
+    <mt-banner
+        v-if="sw6oidcExchangeError"
+        variant="critical"
+        :show-icon="true"
+        :closable="false"
+    >
+        {{ $tc('sw6oidc.login.error') }}
+    </mt-banner>
 
-        <sw-alert
-            v-if="sw6oidcPasskeyError"
-            variant="error"
-        >
-            {{ $tc('sw6oidc.login.passkeyError') }}
-        </sw-alert>
-    </div>
+    <mt-banner
+        v-if="sw6oidcPasskeyError"
+        variant="critical"
+        :show-icon="true"
+        :closable="false"
+    >
+        {{ $tc('sw6oidc.login.passkeyError') }}
+    </mt-banner>
+</div>
 {% endblock %}

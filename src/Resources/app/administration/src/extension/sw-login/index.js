@@ -1,16 +1,15 @@
 /**
- * Extends Shopware's Administration login page with an "Login with SSO"
- * button and the nonce-exchange step that completes the OIDC bridge — see
- * the plan's "Administration (Backend user) OIDC flow" section.
+ * Extends Shopware's Administration login form with a "Login with SSO"
+ * button, a "Login with Passkey" button, and the nonce-exchange step that
+ * completes the OIDC bridge — see the plan's "Administration (Backend user)
+ * OIDC flow" section.
  *
- * VERIFICATION NEEDED: this overrides the `sw-login` component and calls
- * Shopware.Service('loginService') by its documented public method names
- * (setBearerAuthentication / loginByUsername shape). Administration internals
- * change more often than the stable core PHP APIs used elsewhere in this
- * plugin — confirm both the component name and the loginService method
- * signatures against the actual installed Shopware 6.7 Administration source
- * before relying on this (see plan's Verification section: "Administration:
- * confirm the SPA ends up with a real, working access token").
+ * The username/password form (and Shopware's own native SSO-forwarding
+ * button) lives in `sw-login-login`, not in `sw-login` itself - `sw-login`
+ * is just an outer shell around a <router-view>. Confirmed against
+ * Shopware 6.7's actual Administration source
+ * (module/sw-login/view/sw-login-login), which is also why `mt-button` /
+ * `mt-banner` are used below instead of the older `sw-button` / `sw-alert`.
  */
 import template from './sw-login.html.twig';
 import {
@@ -20,7 +19,7 @@ import {
 
 const { Component } = Shopware;
 
-Component.override('sw-login', {
+Component.override('sw-login-login', {
     template,
 
     inject: ['loginService'],
