@@ -1,0 +1,36 @@
+{#
+    Shopware 6.7's Administration boot process (core/application.ts,
+    startBootProcess()) only calls loadPlugins() - the function that fetches
+    /api/_info/config and dynamically imports every active plugin's
+    Administration JS - from bootFullApplication(), which only runs once the
+    user is already logged in. The pre-auth login screen always takes the
+    bootLogin() path instead, which skips plugin loading entirely. That means
+    no plugin's Component.override()/Module.register() calls ever run on the
+    login screen itself, no matter how correctly they're built - confirmed by
+    reading the actual boot logic at the installed v6.7.14.0 tag.
+
+    administration_login_scripts is an empty block core itself reserves in
+    this exact template, positioned right after core's own
+    vite_entry_script_tags() call - injecting our own script tag here runs it
+    unconditionally as part of the server-rendered HTML, bypassing that
+    login-gated loadPlugins() path entirely. vite_entry_script_tags() is
+    Shopware's own mechanism (ViteFileAccessorDecorator) for resolving a
+    bundle's content-hashed asset filename from its own
+    Resources/public/administration/.vite/entrypoints.json - called here with
+    our own entry name ("sw6-oidc") and bundle name ("Sw6Oidc") instead of
+    core's ("administration"), so there's no hardcoded build hash.
+
+    VERIFICATION NEEDED: confirms via reading shopware/core's actual
+    application.ts and index.html.twig at the installed v6.7.14.0 tag, but
+    the exact script execution ordering relative to
+    window.startApplication() (a plain module-script document-order
+    assumption) hasn't been confirmed by seeing this actually run - watch for
+    the SSO/Passkey buttons appearing, or a JS console error, on the next
+    deploy.
+#}
+{% sw_extends '@Administration/administration/index.html.twig' %}
+
+{% block administration_login_scripts %}
+    {{ parent() }}
+    {{ vite_entry_script_tags('sw6-oidc', {}, 'Sw6Oidc') }}
+{% endblock %}
