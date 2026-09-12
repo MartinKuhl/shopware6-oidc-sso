@@ -13,12 +13,16 @@
     this exact template, positioned right after core's own
     vite_entry_script_tags() call - injecting our own script tag here runs it
     unconditionally as part of the server-rendered HTML, bypassing that
-    login-gated loadPlugins() path entirely. vite_entry_script_tags() is
-    Shopware's own mechanism (ViteFileAccessorDecorator) for resolving a
-    bundle's content-hashed asset filename from its own
-    Resources/public/administration/.vite/entrypoints.json - called here with
-    our own entry name ("sw6-oidc") and bundle name ("Sw6Oidc") instead of
-    core's ("administration"), so there's no hardcoded build hash.
+    login-gated loadPlugins() path entirely.
+
+    Can't use Pentatrion's vite_entry_script_tags() Twig function for this:
+    it only resolves pre-registered Vite "build configs" (Shopware registers
+    just one, its own core "administration" build) and throws
+    UndefinedConfigNameException for any other name, even though the
+    underlying PHP service (ViteFileAccessorDecorator) can resolve any
+    bundle's own entrypoints.json. AdminEntrypointsExtension reads our own
+    manifest directly instead, so the content-hashed filename is still never
+    hardcoded here.
 
     VERIFICATION NEEDED: confirms via reading shopware/core's actual
     application.ts and index.html.twig at the installed v6.7.14.0 tag, but
@@ -32,5 +36,10 @@
 
 {% block administration_login_scripts %}
     {{ parent() }}
-    {{ vite_entry_script_tags('sw6-oidc', {}, 'Sw6Oidc') }}
+    {% for js in sw6oidc_admin_scripts() %}
+        <script type="module" src="{{ asset('', 'asset') }}{{ js }}"></script>
+    {% endfor %}
+    {% for css in sw6oidc_admin_styles() %}
+        <link rel="stylesheet" href="{{ asset('', 'asset') }}{{ css }}">
+    {% endfor %}
 {% endblock %}
