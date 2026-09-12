@@ -47,7 +47,6 @@ class PasskeyAdminController extends AbstractController
         private readonly EntityRepository $userRepository,
         private readonly AuthorizationServer $adminAuthorizationServer,
         private readonly PsrHttpFactory $psrHttpFactory,
-        private readonly string $administrationHost,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -62,7 +61,7 @@ class PasskeyAdminController extends AbstractController
             $user->getId(),
             $user->getUsername(),
             trim($user->getFirstName() . ' ' . $user->getLastName()),
-            $this->passkeyConfig->getRpId($this->administrationHost),
+            $this->passkeyConfig->getRpId($request->getHost()),
             $this->passkeyConfig->getRpName('Shopware Administration'),
         );
 
@@ -98,7 +97,7 @@ class PasskeyAdminController extends AbstractController
             ? $this->allowCredentialsForEmail($email, $context)
             : [];
 
-        $result = $this->authenticationService->buildRequestOptions($allowCredentials, $this->passkeyConfig->getRpId($this->administrationHost));
+        $result = $this->authenticationService->buildRequestOptions($allowCredentials, $this->passkeyConfig->getRpId($request->getHost()));
 
         return new JsonResponse(['sessionId' => $result['nonce'], 'options' => json_decode($result['optionsJson'], true)]);
     }

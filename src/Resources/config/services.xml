@@ -310,7 +310,6 @@
             <argument type="service" id="user.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminAuthorizationServer" />
             <argument type="service" id="Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory" />
-            <argument>%env(APP_URL)%/admin</argument>
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
