@@ -1,11 +1,16 @@
 {#
-    sw_login_login_sso is the real extension point in sw-login-login: it
-    wraps Shopware's own native SSO-forwarding button and sits outside the
-    `v-if="loginConfig.useDefault"` block, so our buttons render regardless
-    of whether password login itself is enabled - matching how the native
-    SSO button behaves.
+    sw_login_login_sso (wrapping Shopware's own native SSO-forwarding button)
+    only exists as a named, overridable block in newer Shopware versions than
+    the one this plugin was actually tested against (v6.7.14.0) - confirmed
+    by checking out that exact tag from shopware/shopware and reading
+    sw-login-login.html.twig directly: in that version the SSO <div> isn't
+    wrapped in any block at all, so overriding sw_login_login_sso silently
+    produced nothing (no build error, no button). sw_login_login - the
+    outermost block wrapping the entire <form> - is the one block guaranteed
+    to exist across versions, so our buttons render as a sibling after the
+    form closes instead.
 #}
-{% block sw_login_login_sso %}
+{% block sw_login_login %}
 {% parent %}
 
 <div class="sw6oidc-login-actions">
