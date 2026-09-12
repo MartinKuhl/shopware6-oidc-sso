@@ -161,5 +161,18 @@ Component.override('sw-login-login', {
             url.searchParams.delete('sw6oidc_error');
             window.history.replaceState({}, document.title, url.toString());
         },
+
+        // This plugin's own de-DE/en-GB snippet files are only ever loaded
+        // via Shopware's normal post-login loadPlugins() mechanism, which
+        // never runs on the pre-auth login screen (see
+        // Resources/views/administration/index.html.twig) - so $tc() here
+        // always returns the raw key on this specific screen, not just
+        // during some brief loading window. Fall back to a plain hardcoded
+        // English string rather than ever showing that to the user.
+        sw6oidcTranslate(key, fallback) {
+            const translated = this.$tc(key);
+
+            return !translated || translated === key ? fallback : translated;
+        },
     },
 });

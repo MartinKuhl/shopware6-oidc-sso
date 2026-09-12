@@ -13,45 +13,46 @@
 {% block sw_login_login %}
 {% parent %}
 
+{#
+    Plain <button>/<div> here, not <mt-button>/<mt-banner>: those render
+    unstyled on this screen even though the exact same components work fine
+    for core's own "Anmelden" button right above - most likely because
+    whatever registers/styles them for real isn't ready yet on this
+    forced-early render path either (see index.html.twig for why this
+    plugin's JS runs this early at all). sw-login__login-action is the real,
+    already-loaded CSS class core's own submit button uses, so reusing it
+    directly sidesteps depending on Meteor component resolution entirely.
+#}
 <div class="sw6oidc-login-actions">
-    <mt-button
-        class="sw6oidc-login-actions__sso-button"
-        :block="true"
-        size="default"
-        variant="secondary"
+    <button
+        type="button"
+        class="sw-login__login-action sw6oidc-login-actions__sso-button"
         @click="sw6oidcStartLogin"
     >
-        {{ $tc('sw6oidc.login.ssoButton') }}
-    </mt-button>
+        {{ sw6oidcTranslate('sw6oidc.login.ssoButton', 'Login with SSO') }}
+    </button>
 
-    <mt-button
-        class="sw6oidc-login-actions__passkey-button"
-        :is-loading="sw6oidcPasskeyPending"
+    <button
+        type="button"
+        class="sw-login__login-action sw6oidc-login-actions__passkey-button"
         :disabled="sw6oidcPasskeyPending"
-        :block="true"
-        size="default"
-        variant="secondary"
         @click="sw6oidcStartPasskeyLogin"
     >
-        {{ $tc('sw6oidc.login.passkeyButton') }}
-    </mt-button>
+        {{ sw6oidcTranslate('sw6oidc.login.passkeyButton', 'Login with Passkey') }}
+    </button>
 
-    <mt-banner
+    <div
         v-if="sw6oidcExchangeError"
-        variant="critical"
-        :show-icon="true"
-        :closable="false"
+        class="sw6oidc-login-actions__error"
     >
-        {{ $tc('sw6oidc.login.error') }}
-    </mt-banner>
+        {{ sw6oidcTranslate('sw6oidc.login.error', 'Single sign-on login failed. Please try again or log in with your username and password.') }}
+    </div>
 
-    <mt-banner
+    <div
         v-if="sw6oidcPasskeyError"
-        variant="critical"
-        :show-icon="true"
-        :closable="false"
+        class="sw6oidc-login-actions__error"
     >
-        {{ $tc('sw6oidc.login.passkeyError') }}
-    </mt-banner>
+        {{ sw6oidcTranslate('sw6oidc.login.passkeyError', 'Passkey login failed. Please try again or log in with your username and password.') }}
+    </div>
 </div>
 {% endblock %}
