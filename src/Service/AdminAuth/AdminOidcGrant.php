@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Service\AdminAuth;
 use League\OAuth2\Server\Entities\UserEntityInterface;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use League\OAuth2\Server\Grant\AbstractGrant;
+use League\OAuth2\Server\Repositories\RefreshTokenRepositoryInterface;
 use League\OAuth2\Server\RequestAccessTokenEvent;
 use League\OAuth2\Server\RequestEvent;
 use League\OAuth2\Server\RequestRefreshTokenEvent;
@@ -32,8 +33,17 @@ class AdminOidcGrant extends AbstractGrant
     public const GRANT_IDENTIFIER = 'sw6oidc_admin';
     public const REQUEST_ATTRIBUTE_USER_ID = 'sw6oidc_user_id';
 
-    public function __construct()
+    public function __construct(RefreshTokenRepositoryInterface $refreshTokenRepository)
     {
+        // AuthorizationServer::enableGrantType() never sets this - League
+        // only wires up client/access-token/scope repositories, default
+        // scope, private key and the emitter there. Every stock grant that
+        // issues refresh tokens (PasswordGrant, RefreshTokenGrant, ...) sets
+        // its own via setRefreshTokenRepository() in its constructor; without
+        // it, AbstractGrant::issueRefreshToken() below throws "Typed property
+        // ...::$refreshTokenRepository must not be accessed before
+        // initialization" the first time a token is actually issued.
+        $this->setRefreshTokenRepository($refreshTokenRepository);
         $this->refreshTokenTTL = new \DateInterval('P1M');
     }
 

@@ -14,38 +14,41 @@
 {% parent %}
 
 {#
-    Plain <button>/<div> here, not <mt-button>/<mt-banner>: those render
-    unstyled on this screen even though the exact same components work fine
-    for core's own "Anmelden" button right above - most likely because
-    whatever registers/styles them for real isn't ready yet on this
-    forced-early render path either (see index.html.twig for why this
-    plugin's JS runs this early at all). The class list below is copied
-    verbatim from that real, working "Anmelden" button (inspected live) -
-    mt-button's actual visual styling comes from these plain CSS classes,
-    not from sw-login__login-action alone, so applying them directly to a
-    plain <button> sidesteps depending on Meteor component resolution
-    entirely. mt-button--primary/--block always apply; mt-button--disabled
-    is added conditionally to match the real button's own behavior, and
-    :disabled prevents the click itself while pending.
+    Real <mt-button> components, not plain <button> with copied class
+    strings: verified against the exact v6.7.14.0 source that core's own
+    "Anmelden"/SSO buttons are themselves rendered as
+    <mt-button variant="primary" size="default" :block="true">, and
+    mt-button's visual styling is produced by scoped component CSS tied to
+    its own rendered markup (icon slots, wrapper spans, etc.) - copying its
+    class list onto a bare <button> can never reproduce that. mt-button is
+    one of Shopware's own core Meteor components, already globally
+    registered long before sw-login-login mounts, so it resolves here the
+    same as it does for the real "Anmelden" button right above.
 #}
 <div class="sw6oidc-login-actions">
-    <button
+    <mt-button
+        class="sw6oidc-login-actions__sso-button"
+        variant="primary"
+        size="default"
+        :block="true"
         type="button"
-        class="mt-button mt-button--primary mt-button--default mt-button--block sw6oidc-login-actions__sso-button"
         @click="sw6oidcStartLogin"
     >
         {{ sw6oidcTranslate('sw6oidc.login.ssoButton', 'Login with SSO') }}
-    </button>
+    </mt-button>
 
-    <button
+    <mt-button
+        class="sw6oidc-login-actions__passkey-button"
+        variant="primary"
+        size="default"
+        :block="true"
         type="button"
-        class="mt-button mt-button--primary mt-button--default mt-button--block sw6oidc-login-actions__passkey-button"
-        :class="{ 'mt-button--disabled': sw6oidcPasskeyPending }"
         :disabled="sw6oidcPasskeyPending"
+        :is-loading="sw6oidcPasskeyPending"
         @click="sw6oidcStartPasskeyLogin"
     >
         {{ sw6oidcTranslate('sw6oidc.login.passkeyButton', 'Login with Passkey') }}
-    </button>
+    </mt-button>
 
     <div
         v-if="sw6oidcExchangeError"

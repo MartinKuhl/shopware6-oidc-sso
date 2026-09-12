@@ -210,7 +210,9 @@
             Shopware dependency), wired to Shopware's own OAuth repositories/
             signing key, with our AdminOidcGrant registered on it.
         -->
-        <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant" />
+        <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant">
+            <argument type="service" id="Shopware\Core\Framework\Api\OAuth\RefreshTokenRepository" />
+        </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminAuthorizationServerFactory">
             <argument type="service" id="Shopware\Core\Framework\Api\OAuth\ClientRepository" />
