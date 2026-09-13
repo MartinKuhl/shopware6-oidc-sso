@@ -307,7 +307,7 @@
         <service id="MartinKuhl\Sw6Oidc\Storefront\Controller\AccountPasskeyController" public="true">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
-            <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\AbstractLogoutRoute" />
+            <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\LogoutRoute" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>

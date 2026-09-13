@@ -5,7 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
-use Shopware\Core\Checkout\Customer\SalesChannel\AbstractLogoutRoute;
+use Shopware\Core\Checkout\Customer\SalesChannel\LogoutRoute;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
@@ -31,7 +31,13 @@ class AccountPasskeyController extends StorefrontController
     public function __construct(
         private readonly PasskeyCredentialRepository $passkeyCredentialRepository,
         private readonly PasskeyConfig $passkeyConfig,
-        private readonly AbstractLogoutRoute $logoutRoute,
+        // Type-hinted concrete, not AbstractLogoutRoute: unlike
+        // AbstractLoginRoute, this Shopware version doesn't register an
+        // AbstractLogoutRoute alias for it (confirmed via a real
+        // cache:clear failure - "has a dependency on a non-existent
+        // service"), matching LogoutRoute::getDecorated() itself throwing
+        // DecorationPatternException - it isn't meant to be decorated here.
+        private readonly LogoutRoute $logoutRoute,
     ) {
     }
 
