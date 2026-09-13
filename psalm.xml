@@ -4,6 +4,7 @@
     resolveFromConfigFile="true"
     findUnusedBaselineEntry="true"
     findUnusedCode="false"
+    findUnusedIssueHandlerSuppression="false"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns="https://getpsalm.org/schema/config"
     xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
@@ -58,9 +59,15 @@
         <!--
             \Redis only exists when the optional phpredis PHP extension is
             installed (RedisAtomicCache/RedisConnectionFactory are the
-            opt-in, multi-node HA path - see their own docblocks); Psalm's
-            bundled stubs don't include it, and CI doesn't install the
-            extension just to type-check against it.
+            opt-in, multi-node HA path - see their own docblocks). Whether
+            this suppression is actually needed varies by environment - the
+            shivammathur/setup-php runners CI uses bundle ext-redis by
+            default even though this plugin never requests it, so the
+            UndefinedClass finding this exists to silence doesn't fire
+            there at all. That's exactly why
+            findUnusedIssueHandlerSuppression is off above: without it, CI
+            and a machine that genuinely lacks ext-redis would disagree
+            about whether this entry is "unused".
         -->
         <UndefinedClass>
             <errorLevel type="suppress">
