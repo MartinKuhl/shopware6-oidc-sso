@@ -45,7 +45,10 @@ class ProviderResolver
         $criteria->addFilter(new EqualsAnyFilter('loginType', [$loginType, 'both']));
         $criteria->addSorting(new FieldSorting('sortOrder', FieldSorting::ASCENDING));
 
-        return array_values(iterator_to_array($this->providerRepository->search($criteria, $context)->getEntities()));
+        return array_values(array_filter(
+            iterator_to_array($this->providerRepository->search($criteria, $context)->getEntities()),
+            static fn (\Shopware\Core\Framework\DataAbstractionLayer\Entity $entity): bool => $entity instanceof Sw6OidcProviderEntity,
+        ));
     }
 
     /**

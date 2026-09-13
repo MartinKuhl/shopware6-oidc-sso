@@ -6,16 +6,16 @@ use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\MappedProfile;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 
-final class OidcCallbackResult
+final readonly class OidcCallbackResult
 {
     /**
      * @param array<string, mixed> $tokens raw token endpoint response (access_token, id_token, refresh_token, expires_in, ...)
      */
     public function __construct(
-        public readonly Sw6OidcProviderEntity $provider,
-        public readonly AuthorizationFlowContext $flow,
-        public readonly MappedProfile $profile,
-        public readonly array $tokens,
+        public Sw6OidcProviderEntity $provider,
+        public AuthorizationFlowContext $flow,
+        public MappedProfile $profile,
+        public array $tokens,
     ) {
     }
 }

@@ -7,7 +7,6 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
 use Psr\Log\LoggerInterface;
-use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextService;
@@ -29,7 +28,6 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  * clean, server-rendered HTTP context (no nonce/cookie hand-off needed).
  */
 #[Route(defaults: ['_routeScope' => ['storefront']])]
-#[Package('storefront')]
 class OidcCallbackController extends StorefrontController
 {
     public function __construct(

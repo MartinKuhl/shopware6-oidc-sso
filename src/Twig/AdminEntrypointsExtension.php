@@ -24,8 +24,8 @@ class AdminEntrypointsExtension extends AbstractExtension
     public function getFunctions(): array
     {
         return [
-            new TwigFunction('sw6oidc_admin_scripts', [$this, 'getScripts']),
-            new TwigFunction('sw6oidc_admin_styles', [$this, 'getStyles']),
+            new TwigFunction('sw6oidc_admin_scripts', $this->getScripts(...)),
+            new TwigFunction('sw6oidc_admin_styles', $this->getStyles(...)),
         ];
     }
 

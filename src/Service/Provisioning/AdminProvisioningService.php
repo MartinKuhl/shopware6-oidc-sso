@@ -39,7 +39,7 @@ class AdminProvisioningService
     {
         $existing = $this->findByEmail($profile->email, $context);
 
-        if ($existing !== null) {
+        if ($existing instanceof \Shopware\Core\System\User\UserEntity) {
             $this->bindingService->assertNotBoundToDifferentProvider(
                 Sw6OidcUserProviderEntity::USER_TYPE_ADMIN,
                 $existing->getId(),

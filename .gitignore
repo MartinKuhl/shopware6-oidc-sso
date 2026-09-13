@@ -6,5 +6,6 @@
 /src/Resources/public/
 .DS_Store
 .idea/
+/var/
 .vscode/
 *.log

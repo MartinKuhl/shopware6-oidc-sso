@@ -10,17 +10,17 @@ namespace MartinKuhl\Sw6Oidc\Service\Security;
  * string plus separate PKCE-verifier/nonce cookies with a single atomic-cache
  * round trip.
  */
-final class AuthorizationFlowContext
+final readonly class AuthorizationFlowContext
 {
     public function __construct(
-        public readonly string $providerId,
+        public string $providerId,
         /** 'customer' | 'admin' */
-        public readonly string $loginType,
-        public readonly string $relayState,
-        public readonly string $codeVerifier,
+        public string $loginType,
+        public string $relayState,
+        public string $codeVerifier,
         /** 'S256' | 'plain' */
-        public readonly string $codeChallengeMethod,
-        public readonly string $nonce,
+        public string $codeChallengeMethod,
+        public string $nonce,
     ) {
     }
 

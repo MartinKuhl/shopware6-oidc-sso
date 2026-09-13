@@ -1,0 +1,14 @@
+parameters:
+    level: 5
+    paths:
+        - src
+    excludePaths:
+        - src/Resources/*
+    tmpDir: var/cache/phpstan
+    # A lot of this plugin's PHPDoc array shapes describe data crossing a
+    # trust boundary (IdP token/userinfo responses, WebAuthn ceremony JSON)
+    # - the shape documents the happy-path expectation, never a guarantee,
+    # so the code's own defensive isset()/is_string() checks against those
+    # shapes are real, not redundant. Without this, PHPStan trusts the
+    # PHPDoc as gospel and flags that validation as dead code.
+    treatPhpDocTypesAsCertain: false

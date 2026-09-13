@@ -29,7 +29,6 @@ class CustomerProvisioningService
 {
     public function __construct(
         private readonly EntityRepository $customerRepository,
-        private readonly EntityRepository $customerAddressRepository,
         private readonly EntityRepository $salutationRepository,
         private readonly CountryResolver $countryResolver,
         private readonly GroupMappingResolver $groupMappingResolver,
@@ -50,7 +49,7 @@ class CustomerProvisioningService
         $context = $salesChannelContext->getContext();
         $existing = $this->findByEmail($profile->email, $salesChannelContext);
 
-        if ($existing !== null) {
+        if ($existing instanceof \Shopware\Core\Checkout\Customer\CustomerEntity) {
             $this->bindingService->assertNotBoundToDifferentProvider(
                 Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER,
                 $existing->getId(),
@@ -121,15 +120,22 @@ class CustomerProvisioningService
 
         $billing = $profile->billingAddress;
 
+        // $billing is genuinely nullable (no billing address claim mapped) -
+        // PHPStan's nullsafe.neverNull flags each `?->` below as
+        // "unnecessary" even in a minimal repro where $billing is narrowed
+        // to non-null immediately beforehand, so this looks like a rule
+        // quirk rather than a real finding; following its suggested fix
+        // (plain ->) would throw on a null $billing instead of falling
+        // through to the '-' default.
         $addressPayload = [
             'id' => $billingAddressId,
             'customerId' => $customerId,
             'firstName' => $profile->firstName ?? $profile->email,
             'lastName' => $profile->lastName ?? '-',
-            'street' => $billing?->street ?? '-',
-            'zipcode' => $billing?->zipcode ?? '-',
-            'city' => $billing?->city ?? '-',
-            'phoneNumber' => $billing?->phone ?? $profile->phone,
+            'street' => $billing?->street ?? '-', // @phpstan-ignore nullsafe.neverNull
+            'zipcode' => $billing?->zipcode ?? '-', // @phpstan-ignore nullsafe.neverNull
+            'city' => $billing?->city ?? '-', // @phpstan-ignore nullsafe.neverNull
+            'phoneNumber' => $billing?->phone ?? $profile->phone, // @phpstan-ignore nullsafe.neverNull
             'countryId' => $this->countryResolver->resolveCountryId($billing?->country, $context)
                 ?? $salesChannelContext->getSalesChannel()->getCountryId(),
         ];
@@ -154,7 +160,7 @@ class CustomerProvisioningService
             'defaultShippingAddressId' => $billingAddressId,
         ];
 
-        if ($profile->shippingAddress !== null && !$profile->shippingAddress->isEmpty()) {
+        if ($profile->shippingAddress instanceof \MartinKuhl\Sw6Oidc\Service\Provisioning\AddressProfile && !$profile->shippingAddress->isEmpty()) {
             $shippingAddressId = Uuid::randomHex();
             $shipping = $profile->shippingAddress;
 

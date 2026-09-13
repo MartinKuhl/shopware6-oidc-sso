@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<ruleset name="Sw6Oidc">
+    <description>Coding standard for martinkuhl/shopware6-oidc-sso.</description>
+
+    <arg name="basepath" value="." />
+    <arg name="colors" />
+    <arg name="extensions" value="php" />
+    <arg value="sp" />
+
+    <file>src</file>
+    <exclude-pattern>src/Resources/*</exclude-pattern>
+
+    <rule ref="PSR12">
+        <!--
+            This project's own, consistent convention across every file is
+            `<?php declare(strict_types=1);` on one combined line, not
+            PSR-12's opening-tag-alone-then-blank-line-then-declare - a
+            common, widely-accepted deviation, not worth a project-wide
+            reformat to "fix".
+        -->
+        <exclude name="PSR12.Files.FileHeader.SpacingAfterTagBlock" />
+        <exclude name="PSR12.Files.OpenTag.NotAlone" />
+    </rule>
+
+    <!-- Matches the project's own declare(strict_types=1) + short array syntax convention throughout. -->
+    <rule ref="Generic.PHP.RequireStrictTypes" />
+    <rule ref="Generic.Arrays.DisallowLongArraySyntax" />
+
+    <!--
+        This codebase favors long, self-documenting single lines (route
+        attributes, constructor promotion lists) over PSR-12's 120-char
+        soft limit - 180 comfortably covers everything currently in src/
+        while still catching genuinely runaway lines.
+    -->
+    <rule ref="Generic.Files.LineLength">
+        <properties>
+            <property name="lineLimit" value="180" />
+            <property name="absoluteLineLimit" value="200" />
+        </properties>
+    </rule>
+</ruleset>

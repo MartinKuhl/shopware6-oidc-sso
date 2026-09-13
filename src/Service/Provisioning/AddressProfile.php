@@ -7,17 +7,17 @@ namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
  * Shopware stores addresses as their own `customer_address` entities rather than
  * inline customer fields (see plan: "Address mapping nuance vs. Magento").
  */
-final class AddressProfile
+final readonly class AddressProfile
 {
     public function __construct(
-        public readonly ?string $street = null,
-        public readonly ?string $zipcode = null,
-        public readonly ?string $city = null,
+        public ?string $street = null,
+        public ?string $zipcode = null,
+        public ?string $city = null,
         /** free-text state/region claim value, resolved to a Shopware country-state id where possible */
-        public readonly ?string $state = null,
+        public ?string $state = null,
         /** ISO-2 code or display name, resolved to a Shopware country id by CountryResolver */
-        public readonly ?string $country = null,
-        public readonly ?string $phone = null,
+        public ?string $country = null,
+        public ?string $phone = null,
     ) {
     }
 

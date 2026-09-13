@@ -35,7 +35,12 @@ class RedisAtomicCache implements AtomicCacheInterface
         $redisKey = $this->prefixedKey($key);
 
         try {
-            if (method_exists($this->redis, 'getdel')) {
+            // PHPStan's phpredis stub always declares getdel() (added in
+            // phpredis ~5.3.0 / Redis 6.2), so it can't see that this
+            // actually varies across the range of phpredis versions this
+            // plugin supports at runtime - the check itself is real and
+            // needed, not dead code.
+            if (method_exists($this->redis, 'getdel')) { // @phpstan-ignore function.alreadyNarrowedType
                 $value = $this->redis->getdel($redisKey);
             } else {
                 $value = $this->redis->eval(self::GET_AND_DELETE_LUA, [$redisKey], 1);

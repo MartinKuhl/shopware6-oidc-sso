@@ -56,7 +56,7 @@ class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
     {
         $entity = $this->findEntityByCredentialId(base64_encode($publicKeyCredentialId));
 
-        return $entity !== null ? $this->toSource($entity) : null;
+        return $entity instanceof \MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity ? $this->toSource($entity) : null;
     }
 
     /**
@@ -84,7 +84,7 @@ class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
         $credentialId = base64_encode($publicKeyCredentialSource->getPublicKeyCredentialId());
         $existing = $this->findEntityByCredentialId($credentialId);
 
-        if ($existing === null) {
+        if (!$existing instanceof \MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity) {
             $this->logger->warning('sw6oidc: saveCredentialSource() called for an unknown credential; ignoring.', [
                 'credentialId' => $credentialId,
             ]);
@@ -133,7 +133,10 @@ class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
         $criteria->addFilter(new EqualsFilter('userId', $userId));
         $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::DESCENDING));
 
-        return array_values(iterator_to_array($this->passkeyCredentialRepository->search($criteria, $context)->getEntities()));
+        return array_values(array_filter(
+            iterator_to_array($this->passkeyCredentialRepository->search($criteria, $context)->getEntities()),
+            static fn (\Shopware\Core\Framework\DataAbstractionLayer\Entity $entity): bool => $entity instanceof Sw6OidcPasskeyCredentialEntity,
+        ));
     }
 
     /**

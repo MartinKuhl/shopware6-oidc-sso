@@ -29,8 +29,8 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
     public function getFunctions(): array
     {
         return [
-            new TwigFunction('sw6oidc_storefront_sso_available', [$this, 'isSsoAvailable']),
-            new TwigFunction('sw6oidc_storefront_passkey_available', [$this, 'isPasskeyAvailable']),
+            new TwigFunction('sw6oidc_storefront_sso_available', $this->isSsoAvailable(...)),
+            new TwigFunction('sw6oidc_storefront_passkey_available', $this->isPasskeyAvailable(...)),
         ];
     }
 

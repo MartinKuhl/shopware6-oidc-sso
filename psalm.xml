@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<psalm
+    errorLevel="4"
+    resolveFromConfigFile="true"
+    findUnusedBaselineEntry="true"
+    findUnusedCode="false"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://getpsalm.org/schema/config"
+    xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+>
+    <projectFiles>
+        <directory name="src" />
+        <ignoreFiles>
+            <directory name="src/Resources" />
+        </ignoreFiles>
+    </projectFiles>
+
+    <issueHandlers>
+        <!--
+            composer.json supports PHP ~8.2.0 too, which doesn't have the
+            #[\Override] attribute (added in 8.3) - adding it project-wide
+            just to satisfy this check would mean either dropping 8.2
+            support or shipping an attribute that isn't recognized on part
+            of our supported PHP range.
+        -->
+        <MissingOverrideAttribute errorLevel="suppress" />
+
+        <!--
+            Shopware's own DAL classes (EntityRepository::search() et al.)
+            declare @template TEntityCollection-style generics that Psalm's
+            stub parser doesn't fully resolve without a dedicated Shopware
+            plugin for Psalm - this fires on the extremely common
+            ->search(...)->first() pattern used throughout any Shopware
+            plugin, not on anything specific to this codebase's own
+            docblocks.
+        -->
+        <UndefinedDocblockClass>
+            <errorLevel type="suppress">
+                <referencedClass name="Shopware\Core\Framework\DataAbstractionLayer\Search\template-type" />
+                <referencedClass name="Shopware\Core\Framework\DataAbstractionLayer\Search\TEntityCollection" />
+            </errorLevel>
+        </UndefinedDocblockClass>
+
+        <!--
+            Context::createDefaultContext() is marked @internal by Shopware
+            core, but it's the only available way to get a Context in the
+            anonymous/pre-auth API routes this plugin's OIDC and Passkey
+            login flows need (no authenticated request context exists yet)
+            - the same widely-used pattern countless other Shopware plugins
+            rely on for exactly this reason.
+        -->
+        <InternalMethod>
+            <errorLevel type="suppress">
+                <referencedMethod name="Shopware\Core\Framework\Context::createDefaultContext" />
+            </errorLevel>
+        </InternalMethod>
+
+        <!--
+            \Redis only exists when the optional phpredis PHP extension is
+            installed (RedisAtomicCache/RedisConnectionFactory are the
+            opt-in, multi-node HA path - see their own docblocks); Psalm's
+            bundled stubs don't include it, and CI doesn't install the
+            extension just to type-check against it.
+        -->
+        <UndefinedClass>
+            <errorLevel type="suppress">
+                <referencedClass name="Redis" />
+            </errorLevel>
+        </UndefinedClass>
+    </issueHandlers>
+</psalm>

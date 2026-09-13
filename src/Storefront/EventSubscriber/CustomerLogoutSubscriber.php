@@ -57,13 +57,18 @@ class CustomerLogoutSubscriber implements EventSubscriberInterface
     {
         $logoutContext = $this->logoutContextStore->consume($event->getSalesChannelContext()->getToken());
 
-        if ($logoutContext === null) {
+        if (!$logoutContext instanceof \MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext) {
             return;
         }
 
         try {
             $provider = $this->providerResolver->getActiveById($logoutContext->providerId, $event->getSalesChannelContext()->getContext());
-        } catch (ProviderNotFoundException) {
+        } catch (ProviderNotFoundException $exception) {
+            $this->logger->warning('sw6oidc: RP-initiated logout skipped, provider no longer active.', [
+                'providerId' => $logoutContext->providerId,
+                'exception' => $exception->getMessage(),
+            ]);
+
             return;
         }
 

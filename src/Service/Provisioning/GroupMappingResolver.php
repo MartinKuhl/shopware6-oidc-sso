@@ -56,7 +56,7 @@ class GroupMappingResolver
         $criteria->addFilter(new EqualsFilter('mappingType', $mappingType));
         $criteria->addSorting(new FieldSorting('sortOrder', FieldSorting::ASCENDING));
 
-        $normalizedGroups = array_map(static fn (string $group): string => mb_strtolower($group), $oidcGroups);
+        $normalizedGroups = array_map(mb_strtolower(...), $oidcGroups);
 
         foreach ($this->roleMappingRepository->search($criteria, $context)->getEntities() as $mapping) {
             \assert($mapping instanceof Sw6OidcRoleMappingEntity);

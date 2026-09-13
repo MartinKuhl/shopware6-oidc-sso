@@ -122,7 +122,6 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService">
             <argument type="service" id="customer.repository" />
-            <argument type="service" id="customer_address.repository" />
             <argument type="service" id="salutation.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\CountryResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\GroupMappingResolver" />

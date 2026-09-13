@@ -5,8 +5,8 @@ namespace MartinKuhl\Sw6Oidc\Storefront\Service;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Checkout\Customer\Event\CustomerBeforeLoginEvent;
 use Shopware\Core\Checkout\Customer\Event\CustomerLoginEvent;
+use Shopware\Core\Checkout\Customer\CustomerException;
 use Shopware\Core\Checkout\Customer\Exception\BadCredentialsException;
-use Shopware\Core\Checkout\Customer\Exception\InactiveCustomerException;
 use Shopware\Core\Checkout\Customer\SalesChannel\AbstractLoginRoute;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -50,7 +50,7 @@ class OidcCustomerLoginRoute extends AbstractLoginRoute
         $customer = $this->getCustomerByEmail($email, $context);
 
         if (!$customer->getActive()) {
-            throw new InactiveCustomerException($customer->getId());
+            throw CustomerException::inactive($customer->getId());
         }
 
         $restoredContext = $this->restorer->restore($customer->getId(), $context);

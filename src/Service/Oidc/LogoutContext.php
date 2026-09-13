@@ -2,11 +2,11 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Oidc;
 
-final class LogoutContext
+final readonly class LogoutContext
 {
     public function __construct(
-        public readonly string $providerId,
-        public readonly ?string $idToken,
+        public string $providerId,
+        public ?string $idToken,
     ) {
     }
 

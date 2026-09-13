@@ -2,7 +2,6 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Passkey;
 
-use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity;
 use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
 use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyCeremonyException;
 use Psr\Http\Message\ServerRequestInterface;
@@ -77,7 +76,7 @@ class PasskeyAuthenticationService
         $credentialIdBase64 = base64_encode($rawId);
         $entity = $this->credentialRepository->findEntityByCredentialId($credentialIdBase64);
 
-        if ($entity === null) {
+        if (!$entity instanceof \MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity) {
             throw new PasskeyCeremonyException('This passkey is not registered.');
         }
 
@@ -95,8 +94,6 @@ class PasskeyAuthenticationService
             null,
             [],
         );
-
-        \assert($entity instanceof Sw6OidcPasskeyCredentialEntity);
 
         return ['userType' => $entity->getUserType(), 'userId' => $entity->getUserId(), 'credentialId' => $entity->getId()];
     }

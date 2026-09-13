@@ -17,7 +17,6 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
-use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\User\UserEntity;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
@@ -39,7 +38,6 @@ use Symfony\Component\Routing\Annotation\Route;
  * Controller/Adminhtml/Actions/Passkey/* controllers.
  */
 #[Route(defaults: ['_routeScope' => ['api']])]
-#[Package('framework')]
 class PasskeyAdminController extends AbstractController
 {
     public function __construct(
@@ -106,7 +104,7 @@ class PasskeyAdminController extends AbstractController
         $credentials = $this->passkeyCredentialRepository->findAllForOwner('admin', $user->getId(), $context);
 
         return new JsonResponse([
-            'credentials' => array_map(static fn (Sw6OidcPasskeyCredentialEntity $credential) => [
+            'credentials' => array_map(static fn (Sw6OidcPasskeyCredentialEntity $credential): array => [
                 'id' => $credential->getId(),
                 'nickname' => $credential->getNickname(),
                 'createdAt' => $credential->getCreatedAt()?->format(\DATE_ATOM),
@@ -247,11 +245,17 @@ class PasskeyAdminController extends AbstractController
     {
         $source = $context->getSource();
 
-        if (!$source instanceof AdminApiSource || $source->getUserId() === null) {
+        if (!$source instanceof AdminApiSource) {
             throw new \RuntimeException('This action requires an authenticated Administration user.');
         }
 
-        $user = $this->userRepository->search(new Criteria([$source->getUserId()]), $context)->first();
+        $userId = $source->getUserId();
+
+        if ($userId === null) {
+            throw new \RuntimeException('This action requires an authenticated Administration user.');
+        }
+
+        $user = $this->userRepository->search(new Criteria([$userId]), $context)->first();
 
         if (!$user instanceof UserEntity) {
             throw new \RuntimeException('The authenticated Administration user could not be loaded.');
@@ -283,7 +287,7 @@ class PasskeyAdminController extends AbstractController
         $userEntity = new \Webauthn\PublicKeyCredentialUserEntity('', $userHandle, '');
 
         return array_map(
-            static fn ($source) => $source->getPublicKeyCredentialDescriptor(),
+            static fn (\Webauthn\PublicKeyCredentialSource $source): \Webauthn\PublicKeyCredentialDescriptor => $source->getPublicKeyCredentialDescriptor(),
             $this->passkeyCredentialRepository->findAllForUserEntity($userEntity),
         );
     }

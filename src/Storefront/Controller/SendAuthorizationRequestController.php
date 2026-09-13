@@ -6,7 +6,6 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use Psr\Log\LoggerInterface;
-use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Controller\StorefrontController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -19,7 +18,6 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  * the Magento module's Controller/Actions/SendAuthorizationRequest.php.
  */
 #[Route(defaults: ['_routeScope' => ['storefront']])]
-#[Package('storefront')]
 class SendAuthorizationRequestController extends StorefrontController
 {
     public function __construct(

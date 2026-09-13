@@ -114,7 +114,7 @@ class PasskeyRegistrationService
         $userEntity = new PublicKeyCredentialUserEntity($username, $userHandle, $displayName);
 
         $excludeCredentials = array_map(
-            static fn ($source) => $source->getPublicKeyCredentialDescriptor(),
+            static fn (\Webauthn\PublicKeyCredentialSource $source): \Webauthn\PublicKeyCredentialDescriptor => $source->getPublicKeyCredentialDescriptor(),
             $this->credentialRepository->findAllForUserEntity($userEntity),
         );
 
@@ -123,10 +123,10 @@ class PasskeyRegistrationService
             $userEntity,
             $challenge,
             $this->ceremonyFactory->credentialParameters(),
-            timeout: 60000,
-            excludeCredentials: $excludeCredentials,
             authenticatorSelection: $this->ceremonyFactory->residentKeyAuthenticatorSelection(),
             attestation: PublicKeyCredentialCreationOptions::ATTESTATION_CONVEYANCE_PREFERENCE_NONE,
+            excludeCredentials: $excludeCredentials,
+            timeout: 60000,
         );
     }
 }

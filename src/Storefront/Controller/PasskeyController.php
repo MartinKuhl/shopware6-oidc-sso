@@ -10,7 +10,6 @@ use Psr\Log\LoggerInterface;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
-use Shopware\Core\Framework\Log\Package;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\PlatformRequest;
@@ -29,7 +28,6 @@ use Symfony\Component\Routing\Annotation\Route;
  * the Magento module's Controller/Actions/Passkey/* controllers.
  */
 #[Route(defaults: ['_routeScope' => ['storefront']])]
-#[Package('storefront')]
 class PasskeyController extends StorefrontController
 {
     /**

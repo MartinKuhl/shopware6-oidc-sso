@@ -100,7 +100,7 @@ class ClaimsNormalizer
         }
 
         // Associative: Zitadel-style nested role object — parent keys are the groups.
-        return array_map('strval', array_keys($groupsClaim));
+        return array_map(strval(...), array_keys($groupsClaim));
     }
 
     /**

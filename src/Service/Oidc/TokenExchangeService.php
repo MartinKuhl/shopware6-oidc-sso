@@ -18,7 +18,14 @@ class TokenExchangeService
     }
 
     /**
-     * @return array{access_token: string, id_token?: string, refresh_token?: string, expires_in?: int}
+     * The response shape below is only the happy-path expectation, never a
+     * guarantee - this is raw decoded JSON from a third-party IdP's token
+     * endpoint (see OidcHttpClient::postForm()'s own untyped
+     * array<string, mixed> return), so every field including access_token
+     * is genuinely optional as far as the type system is concerned; callers
+     * must keep validating presence before use.
+     *
+     * @return array{access_token?: string, id_token?: string, refresh_token?: string, expires_in?: int}
      */
     public function exchangeCodeForTokens(
         Sw6OidcProviderEntity $provider,
@@ -46,7 +53,7 @@ class TokenExchangeService
     }
 
     /**
-     * @return array{access_token: string, id_token?: string, refresh_token?: string, expires_in?: int}
+     * @return array{access_token?: string, id_token?: string, refresh_token?: string, expires_in?: int}
      */
     public function refreshAccessToken(Sw6OidcProviderEntity $provider, string $refreshToken): array
     {
