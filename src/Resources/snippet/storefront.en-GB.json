@@ -15,6 +15,7 @@
             "deleteButton": "Delete",
             "deleteConfirm": "Delete this passkey? You will no longer be able to use it to log in.",
             "deleteSuccess": "Passkey deleted.",
+            "deleteSuccessLoggedOut": "Passkey deleted. You have been logged out because it was used to start this session.",
             "deleteError": "The passkey could not be deleted. Please try again.",
             "emptyState": "You haven't registered any passkeys yet.",
             "noSupport": "This browser does not support passkeys (WebAuthn).",

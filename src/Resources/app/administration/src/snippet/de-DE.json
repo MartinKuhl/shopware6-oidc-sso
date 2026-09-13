@@ -110,6 +110,7 @@
             "registerNoSupport": "Dieser Browser unterstützt keine Passkeys (WebAuthn).",
             "deleteConfirm": "Diesen Passkey löschen? Er kann danach nicht mehr zur Anmeldung verwendet werden.",
             "deleteSuccess": "Passkey gelöscht.",
+            "deleteSuccessLoggedOut": "Passkey gelöscht. Sie wurden abgemeldet, da mit diesem Passkey die aktuelle Sitzung gestartet wurde.",
             "deleteError": "Der Passkey konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
             "profileTabTitle": "Passkeys",
             "profileCardTitle": "Meine Passkeys",

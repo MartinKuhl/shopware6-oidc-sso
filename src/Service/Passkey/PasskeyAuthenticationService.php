@@ -52,7 +52,7 @@ class PasskeyAuthenticationService
     }
 
     /**
-     * @return array{userType: string, userId: string}
+     * @return array{userType: string, userId: string, credentialId: string}
      *
      * @throws PasskeyCeremonyException
      */
@@ -98,6 +98,6 @@ class PasskeyAuthenticationService
 
         \assert($entity instanceof Sw6OidcPasskeyCredentialEntity);
 
-        return ['userType' => $entity->getUserType(), 'userId' => $entity->getUserId()];
+        return ['userType' => $entity->getUserType(), 'userId' => $entity->getUserId(), 'credentialId' => $entity->getId()];
     }
 }

@@ -32,6 +32,12 @@ use Symfony\Component\Routing\Annotation\Route;
 #[Package('storefront')]
 class PasskeyController extends StorefrontController
 {
+    /**
+     * Shared with AccountPasskeyController::delete(), which checks whether
+     * the credential being deleted matches this session-scoped marker.
+     */
+    public const SESSION_KEY_LOGIN_CREDENTIAL_ID = 'sw6oidc_login_credential_id';
+
     public function __construct(
         private readonly PasskeyRegistrationService $registrationService,
         private readonly PasskeyAuthenticationService $authenticationService,
@@ -143,6 +149,13 @@ class PasskeyController extends StorefrontController
             ));
 
             $request->attributes->set(PlatformRequest::ATTRIBUTE_SALES_CHANNEL_CONTEXT_OBJECT, $newContext);
+
+            // Remembered for the lifetime of this browser session so
+            // AccountPasskeyController::delete() can tell "the customer just
+            // deleted the exact passkey that's authenticating them right
+            // now" from "deleted some other, unrelated passkey of theirs" -
+            // only the former should force an immediate logout.
+            $request->getSession()->set(self::SESSION_KEY_LOGIN_CREDENTIAL_ID, $resolved['credentialId']);
 
             return new JsonResponse(['status' => true]);
         } catch (\Throwable $exception) {

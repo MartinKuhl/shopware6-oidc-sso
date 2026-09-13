@@ -132,6 +132,18 @@ Component.register('sw6oidc-profile-passkey', () => Promise.resolve({
                     throw new Error(result.message || `Delete failed with status ${response.status}`);
                 }
 
+                // The server tracks which credential authenticated THIS
+                // session's own access token (AdminPasskeyLoginTokenTracker)
+                // and tells us here if that's exactly the one just deleted -
+                // staying logged in under a since-revoked passkey would be
+                // wrong, so log out immediately instead of just refreshing
+                // the list.
+                if (result.forceLogout) {
+                    this.createNotificationSuccess({ message: this.$tc('sw6oidc.passkeySettings.deleteSuccessLoggedOut') });
+                    this.loginService.logout();
+                    return;
+                }
+
                 this.createNotificationSuccess({ message: this.$tc('sw6oidc.passkeySettings.deleteSuccess') });
                 await this.getList();
             } catch (exception) {

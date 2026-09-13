@@ -5,11 +5,14 @@ namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
+use Shopware\Core\Checkout\Customer\SalesChannel\AbstractLogoutRoute;
 use Shopware\Core\Framework\Log\Package;
+use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Controller\StorefrontController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 
@@ -30,6 +33,7 @@ class AccountPasskeyController extends StorefrontController
     public function __construct(
         private readonly PasskeyCredentialRepository $passkeyCredentialRepository,
         private readonly PasskeyConfig $passkeyConfig,
+        private readonly AbstractLogoutRoute $logoutRoute,
     ) {
     }
 
@@ -55,13 +59,37 @@ class AccountPasskeyController extends StorefrontController
         defaults: [PlatformRequest::ATTRIBUTE_LOGIN_REQUIRED => true, 'XmlHttpRequest' => false],
         methods: ['POST'],
     )]
-    public function delete(string $credentialId, SalesChannelContext $context, CustomerEntity $customer): RedirectResponse
+    public function delete(string $credentialId, Request $request, SalesChannelContext $context, CustomerEntity $customer): RedirectResponse
     {
         $deleted = $this->passkeyCredentialRepository->deleteOwnedByUser($credentialId, 'customer', $customer->getId(), $context->getContext());
 
-        $this->addFlash($deleted ? self::SUCCESS : self::DANGER, $deleted
-            ? $this->trans('sw6oidc.passkey.deleteSuccess')
-            : $this->trans('sw6oidc.passkey.deleteError'));
+        if (!$deleted) {
+            $this->addFlash(self::DANGER, $this->trans('sw6oidc.passkey.deleteError'));
+
+            return $this->redirectToRoute('frontend.account.passkey.page');
+        }
+
+        $session = $request->getSession();
+
+        // If the credential that just got deleted is the exact one that
+        // authenticated this browser session (set by
+        // PasskeyController::loginVerify()), staying logged in under a
+        // since-revoked passkey would be wrong - log out immediately and
+        // send the customer back to the login page, rather than leaving
+        // them on an account page they arguably shouldn't still have access
+        // to. Deleting some OTHER, unrelated passkey of theirs (or one that
+        // didn't log in this particular session) never triggers this.
+        if ($session->get(PasskeyController::SESSION_KEY_LOGIN_CREDENTIAL_ID) === $credentialId) {
+            $session->remove(PasskeyController::SESSION_KEY_LOGIN_CREDENTIAL_ID);
+            $this->logoutRoute->logout($context, new RequestDataBag());
+            $request->attributes->set(PlatformRequest::ATTRIBUTE_CLEAR_SITE_DATA, true);
+
+            $this->addFlash(self::SUCCESS, $this->trans('sw6oidc.passkey.deleteSuccessLoggedOut'));
+
+            return $this->redirectToRoute('frontend.account.login.page');
+        }
+
+        $this->addFlash(self::SUCCESS, $this->trans('sw6oidc.passkey.deleteSuccess'));
 
         return $this->redirectToRoute('frontend.account.passkey.page');
     }

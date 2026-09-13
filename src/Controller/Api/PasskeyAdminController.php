@@ -6,6 +6,7 @@ use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
+use MartinKuhl\Sw6Oidc\Service\Passkey\AdminPasskeyLoginTokenTracker;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
@@ -17,6 +18,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Log\Package;
+use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\User\UserEntity;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
@@ -49,6 +51,7 @@ class PasskeyAdminController extends AbstractController
         private readonly AuthorizationServer $adminAuthorizationServer,
         private readonly PsrHttpFactory $psrHttpFactory,
         private readonly LoggerInterface $logger,
+        private readonly AdminPasskeyLoginTokenTracker $tokenTracker,
     ) {
     }
 
@@ -116,6 +119,14 @@ class PasskeyAdminController extends AbstractController
      * Ownership is enforced by PasskeyCredentialRepository::deleteOwnedByUser()
      * itself, not just by this endpoint being auth_required — the passed
      * credential id is never trusted to belong to the caller.
+     *
+     * If the deleted credential is the exact one that authenticated the
+     * current request's own access token (tracked by
+     * AdminPasskeyLoginTokenTracker at login time, checked here via
+     * PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID — the jti Shopware's
+     * own bearer-token validator already resolved for this request), the
+     * response tells the SPA to log itself out immediately rather than keep
+     * running under a credential that no longer exists.
      */
     #[Route(path: '/api/sw6oidc/admin/passkey/delete', name: 'api.action.sw6oidc.admin.passkey.delete', methods: ['POST'])]
     public function deleteCredential(Request $request, Context $context): JsonResponse
@@ -127,7 +138,10 @@ class PasskeyAdminController extends AbstractController
             return new JsonResponse(['status' => false, 'message' => 'Passkey not found.'], 404);
         }
 
-        return new JsonResponse(['status' => true]);
+        $currentTokenId = $request->attributes->get(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID);
+        $forceLogout = \is_string($currentTokenId) && $this->tokenTracker->wasUsedFor($currentTokenId, $id);
+
+        return new JsonResponse(['status' => true, 'forceLogout' => $forceLogout]);
     }
 
     #[Route(path: '/api/sw6oidc/admin/passkey/login-options', name: 'api.action.sw6oidc.admin.passkey.login-options', defaults: ['auth_required' => false], methods: ['POST'])]
@@ -172,8 +186,11 @@ class PasskeyAdminController extends AbstractController
             $psrResponse = $this->psrHttpFactory->createResponse(new Response());
 
             $tokenResponse = $this->adminAuthorizationServer->respondToAccessTokenRequest($psrRequest, $psrResponse);
+            $httpResponse = (new HttpFoundationFactory())->createResponse($tokenResponse);
 
-            return (new HttpFoundationFactory())->createResponse($tokenResponse);
+            $this->rememberLoginCredential($httpResponse, $resolved['credentialId']);
+
+            return $httpResponse;
         } catch (OAuthServerException $exception) {
             return $this->json(['error' => 'invalid_grant', 'error_description' => $exception->getMessage()], 400);
         } catch (\Throwable $exception) {
@@ -181,6 +198,49 @@ class PasskeyAdminController extends AbstractController
 
             return $this->json(['status' => false, 'message' => $exception->getMessage()], 401);
         }
+    }
+
+    /**
+     * Reads the `jti` straight out of the freshly-minted access token's own
+     * JWT payload - no signature verification needed, since we just minted
+     * it ourselves via our own AuthorizationServer earlier in this exact
+     * request; this is purely reading back a claim we already trust.
+     */
+    private function rememberLoginCredential(Response $response, string $credentialId): void
+    {
+        $payload = json_decode((string) $response->getContent(), true);
+        $accessToken = \is_array($payload) ? ($payload['access_token'] ?? null) : null;
+
+        if (!\is_string($accessToken)) {
+            return;
+        }
+
+        $jti = $this->extractJti($accessToken);
+
+        if ($jti !== null) {
+            $this->tokenTracker->remember($jti, $credentialId);
+        }
+    }
+
+    private function extractJti(string $jwt): ?string
+    {
+        $segments = explode('.', $jwt);
+
+        if (\count($segments) !== 3) {
+            return null;
+        }
+
+        $payloadSegment = strtr($segments[1], '-_', '+/');
+        $payloadSegment .= str_repeat('=', (4 - \strlen($payloadSegment) % 4) % 4);
+        $decoded = base64_decode($payloadSegment, true);
+
+        if ($decoded === false) {
+            return null;
+        }
+
+        $payload = json_decode($decoded, true);
+
+        return \is_array($payload) && \is_string($payload['jti'] ?? null) ? $payload['jti'] : null;
     }
 
     private function currentUser(Context $context): UserEntity

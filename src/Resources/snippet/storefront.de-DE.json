@@ -12,13 +12,14 @@
             "registerButton": "Neuen Passkey registrieren",
             "columnNickname": "Bezeichnung",
             "columnCreatedAt": "Registriert am",
-            "deleteButton": "Loeschen",
-            "deleteConfirm": "Diesen Passkey loeschen? Er kann danach nicht mehr zur Anmeldung verwendet werden.",
-            "deleteSuccess": "Passkey geloescht.",
-            "deleteError": "Der Passkey konnte nicht geloescht werden. Bitte versuchen Sie es erneut.",
+            "deleteButton": "Löschen",
+            "deleteConfirm": "Diesen Passkey löschen? Er kann danach nicht mehr zur Anmeldung verwendet werden.",
+            "deleteSuccess": "Passkey gelöscht.",
+            "deleteSuccessLoggedOut": "Passkey gelöscht. Sie wurden abgemeldet, da mit diesem Passkey die aktuelle Sitzung gestartet wurde.",
+            "deleteError": "Der Passkey konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",
             "emptyState": "Sie haben noch keine Passkeys registriert.",
-            "noSupport": "Dieser Browser unterstuetzt keine Passkeys (WebAuthn).",
-            "nicknamePrompt": "Bezeichnung fuer diesen Passkey (optional)",
+            "noSupport": "Dieser Browser unterstützt keine Passkeys (WebAuthn).",
+            "nicknamePrompt": "Bezeichnung für diesen Passkey (optional)",
             "registerError": "Der Passkey konnte nicht registriert werden. Bitte versuchen Sie es erneut."
         }
     }
