@@ -140,6 +140,23 @@ class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
     }
 
     /**
+     * Whether at least one passkey credential of this type exists anywhere -
+     * lets a login screen gate its "Login with Passkey" button on something
+     * a not-yet-identified visitor could actually use, rather than only on
+     * PasskeyConfig::isEnabledForAdmin()/isEnabledForCustomer(), which just
+     * reflect the feature's on/off toggle regardless of whether anyone has
+     * actually registered a credential yet.
+     */
+    public function existsForUserType(string $userType, Context $context): bool
+    {
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('userType', $userType));
+        $criteria->setLimit(1);
+
+        return $this->passkeyCredentialRepository->search($criteria, $context)->first() !== null;
+    }
+
+    /**
      * Deletes a credential only if it actually belongs to the given owner —
      * self-service delete must never let a user remove another user's
      * passkey merely by guessing/enumerating an id, so ownership is checked

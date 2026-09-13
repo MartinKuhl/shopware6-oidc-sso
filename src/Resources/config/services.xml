@@ -285,6 +285,7 @@
             <argument>%env(APP_URL)%/admin</argument>
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -339,6 +340,7 @@
         <service id="MartinKuhl\Sw6Oidc\Twig\StorefrontLoginOptionsExtension">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <tag name="twig.extension" />
         </service>
     </services>

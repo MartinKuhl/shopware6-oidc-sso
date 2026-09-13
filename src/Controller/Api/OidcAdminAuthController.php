@@ -8,6 +8,7 @@ use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
+use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
@@ -44,6 +45,7 @@ class OidcAdminAuthController extends AbstractController
         private readonly string $administrationBaseUrl,
         private readonly LoggerInterface $logger,
         private readonly PasskeyConfig $passkeyConfig,
+        private readonly PasskeyCredentialRepository $passkeyCredentialRepository,
     ) {
     }
 
@@ -52,8 +54,12 @@ class OidcAdminAuthController extends AbstractController
      * with SSO"/"Login with Passkey" buttons when something is actually
      * configured — this endpoint is anonymous (it runs before any user is
      * known), so "available" here only ever means "at least one active
-     * admin-scoped provider exists" / "passkey login is enabled", never
-     * anything about which passkeys a not-yet-identified visitor might hold.
+     * admin-scoped provider exists" / "passkey login is enabled AND at least
+     * one admin has actually registered one", never anything about which
+     * passkey a not-yet-identified visitor specifically holds. The passkey
+     * enabled-toggle alone isn't enough - a freshly-enabled instance with
+     * zero registered admin passkeys would otherwise show a button that's
+     * guaranteed to fail for literally everyone until someone registers one.
      */
     #[Route(
         path: '/api/sw6oidc/admin/login-options',
@@ -66,7 +72,8 @@ class OidcAdminAuthController extends AbstractController
 
         return new JsonResponse([
             'ssoAvailable' => $this->providerResolver->getActiveProviders('admin', $context) !== [],
-            'passkeyAvailable' => $this->passkeyConfig->isEnabledForAdmin(),
+            'passkeyAvailable' => $this->passkeyConfig->isEnabledForAdmin()
+                && $this->passkeyCredentialRepository->existsForUserType('admin', $context),
         ]);
     }
 
