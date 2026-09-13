@@ -97,6 +97,7 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
             this.provider.scope = 'openid profile email';
             this.provider.pkceFlow = 'S256';
             this.provider.claimEncoding = 'none';
+            this.provider.groupAttribute = 'groups';
             this.provider.loginType = 'both';
             this.provider.isActive = true;
             this.provider.autoCreateCustomer = true;
