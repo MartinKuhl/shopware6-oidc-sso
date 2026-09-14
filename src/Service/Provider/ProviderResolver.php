@@ -52,6 +52,29 @@ class ProviderResolver
     }
 
     /**
+     * Whether the "Login with SSO" button should be shown for this login
+     * type at all. Deliberately a separate check from getActiveProviders():
+     * "active" only reflects isActive/loginType, not the independent
+     * show_customer_link/show_admin_link visibility toggle — a provider can
+     * be active (and its login route fully reachable) while its button is
+     * hidden from the login page, e.g. for an IdP an admin wants available
+     * but not advertised. Only ever gates the button's visibility, not the
+     * login route itself, which stays reachable by direct URL regardless.
+     */
+    public function hasVisibleProvider(string $loginType, Context $context): bool
+    {
+        foreach ($this->getActiveProviders($loginType, $context) as $provider) {
+            $visible = $loginType === 'admin' ? $provider->isShowAdminLink() : $provider->isShowCustomerLink();
+
+            if ($visible) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * SP-initiated login without an explicit ?provider_id= falls back to the
      * first active provider for this login type — matches the Magento module's
      * no-explicit-ID fallback in ProviderResolver::resolveActiveProvider().

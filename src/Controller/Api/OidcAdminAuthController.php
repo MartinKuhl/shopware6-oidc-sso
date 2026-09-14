@@ -71,7 +71,7 @@ class OidcAdminAuthController extends AbstractController
         $context = Context::createDefaultContext();
 
         return new JsonResponse([
-            'ssoAvailable' => $this->providerResolver->getActiveProviders('admin', $context) !== [],
+            'ssoAvailable' => $this->providerResolver->hasVisibleProvider('admin', $context),
             'passkeyAvailable' => $this->passkeyConfig->isEnabledForAdmin()
                 && $this->passkeyCredentialRepository->existsForUserType('admin', $context),
         ]);

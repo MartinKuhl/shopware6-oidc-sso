@@ -39,7 +39,7 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
 
     public function isSsoAvailable(SalesChannelContext $context): bool
     {
-        return $this->providerResolver->getActiveProviders('customer', $context->getContext()) !== [];
+        return $this->providerResolver->hasVisibleProvider('customer', $context->getContext());
     }
 
     public function isPasskeyAvailable(SalesChannelContext $context): bool
