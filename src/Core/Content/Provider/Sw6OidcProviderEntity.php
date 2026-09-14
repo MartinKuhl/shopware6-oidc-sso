@@ -47,6 +47,13 @@ class Sw6OidcProviderEntity extends Entity
     protected bool $syncCustomerGroupOnSso = false;
     protected bool $syncAdminProfileOnSso = false;
     protected bool $syncAdminRoleOnSso = false;
+    /**
+     * Explicit, separate opt-in gate for `sw6oidc_role_mapping` rows of type
+     * 'superadmin' — even an accidentally-added superadmin mapping row has
+     * no effect unless this is also on, so granting full Shopware superadmin
+     * via OIDC group membership always requires two deliberate steps.
+     */
+    protected bool $allowSuperadminGroupMapping = false;
     protected int $httpTimeout = 30;
     protected int $jwksCacheTtl = 86400;
     /** 'pass'|'fail'|'warning'|null (never tested) — set only by the live login test */
@@ -388,6 +395,16 @@ class Sw6OidcProviderEntity extends Entity
     public function setSyncAdminRoleOnSso(bool $syncAdminRoleOnSso): void
     {
         $this->syncAdminRoleOnSso = $syncAdminRoleOnSso;
+    }
+
+    public function isAllowSuperadminGroupMapping(): bool
+    {
+        return $this->allowSuperadminGroupMapping;
+    }
+
+    public function setAllowSuperadminGroupMapping(bool $allowSuperadminGroupMapping): void
+    {
+        $this->allowSuperadminGroupMapping = $allowSuperadminGroupMapping;
     }
 
     public function getHttpTimeout(): int

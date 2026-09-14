@@ -43,6 +43,37 @@ class GroupMappingResolver
     }
 
     /**
+     * Whether any 'superadmin' mapping row for this provider matches the
+     * user's OIDC groups. Deliberately no default/fallback here (unlike
+     * resolveAclRoleId/resolveCustomerGroupId) — a superadmin grant must
+     * always come from an explicit group match, never an implicit default.
+     *
+     * @param string[] $oidcGroups
+     */
+    public function matchesSuperadminGroup(Sw6OidcProviderEntity $provider, array $oidcGroups, Context $context): bool
+    {
+        if ($oidcGroups === []) {
+            return false;
+        }
+
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('providerId', $provider->getId()));
+        $criteria->addFilter(new EqualsFilter('mappingType', Sw6OidcRoleMappingDefinition::MAPPING_TYPE_SUPERADMIN));
+
+        $normalizedGroups = array_map(mb_strtolower(...), $oidcGroups);
+
+        foreach ($this->roleMappingRepository->search($criteria, $context)->getEntities() as $mapping) {
+            \assert($mapping instanceof Sw6OidcRoleMappingEntity);
+
+            if (\in_array(mb_strtolower($mapping->getOidcGroup()), $normalizedGroups, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param string[] $oidcGroups
      */
     private function resolve(string $providerId, string $mappingType, array $oidcGroups, Context $context): ?string

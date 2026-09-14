@@ -87,7 +87,10 @@
                 "autoCreateAdmin": "Auto-create Administration users",
                 "defaultAclRoleId": "Default ACL role (fallback if no group mapping matches)",
                 "defaultCustomerGroupId": "Default customer group (fallback if no group mapping matches)",
-                "adminProvisioningWarning": "Auto-creation of Administration users is enabled, but no Default ACL role is set and no \"Administration role\" mapping exists. New admin logins will be refused until one of these is configured.",
+                "adminProvisioningWarning": "Auto-creation of Administration users is enabled, but no Default ACL role is set and no \"Administration role\" (or active \"Grant superadmin\") mapping exists. New admin logins will be refused until one of these is configured.",
+                "allowSuperadminGroupMapping": "Allow \"Grant superadmin\" group mappings",
+                "allowSuperadminGroupMappingHelp": "Required in addition to a \"Grant superadmin\" row below — a superadmin row alone has no effect unless this is also enabled. Members of the mapped OIDC group become full Shopware superadmins, bypassing all ACL role restrictions.",
+                "superadminMappingActiveWarning": "\"Grant superadmin\" group mappings are enabled for this provider. Anyone whose OIDC groups match a \"Grant superadmin\" row below will be given unrestricted Shopware superadmin access — make sure only trusted, tightly controlled IdP groups are mapped this way.",
                 "disableNonOidcCustomerLogin": "Disable non-OIDC customer logins",
                 "disableNonOidcAdminLogin": "Disable non-OIDC Administration logins",
                 "syncCustomerProfileOnSso": "Sync customer profile on every login",
@@ -102,6 +105,7 @@
                 "target": "Target",
                 "targetPlaceholderRole": "Select an Administration role...",
                 "targetPlaceholderGroup": "Select a customer group...",
+                "targetSuperadmin": "Full superadmin (no target needed)",
                 "addRoleMapping": "Add role mapping",
                 "remove": "Remove",
                 "loginType": {
@@ -113,7 +117,8 @@
                 "mappingType": {
                     "label": "Mapping type",
                     "admin_role": "Administration role",
-                    "customer_group": "Customer group"
+                    "customer_group": "Customer group",
+                    "superadmin": "Grant superadmin"
                 },
                 "attributeType": {
                     "label": "Field",

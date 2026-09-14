@@ -64,13 +64,20 @@ class AdminProvisioningService
             throw AdminProvisioningDeniedException::autoCreateDisabled($profile->email);
         }
 
-        $aclRoleId = $this->groupMappingResolver->resolveAclRoleId($provider, $profile->groups, $context);
+        $isSuperadmin = $provider->isAllowSuperadminGroupMapping()
+            && $this->groupMappingResolver->matchesSuperadminGroup($provider, $profile->groups, $context);
 
-        if ($aclRoleId === null) {
-            throw AdminProvisioningDeniedException::noRoleResolved();
+        $aclRoleId = null;
+
+        if (!$isSuperadmin) {
+            $aclRoleId = $this->groupMappingResolver->resolveAclRoleId($provider, $profile->groups, $context);
+
+            if ($aclRoleId === null) {
+                throw AdminProvisioningDeniedException::noRoleResolved();
+            }
         }
 
-        $userId = $this->create($provider, $profile, $aclRoleId, $context);
+        $userId = $this->create($provider, $profile, $aclRoleId, $isSuperadmin, $context);
         $this->bindingService->bindIfUnbound(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $userId, $provider->getId(), $context);
 
         $created = $this->userRepository->search(new Criteria([$userId]), $context)->first();
@@ -91,7 +98,7 @@ class AdminProvisioningService
         return $user;
     }
 
-    private function create(Sw6OidcProviderEntity $provider, MappedProfile $profile, string $aclRoleId, Context $context): string
+    private function create(Sw6OidcProviderEntity $provider, MappedProfile $profile, ?string $aclRoleId, bool $isSuperadmin, Context $context): string
     {
         $userId = Uuid::randomHex();
 
@@ -104,23 +111,40 @@ class AdminProvisioningService
             'email' => $profile->email,
             'password' => bin2hex(random_bytes(32)),
             'active' => true,
-            'admin' => false,
-            'aclRoles' => [['id' => $aclRoleId]],
+            'admin' => $isSuperadmin,
+            'aclRoles' => $isSuperadmin ? [] : [['id' => $aclRoleId]],
         ]], $context);
 
         $this->logger->info('sw6oidc: JIT-created Administration user via OIDC.', [
             'providerId' => $provider->getId(),
             'userId' => $userId,
+            'superadmin' => $isSuperadmin,
         ]);
 
         return $userId;
     }
 
     /**
+     * Only ever grants — a superadmin flag or ACL role from a previous
+     * successful match is never revoked here just because this login's
+     * groups no longer match (e.g. a transient IdP claims glitch), since
+     * that could silently strip the only superadmin's access. Deliberate,
+     * matching the create-time superadmin gate: explicit group match AND
+     * the provider's `allowSuperadminGroupMapping` toggle.
+     *
      * @param string[] $groups
      */
     private function syncRole(Sw6OidcProviderEntity $provider, string $userId, array $groups, Context $context): void
     {
+        if ($provider->isAllowSuperadminGroupMapping() && $this->groupMappingResolver->matchesSuperadminGroup($provider, $groups, $context)) {
+            $this->userRepository->update([[
+                'id' => $userId,
+                'admin' => true,
+            ]], $context);
+
+            return;
+        }
+
         $aclRoleId = $this->groupMappingResolver->resolveAclRoleId($provider, $groups, $context);
 
         if ($aclRoleId === null) {

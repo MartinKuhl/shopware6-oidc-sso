@@ -81,6 +81,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new BoolField('sync_customer_group_on_sso', 'syncCustomerGroupOnSso'))->addFlags(new ApiAware()),
             (new BoolField('sync_admin_profile_on_sso', 'syncAdminProfileOnSso'))->addFlags(new ApiAware()),
             (new BoolField('sync_admin_role_on_sso', 'syncAdminRoleOnSso'))->addFlags(new ApiAware()),
+            (new BoolField('allow_superadmin_group_mapping', 'allowSuperadminGroupMapping'))->addFlags(new ApiAware()),
             (new IntField('http_timeout', 'httpTimeout'))->addFlags(new ApiAware()),
             (new IntField('jwks_cache_ttl', 'jwksCacheTtl'))->addFlags(new ApiAware()),
             (new StringField('last_test_status', 'lastTestStatus', 16))->addFlags(new ApiAware()),

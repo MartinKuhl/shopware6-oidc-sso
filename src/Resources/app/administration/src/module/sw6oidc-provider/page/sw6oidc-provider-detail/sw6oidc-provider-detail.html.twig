@@ -176,10 +176,24 @@
                 </sw-container>
                 <mt-banner
                     v-if="adminProvisioningWarning"
-                    variant="warning"
+                    variant="attention"
                     style="margin-bottom: 16px;"
                 >
                     {{ $tc('sw6oidc.provider.detail.adminProvisioningWarning') }}
+                </mt-banner>
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-switch-field
+                        v-model:value="provider.allowSuperadminGroupMapping"
+                        :label="$tc('sw6oidc.provider.detail.allowSuperadminGroupMapping')"
+                        :help-text="$tc('sw6oidc.provider.detail.allowSuperadminGroupMappingHelp')"
+                    />
+                </sw-container>
+                <mt-banner
+                    v-if="provider.allowSuperadminGroupMapping"
+                    variant="critical"
+                    style="margin-bottom: 16px;"
+                >
+                    {{ $tc('sw6oidc.provider.detail.superadminMappingActiveWarning') }}
                 </mt-banner>
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-switch-field v-model:value="provider.disableNonOidcCustomerLogin" :label="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLogin')" />
@@ -273,13 +287,21 @@
                             :placeholder="$tc('sw6oidc.provider.detail.targetPlaceholderRole')"
                         />
                         <sw-entity-single-select
-                            v-else
+                            v-else-if="item.mappingType === 'customer_group'"
                             v-model:value="item.customerGroupId"
                             entity="customer_group"
                             label-property="name"
                             size="small"
                             :placeholder="$tc('sw6oidc.provider.detail.targetPlaceholderGroup')"
                         />
+                        {#
+                            'superadmin' rows need no target picker — they
+                            grant the native superadmin flag directly, not an
+                            ACL role or customer group.
+                        #}
+                        <span v-else>
+                            {{ $tc('sw6oidc.provider.detail.targetSuperadmin') }}
+                        </span>
                     </template>
                     <template #column-sortOrder="{ item }">
                         <sw-number-field v-model="item.sortOrder" size="small" />

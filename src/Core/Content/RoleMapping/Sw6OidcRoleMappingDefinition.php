@@ -24,6 +24,15 @@ class Sw6OidcRoleMappingDefinition extends EntityDefinition
 
     public const MAPPING_TYPE_ADMIN_ROLE = 'admin_role';
     public const MAPPING_TYPE_CUSTOMER_GROUP = 'customer_group';
+    /**
+     * Grants full Shopware superadmin (bypasses ACL entirely) to any user
+     * whose OIDC groups match — deliberately its own mapping type rather
+     * than a flag on an `admin_role` row, so a superadmin grant is always a
+     * distinct, explicit choice in the mapping grid, and additionally gated
+     * behind the provider's own `allowSuperadminGroupMapping` toggle (see
+     * AdminProvisioningService).
+     */
+    public const MAPPING_TYPE_SUPERADMIN = 'superadmin';
 
     public function getEntityName(): string
     {

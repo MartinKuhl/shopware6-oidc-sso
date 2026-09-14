@@ -121,6 +121,17 @@ Per provider, map OIDC group names to Shopware ACL roles (admin) or customer gro
 3. If nothing matches, the provider's configured **Default ACL Role** / **Default Customer Group** applies.
 4. For admin users, JIT creation is refused outright if no role can be resolved at all (no match and no default) — the plugin will not create an admin without an ACL role.
 
+#### Granting full superadmin via an OIDC group
+
+A Shopware **superadmin** (`admin = true` on the user) bypasses ACL entirely — it is a different mechanism from ACL roles, and no ACL role, however permissive, is fully equivalent to it. Because of that, an `admin_role` mapping (or the Default ACL Role) can never make an OIDC-provisioned admin a true superadmin.
+
+If you specifically need that, it requires **two deliberate, independent steps** on the provider — this is intentionally not a side effect of any other setting, since granting full superadmin from IdP group membership is security-sensitive:
+
+1. Enable **Allow "Grant superadmin" group mappings** (Provisioning & sync card).
+2. Add a Group/Role Mapping row with mapping type **Grant superadmin**, with the OIDC group that should receive it.
+
+Only when *both* are true does a group match result in `admin = true`. Only grant this for a narrow, tightly controlled IdP group — everyone in it gets unrestricted access to the entire shop. Superadmin is only ever granted, never automatically revoked by a later login whose groups no longer match (to avoid a transient IdP claims issue silently locking out your only superadmin) — revoke it manually in the Administration if a person's access should be downgraded.
+
 ### Passkey Settings
 
 Passkeys are configured independently of OIDC — no external IdP involved. Found under the plugin's system config:
@@ -259,7 +270,9 @@ Per-user IdP binding is enforced — the account is already bound to a different
 
 Admin JIT creation requires a resolvable ACL role — either a matching group mapping or a configured default. Verify the **Group Attribute** name matches what your IdP actually sends, and that at least one role mapping (or a **Default ACL Role**) is configured for the provider. The **Default ACL Role** / **Default Customer Group** selects live in the provider's **Provisioning & sync** card — the simplest fix is usually to set a Default ACL Role there, so a role is always resolved even without any group match.
 
-If `autoCreateAdmin` is on but neither a Default ACL Role nor an `admin_role` mapping is configured, the provider detail page shows a warning banner in the Provisioning card so this can be caught before anyone actually tries to log in. When the denial does happen at login time, the admin login screen shows a specific message (rather than a generic "SSO login failed") and `sw6oidc.log` includes the denial `reason`, the `providerId`, and the `groups` the IdP actually sent — useful for spotting a group-attribute/claim-name mismatch.
+If `autoCreateAdmin` is on but neither a Default ACL Role nor an `admin_role`/`superadmin` mapping is configured, the provider detail page shows a warning banner in the Provisioning card so this can be caught before anyone actually tries to log in. When the denial does happen at login time, the admin login screen shows a specific message (rather than a generic "SSO login failed") and `sw6oidc.log` includes the denial `reason`, the `providerId`, and the `groups` the IdP actually sent — useful for spotting a group-attribute/claim-name mismatch.
+
+Note that an ACL role, however permissive, is never a full substitute for Shopware's native superadmin — see [Granting full superadmin via an OIDC group](#granting-full-superadmin-via-an-oidc-group) if that's actually what you need.
 
 ### "Login with Passkey" doesn't appear
 

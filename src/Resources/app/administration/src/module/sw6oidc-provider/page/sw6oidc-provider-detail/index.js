@@ -68,7 +68,7 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         },
 
         mappingTypeOptions() {
-            return ['admin_role', 'customer_group'].map((value) => ({
+            return ['admin_role', 'customer_group', 'superadmin'].map((value) => ({
                 value,
                 label: this.$tc(`sw6oidc.provider.detail.mappingType.${value}`),
             }));
@@ -92,14 +92,19 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         /**
          * Mirrors AdminProvisioningService::findOrCreateAdmin()'s own
          * refusal condition — warn here, before it fails a real login, that
-         * a resolvable ACL role is required to JIT-create an admin.
+         * a resolvable ACL role (or an active superadmin group mapping) is
+         * required to JIT-create an admin.
          */
         adminProvisioningWarning() {
             if (!this.provider?.autoCreateAdmin || this.provider.defaultAclRoleId) {
                 return false;
             }
 
-            return !this.provider.roleMappings?.some((mapping) => mapping.mappingType === 'admin_role');
+            const hasRoleMapping = this.provider.roleMappings?.some((mapping) => mapping.mappingType === 'admin_role');
+            const hasActiveSuperadminMapping = this.provider.allowSuperadminGroupMapping
+                && this.provider.roleMappings?.some((mapping) => mapping.mappingType === 'superadmin');
+
+            return !hasRoleMapping && !hasActiveSuperadminMapping;
         },
     },
 
@@ -356,15 +361,18 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
 
         /**
          * Clears whichever target FK no longer applies when a row switches
-         * between "Administration role" and "Customer group" — otherwise a
-         * stale aclRoleId/customerGroupId from before the switch would still
-         * get saved even though its picker is no longer shown.
+         * mapping type — otherwise a stale aclRoleId/customerGroupId from
+         * before the switch would still get saved even though its picker is
+         * no longer shown. 'superadmin' rows need neither target at all.
          */
         onMappingTypeChange(item) {
             if (item.mappingType === 'admin_role') {
                 item.customerGroupId = null;
+            } else if (item.mappingType === 'customer_group') {
+                item.aclRoleId = null;
             } else {
                 item.aclRoleId = null;
+                item.customerGroupId = null;
             }
         },
     },

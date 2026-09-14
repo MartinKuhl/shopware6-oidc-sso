@@ -13,7 +13,7 @@ class Sw6OidcRoleMappingEntity extends Entity
     use EntityIdTrait;
 
     protected string $providerId;
-    /** 'admin_role'|'customer_group' */
+    /** 'admin_role'|'customer_group'|'superadmin' */
     protected string $mappingType;
     protected string $oidcGroup;
     protected ?string $aclRoleId = null;
