@@ -125,6 +125,7 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^4.7** (see `TODO.md` for th
 - `Migration1730000001CreateOidcSchema` — creates the 5 tables below; `updateDestructive()` is a no-op.
 - `Migration1758000001AddProviderTestStatus` — adds `sw6oidc_provider.last_test_status`/`last_test_at` (live login test result).
 - `Migration1789383427AddSuperadminGroupMapping` — adds `sw6oidc_provider.allow_superadmin_group_mapping`.
+- `Migration1789390512AddLastTestClaims` — adds `sw6oidc_provider.last_test_claims` (JSON; the flattened claims from the last live login test, so the Attribute Mapping picker's discovered-claims list survives a page reload).
 
 **`Twig/`**
 - `AdminEntrypointsExtension` — registers `sw6oidc_admin_scripts()`/`sw6oidc_admin_styles()`, reading the plugin's own Vite `entrypoints.json` directly (Pentatrion's helper only resolves Shopware's own pre-registered bundle name). Forces the plugin's admin JS to load on the pre-auth login screen, which Shopware's normal `loadPlugins()` boot path otherwise skips.
@@ -134,7 +135,7 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^4.7** (see `TODO.md` for th
 
 ## Database schema (`Migration1730000001CreateOidcSchema` + follow-up migrations)
 
-- **`sw6oidc_provider`** — one row per configured IdP: identity/OAuth fields (`app_name`, `client_id`, `client_secret`, `public_client`), endpoints (auto-fillable via discovery), protocol knobs (`scope`, `pkce_flow`, `claim_encoding`, `group_attribute`), behavior flags (`auto_create_customer`/`auto_create_admin`, `disable_non_oidc_*_login`, `show_*_link`, `is_active`, `login_type`), sync-on-SSO toggles (only `sync_admin_role_on_sso` is actually read — see gaps below), `allow_superadmin_group_mapping` (gates `superadmin`-type role mapping rows, see Provisioning & mapping above), ops settings (`http_timeout`, `jwks_cache_ttl`), and FK defaults (`default_customer_group_id`, `default_acl_role_id`).
+- **`sw6oidc_provider`** — one row per configured IdP: identity/OAuth fields (`app_name`, `client_id`, `client_secret`, `public_client`), endpoints (auto-fillable via discovery), protocol knobs (`scope`, `pkce_flow`, `claim_encoding`, `group_attribute`), behavior flags (`auto_create_customer`/`auto_create_admin`, `disable_non_oidc_*_login`, `show_*_link`, `is_active`, `login_type`), sync-on-SSO toggles (all five wired, see Provisioning & mapping above), `allow_superadmin_group_mapping` (gates `superadmin`-type role mapping rows, see Provisioning & mapping above), ops settings (`http_timeout`, `jwks_cache_ttl`), live-test bookkeeping (`last_test_status`, `last_test_at`, `last_test_claims`), and FK defaults (`default_customer_group_id`, `default_acl_role_id`).
 - **`sw6oidc_attribute_mapping`** — per-provider claim → Shopware-field mapping (`attribute_type`, `attribute_name`, `sync_on_sso`, `transform_function`/`transform_params` — the last two are unused, see gaps below).
 - **`sw6oidc_role_mapping`** — per-provider OIDC-group → ACL role / customer group / superadmin grant (`mapping_type`: `admin_role`|`customer_group`|`superadmin`, `oidc_group`, `acl_role_id`, `customer_group_id`, `sort_order`); `superadmin` rows leave both `acl_role_id`/`customer_group_id` null.
 - **`sw6oidc_user_provider`** — permanent IdP binding, polymorphic (`user_type`, `user_id`) → `provider_id`, unique per account.
