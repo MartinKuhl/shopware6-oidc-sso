@@ -62,6 +62,7 @@ bin/console database:migrate Sw6Oidc --all
 |-----|-----------|----------|-------|
 | `https://your-shop.com/sw6oidc/callback` | Redirect URI (Storefront) | **Yes**, for customer SSO | Authorization code callback for Storefront login |
 | `https://your-shop.com/api/sw6oidc/admin/callback` | Redirect URI (Admin) | **Yes**, for admin SSO | Authorization code callback for Administration login |
+| `https://your-shop.com/api/sw6oidc/provider/test-callback` | Redirect URI | Optional | Only needed if you use the **Run live login test** button on a provider's detail page in the Administration — the IdP redirects back here with the same strict exact-match check as the other two URIs |
 | Your shop's account login page | Post Logout Redirect URI | Optional | Only the Storefront/customer flow redirects back from the IdP on logout today (see [Known Limitations](#known-limitations)) |
 
 Register only the redirect URI(s) for the flow(s) you intend to use — you don't need both if, say, only customer SSO is enabled for a given provider.
@@ -220,8 +221,9 @@ On Storefront logout, the plugin redirects to the IdP's end-session endpoint (if
 Verify the redirect URI registered at the IdP exactly matches:
 - Storefront: `https://your-shop.com/sw6oidc/callback`
 - Admin: `https://your-shop.com/api/sw6oidc/admin/callback`
+- Live login test (only if you use that button): `https://your-shop.com/api/sw6oidc/provider/test-callback`
 
-Check protocol (HTTPS required in production) and trailing slashes.
+Check protocol (HTTPS required in production) and trailing slashes. Most IdPs (Authelia, Keycloak, etc.) require an *exact* string match against every registered `redirect_uri` — if you see an error like Authelia's "The 'redirect_uris' registered with OAuth 2.0 Client ... did not match 'redirect_uri' value ...", add the missing URI to the client's registered list rather than trying to make the plugin send a different one.
 
 ### Login succeeds but profile fields are empty
 
