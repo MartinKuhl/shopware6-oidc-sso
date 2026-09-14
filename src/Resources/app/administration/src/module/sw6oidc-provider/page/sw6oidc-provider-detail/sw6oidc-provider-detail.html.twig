@@ -270,6 +270,21 @@
                 v-if="provider.attributeMappings"
                 :title="$tc('sw6oidc.provider.detail.cardAttributeMapping')"
             >
+                {#
+                    The claim-name select below only ever offers claims from
+                    the last live test's response (discoveredClaimKeys) - on
+                    a freshly created provider, or one whose last test never
+                    succeeded, that list is empty and the select has nothing
+                    to pick, which otherwise looks broken rather than simply
+                    "not tested yet".
+                #}
+                <mt-banner
+                    v-if="!discoveredClaimKeys.length"
+                    variant="info"
+                    style="margin-bottom: 16px;"
+                >
+                    {{ $tc('sw6oidc.provider.detail.attributeMappingRequiresLiveTestHint') }}
+                </mt-banner>
                 <sw-data-grid
                     :data-source="provider.attributeMappings"
                     :columns="[

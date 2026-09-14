@@ -116,6 +116,7 @@
                 "syncOnSso": "Sync on every login",
                 "addAttributeMapping": "Add attribute mapping",
                 "pickDiscoveredClaimPlaceholder": "Select a claim",
+                "attributeMappingRequiresLiveTestHint": "The claim name field only offers claims seen on a successful live login test. Run “Run live login test” above and save the provider once it succeeds to populate this list.",
                 "oidcGroup": "OIDC group/role value",
                 "target": "Target",
                 "targetPlaceholderRole": "Select an Administration role...",
