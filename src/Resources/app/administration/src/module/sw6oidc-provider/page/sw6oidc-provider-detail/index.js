@@ -4,6 +4,31 @@ const { Component, Mixin } = Shopware;
 const { Criteria } = Shopware.Data;
 
 /**
+ * Always-available claim-name suggestions, independent of any live test —
+ * mirrors AttributeMapper::DEFAULT_CLAIM_KEYS (the identity fields' built-in
+ * OIDC-standard defaults) plus a few other claims common enough across IdPs
+ * to be worth offering (`sub`, `name`, `groups`, etc.), so the picker is
+ * useful the first time this page is opened, before anyone has ever run a
+ * live login test against this provider.
+ */
+const STANDARD_CLAIM_SUGGESTIONS = [
+    'email',
+    'preferred_username',
+    'given_name',
+    'family_name',
+    'name',
+    'birthdate',
+    'gender',
+    'phone_number',
+    'sub',
+    'groups',
+    'locale',
+    'nickname',
+    'picture',
+    'updated_at',
+];
+
+/**
  * Registered as a lazy factory (matching how Shopware's own core components
  * are registered), not a plain object, so that Mixin.getByName('notification')
  * below is only evaluated once Shopware actually builds this component -
@@ -118,14 +143,30 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         },
 
         /**
-         * Claim names from the most recent live login test, offered as
-         * quick-fill suggestions for the attribute mapping's claim-name
-         * field — the IdP's actual claims are otherwise only visible in the
-         * test-result popup / debug log, so the admin would have to
-         * transcribe them by hand.
+         * Claim names actually received on the most recent live login test —
+         * always the ground truth for this specific IdP once available, but
+         * empty until that test has been run at least once.
          */
         discoveredClaimKeys() {
             return Object.keys(this.liveTestClaims ?? {});
+        },
+
+        /**
+         * Quick-fill suggestions for the attribute mapping's claim-name
+         * field: claims actually observed for this provider first (the
+         * ground truth, once a live test has run), then the standard
+         * suggestions not already covered by those — so the picker is
+         * useful immediately, before any live test has ever been run, and
+         * gets more precise afterwards. `discovered` distinguishes the two
+         * groups in the menu.
+         */
+        claimNameSuggestions() {
+            const discovered = this.discoveredClaimKeys.map((key) => ({ key, discovered: true }));
+            const standard = STANDARD_CLAIM_SUGGESTIONS
+                .filter((key) => !this.discoveredClaimKeys.includes(key))
+                .map((key) => ({ key, discovered: false }));
+
+            return [...discovered, ...standard];
         },
     },
 

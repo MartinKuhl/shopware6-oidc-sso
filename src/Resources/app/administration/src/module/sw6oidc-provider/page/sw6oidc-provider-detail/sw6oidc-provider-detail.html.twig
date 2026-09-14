@@ -239,8 +239,7 @@
                                 <sw-text-field v-model="item.attributeName" size="small" placeholder="e.g. preferred_username" />
                             </div>
                             <sw-context-button
-                                v-if="discoveredClaimKeys.length"
-                                :menu-width="240"
+                                :menu-width="260"
                                 style="flex: 0 0 auto;"
                                 v-tooltip="{ message: $tc('sw6oidc.provider.detail.pickDiscoveredClaimTooltip') }"
                             >
@@ -248,11 +247,11 @@
                                     <sw-button size="small" square>▾</sw-button>
                                 </template>
                                 <sw-context-menu-item
-                                    v-for="claimKey in discoveredClaimKeys"
-                                    :key="claimKey"
-                                    @click="onPickDiscoveredClaim(item, claimKey)"
+                                    v-for="suggestion in claimNameSuggestions"
+                                    :key="suggestion.key"
+                                    @click="onPickDiscoveredClaim(item, suggestion.key)"
                                 >
-                                    {{ claimKey }}
+                                    {{ suggestion.key }}<template v-if="suggestion.discovered"> ({{ $tc('sw6oidc.provider.detail.claimSuggestionObserved') }})</template>
                                 </sw-context-menu-item>
                             </sw-context-button>
                         </div>
