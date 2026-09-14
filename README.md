@@ -185,6 +185,12 @@ The first IdP to authenticate (or claim) an account is permanently bound to it. 
 
 On Storefront logout, the plugin redirects to the IdP's end-session endpoint (if configured) and fire-and-forget revokes the access token via RFC 7009. A failed revocation call never blocks the user from logging out locally.
 
+**Authelia note**: Authelia does not implement standards-based RP-Initiated Logout / OIDC Session Management — its discovery document has no `end_session_endpoint` at all, so **auto-discovery leaves this field blank** and it must be set manually to Authelia's own portal logout page:
+```
+https://auth.your-domain.example/logout
+```
+(the bare portal path, not anything under `/api/oidc/...`). The plugin auto-detects this shape — any End-Session Endpoint whose path ends in `/logout` and contains neither `/oauth2/` nor `/oidc/` is treated as Authelia-style forward-auth logout, and the plugin sends `?rd=<url>` instead of the standard `id_token_hint`/`state`/`post_logout_redirect_uri` params. No Post Logout Redirect URI needs registering with Authelia for this.
+
 ### Passkey (WebAuthn) Security
 
 - Public-key cryptography only — the server stores a public key and signature counter, never a shared secret; credentials are phishing-resistant (bound to the origin).
@@ -237,7 +243,9 @@ Also double-check the `client_secret` value entered in the Shopware provider mat
 
 ### What endpoint value should I use for a given field?
 
-Rather than guessing at an IdP's exact endpoint paths (they vary by product and version), click **Load configuration** after entering the **Well-known configuration URL** (`https://your-idp.example/.well-known/openid-configuration`) — it fetches and fills in all six endpoint fields, including **End-Session (Logout) Endpoint**, directly from what the IdP itself publishes. You can also open that well-known URL in a browser to inspect the raw JSON if you want to verify a specific value.
+Rather than guessing at an IdP's exact endpoint paths (they vary by product and version), click **Load configuration** after entering the **Well-known configuration URL** (`https://your-idp.example/.well-known/openid-configuration`) — it fetches and fills in the endpoint fields directly from what the IdP itself publishes. You can also open that well-known URL in a browser to inspect the raw JSON if you want to verify a specific value.
+
+**Exception: End-Session (Logout) Endpoint on Authelia.** Authelia's discovery document doesn't include an `end_session_endpoint` at all (it has no standards-based RP-Initiated Logout), so this one field always stays blank after "Load configuration" for an Authelia provider and must be set manually — see the Authelia note under [RP-Initiated Logout](#rp-initiated-logout).
 
 ### Login succeeds but profile fields are empty
 

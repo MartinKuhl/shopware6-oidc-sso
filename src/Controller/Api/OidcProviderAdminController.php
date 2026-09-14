@@ -15,6 +15,7 @@ use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\PlatformRequest;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -155,6 +156,14 @@ class OidcProviderAdminController extends AbstractController
     )]
     public function testCallback(Request $request): Response
     {
+        // Shopware's CoreSubscriber computes a fresh CSP nonce for every
+        // request (regardless of controller) and, depending on the shop's
+        // config/packages/csp.yaml, may attach a Content-Security-Policy
+        // header to this response too — without the nonce, the inline
+        // <script> below would silently fail to run entirely.
+        $cspNonce = $request->attributes->get(PlatformRequest::ATTRIBUTE_CSP_NONCE);
+        $cspNonce = \is_string($cspNonce) ? $cspNonce : null;
+
         $state = $request->query->get('state');
 
         try {
@@ -162,7 +171,7 @@ class OidcProviderAdminController extends AbstractController
         } catch (InvalidStateException $exception) {
             return $this->renderTestResultPage('fail', [
                 ['id' => 'callback', 'status' => 'fail', 'detail' => $exception->getMessage()],
-            ], []);
+            ], [], $cspNonce);
         }
 
         if ($flow->loginType !== 'test') {
@@ -172,7 +181,7 @@ class OidcProviderAdminController extends AbstractController
 
             return $this->renderTestResultPage('fail', [
                 ['id' => 'callback', 'status' => 'fail', 'detail' => 'This callback only accepts test-mode authorization flows.'],
-            ], []);
+            ], [], $cspNonce);
         }
 
         $context = Context::createDefaultContext();
@@ -189,7 +198,7 @@ class OidcProviderAdminController extends AbstractController
 
             return $this->renderTestResultPage('fail', [
                 ['id' => 'authorization', 'status' => 'fail', 'detail' => (string) $description],
-            ], []);
+            ], [], $cspNonce);
         }
 
         $code = $request->query->get('code');
@@ -200,7 +209,7 @@ class OidcProviderAdminController extends AbstractController
 
             return $this->renderTestResultPage('fail', [
                 ['id' => 'callback', 'status' => 'fail', 'detail' => 'Missing authorization code or unknown provider.'],
-            ], []);
+            ], [], $cspNonce);
         }
 
         $redirectUri = $this->generateUrl('api.action.sw6oidc.provider.test-callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
@@ -208,7 +217,7 @@ class OidcProviderAdminController extends AbstractController
 
         $this->persistTestStatus($provider->getId(), $result['status'], $context);
 
-        return $this->renderTestResultPage($result['status'], $result['steps'], $result['claims']);
+        return $this->renderTestResultPage($result['status'], $result['steps'], $result['claims'], $cspNonce);
     }
 
     private function loadProvider(string $id, Context $context): ?Sw6OidcProviderEntity
@@ -231,7 +240,7 @@ class OidcProviderAdminController extends AbstractController
      * @param array<int, array{id: string, status: string, detail: string}> $steps
      * @param array<string, mixed> $claims
      */
-    private function renderTestResultPage(string $status, array $steps, array $claims): Response
+    private function renderTestResultPage(string $status, array $steps, array $claims, ?string $cspNonce): Response
     {
         $statusLabel = ['pass' => 'TEST SUCCESSFUL', 'fail' => 'TEST FAILED'][$status] ?? strtoupper($status);
         $statusColor = $status === 'pass' ? '#2e7d32' : '#c62828';
@@ -242,10 +251,10 @@ class OidcProviderAdminController extends AbstractController
             $rowColor = ['pass' => '#2e7d32', 'fail' => '#c62828', 'skipped' => '#757575', 'warning' => '#b26a00'][$step['status']] ?? '#333';
             $stepsHtml .= sprintf(
                 '<tr><td>%s</td><td style="color:%s;font-weight:bold;">%s</td><td>%s</td></tr>',
-                htmlspecialchars($step['id'], \ENT_QUOTES),
+                $this->escapeForDisplay($step['id']),
                 $rowColor,
-                htmlspecialchars(strtoupper($step['status']), \ENT_QUOTES),
-                htmlspecialchars($step['detail'], \ENT_QUOTES),
+                $this->escapeForDisplay(strtoupper($step['status'])),
+                $this->escapeForDisplay($step['detail']),
             );
         }
 
@@ -255,8 +264,8 @@ class OidcProviderAdminController extends AbstractController
             $displayValue = \is_array($value) ? json_encode($value) : (string) $value;
             $claimsHtml .= sprintf(
                 '<tr><td>%s</td><td>%s</td></tr>',
-                htmlspecialchars((string) $key, \ENT_QUOTES),
-                htmlspecialchars((string) $displayValue, \ENT_QUOTES),
+                $this->escapeForDisplay((string) $key),
+                $this->escapeForDisplay((string) $displayValue),
             );
         }
 
@@ -272,6 +281,14 @@ class OidcProviderAdminController extends AbstractController
             ['type' => 'sw6oidc-test-result', 'status' => $status, 'steps' => $steps],
             \JSON_HEX_TAG | \JSON_HEX_AMP | \JSON_HEX_APOS | \JSON_HEX_QUOT,
         ) ?: '{}';
+
+        // Required for the inline <script> below to run at all under
+        // Shopware's default CSP (script-src 'nonce-...') — see the nonce
+        // comment in testCallback(). The "Close window" button deliberately
+        // has no onclick="" attribute: a CSP nonce only ever authorizes
+        // <script> elements, never inline event-handler attributes, so the
+        // listener is attached from inside this nonced script instead.
+        $scriptTag = $cspNonce !== null ? sprintf('<script nonce="%s">', htmlspecialchars($cspNonce, \ENT_QUOTES)) : '<script>';
 
         $html = <<<HTML
             <!doctype html>
@@ -298,8 +315,8 @@ class OidcProviderAdminController extends AbstractController
                     <thead><tr><th>Claim</th><th>Value</th></tr></thead>
                     <tbody>{$claimsHtml}</tbody>
                 </table>
-                <button onclick="window.close()">Close window</button>
-                <script>
+                <button id="sw6oidc-close-button" type="button">Close window</button>
+                {$scriptTag}
                     (function () {
                         var payload = {$payloadJson};
                         if (window.opener && !window.opener.closed) {
@@ -307,6 +324,9 @@ class OidcProviderAdminController extends AbstractController
                                 window.opener.postMessage(payload, window.location.origin);
                             } catch (e) { /* opener on a different origin or already gone — ignore */ }
                         }
+                        document.getElementById('sw6oidc-close-button').addEventListener('click', function () {
+                            window.close();
+                        });
                     })();
                 </script>
             </body>
@@ -314,5 +334,20 @@ class OidcProviderAdminController extends AbstractController
             HTML;
 
         return new Response($html, 200, ['Content-Type' => 'text/html; charset=utf-8']);
+    }
+
+    /**
+     * HTML-escapes a value for display, then neutralizes "@" so hosting-layer
+     * email obfuscation (e.g. Cloudflare's "Email Address Obfuscation" /
+     * Scrape Shield) never rewrites a claim value into its masked
+     * "[email protected]" placeholder + decoder-script form — the whole point
+     * of this page is to show the admin the real, exact value the IdP
+     * returned. Rendering "@" as a numeric character reference displays
+     * identically in the browser but no longer matches a plain-text scanner
+     * looking for a literal "user@domain" pattern in the response body.
+     */
+    private function escapeForDisplay(string $value): string
+    {
+        return str_replace('@', '&#64;', htmlspecialchars($value, \ENT_QUOTES));
     }
 }
