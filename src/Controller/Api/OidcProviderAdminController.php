@@ -247,12 +247,18 @@ class OidcProviderAdminController extends AbstractController
 
         $stepsHtml = '';
 
+        // A CSS class (defined in the nonce'd <style> block below), not an
+        // inline style="" attribute: a CSP nonce authorizes the <style>
+        // element itself but never inline style attributes, same restriction
+        // as onclick="" above.
+        $statusClasses = ['pass' => 'pass', 'fail' => 'fail', 'skipped' => 'skipped', 'warning' => 'warning'];
+
         foreach ($steps as $step) {
-            $rowColor = ['pass' => '#2e7d32', 'fail' => '#c62828', 'skipped' => '#757575', 'warning' => '#b26a00'][$step['status']] ?? '#333';
+            $rowClass = $statusClasses[$step['status']] ?? 'fail';
             $stepsHtml .= sprintf(
-                '<tr><td>%s</td><td style="color:%s;font-weight:bold;">%s</td><td>%s</td></tr>',
+                '<tr><td>%s</td><td class="status status-%s">%s</td><td>%s</td></tr>',
                 $this->escapeForDisplay($step['id']),
-                $rowColor,
+                $rowClass,
                 $this->escapeForDisplay(strtoupper($step['status'])),
                 $this->escapeForDisplay($step['detail']),
             );
@@ -282,13 +288,23 @@ class OidcProviderAdminController extends AbstractController
             \JSON_HEX_TAG | \JSON_HEX_AMP | \JSON_HEX_APOS | \JSON_HEX_QUOT,
         ) ?: '{}';
 
-        // Required for the inline <script> below to run at all under
-        // Shopware's default CSP (script-src 'nonce-...') — see the nonce
-        // comment in testCallback(). The "Close window" button deliberately
-        // has no onclick="" attribute: a CSP nonce only ever authorizes
-        // <script> elements, never inline event-handler attributes, so the
-        // listener is attached from inside this nonced script instead.
-        $scriptTag = $cspNonce !== null ? sprintf('<script nonce="%s">', htmlspecialchars($cspNonce, \ENT_QUOTES)) : '<script>';
+        // Required for the inline <script>/<style> below to run at all: this
+        // route's _routeScope is 'api', whose CSP template Shopware applies
+        // is `script-src 'none'` outright (no %nonce% token to substitute at
+        // all, confirmed by the browser's own CSP violation report) — a
+        // nonce attribute alone cannot satisfy a bare 'none' directive.
+        // Instead, this response sets its OWN Content-Security-Policy header
+        // scoped to exactly this nonce (see the end of this method);
+        // CoreSubscriber only ever applies its header
+        // `if (!$response->headers->has('Content-Security-Policy'))`, so a
+        // header already present here wins. The "Close window" button
+        // deliberately has no onclick="" attribute: a CSP nonce only ever
+        // authorizes <script> elements, never inline event-handler
+        // attributes, so the listener is attached from inside this nonced
+        // script instead.
+        $nonceAttr = $cspNonce !== null ? sprintf(' nonce="%s"', htmlspecialchars($cspNonce, \ENT_QUOTES)) : '';
+        $scriptTag = '<script' . $nonceAttr . '>';
+        $styleTag = '<style' . $nonceAttr . '>';
 
         $html = <<<HTML
             <!doctype html>
@@ -296,12 +312,17 @@ class OidcProviderAdminController extends AbstractController
             <head>
                 <meta charset="utf-8">
                 <title>OIDC Test Result</title>
-                <style>
+                {$styleTag}
                     body { font-family: -apple-system, Arial, sans-serif; margin: 24px; color: #222; }
                     h1 { color: {$statusColor}; font-size: 20px; }
                     table { border-collapse: collapse; width: 100%; margin-bottom: 24px; }
                     td, th { border: 1px solid #ddd; padding: 6px 10px; text-align: left; font-size: 13px; vertical-align: top; }
                     button { padding: 8px 16px; cursor: pointer; }
+                    .status { font-weight: bold; }
+                    .status-pass { color: #2e7d32; }
+                    .status-fail { color: #c62828; }
+                    .status-skipped { color: #757575; }
+                    .status-warning { color: #b26a00; }
                 </style>
             </head>
             <body>
@@ -333,7 +354,24 @@ class OidcProviderAdminController extends AbstractController
             </html>
             HTML;
 
-        return new Response($html, 200, ['Content-Type' => 'text/html; charset=utf-8']);
+        $response = new Response($html, 200, ['Content-Type' => 'text/html; charset=utf-8']);
+
+        // Override the api-scope's `script-src 'none'` default with a policy
+        // scoped tightly to just this self-contained page: nonce'd inline
+        // script/style only, nothing else allowed at all (no external
+        // resources, forms, or navigation are used here). Skipped when no
+        // nonce is available (should not happen in practice — CoreSubscriber
+        // always sets one — but a missing nonce means we cannot construct a
+        // safe policy, so fall back to leaving Shopware's own default header
+        // in place rather than emitting an unenforceable or overly-loose one).
+        if ($cspNonce !== null) {
+            $response->headers->set('Content-Security-Policy', sprintf(
+                "default-src 'none'; script-src 'nonce-%1\$s'; style-src 'nonce-%1\$s'; base-uri 'none'; form-action 'none'",
+                $cspNonce,
+            ));
+        }
+
+        return $response;
     }
 
     /**
