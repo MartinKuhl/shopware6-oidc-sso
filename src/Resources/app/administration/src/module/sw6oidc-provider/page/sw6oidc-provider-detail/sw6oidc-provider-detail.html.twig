@@ -274,7 +274,7 @@
                     :data-source="provider.attributeMappings"
                     :columns="[
                         { property: 'attributeType', label: $tc('sw6oidc.provider.detail.attributeType.label'), width: '220px' },
-                        { property: 'attributeName', label: $tc('sw6oidc.provider.detail.attributeClaimName'), width: '280px' },
+                        { property: 'attributeName', label: $tc('sw6oidc.provider.detail.attributeClaimName'), width: '420px' },
                         { property: 'syncOnSso', label: $tc('sw6oidc.provider.detail.syncOnSso'), width: '220px' },
                     ]"
                     :show-selection="false"
@@ -286,36 +286,35 @@
                         The picker is plain flex, not a slot on sw-text-field
                         — mt-text-field's slot contract isn't something this
                         plugin controls, so this avoids depending on it
-                        supporting a suffix/addon slot. Also deliberately
-                        NOT overriding sw-context-button's own #button slot
-                        with another interactive element (e.g. sw-button):
-                        sw-context-button's root element is itself a
-                        <button>, and a nested mt-button very plausibly stops
-                        click propagation before it reaches that outer
-                        element's own @click handler — which is exactly what
-                        opens the menu. Its default (icon-only, non-button)
-                        trigger content — the same "..." icon already used
-                        for this grid's own row actions — avoids that risk
-                        entirely.
+                        supporting a suffix/addon slot. sw-single-select
+                        (rather than a hand-rolled context menu) for the
+                        picker itself: it already has a built-in search box
+                        and a scrollable, max-height result list
+                        (sw-select-result-list), which matters once a live
+                        test has discovered a lot of claims — a plain
+                        unbounded menu would just grow forever. It's used
+                        one-way only (pick fills item.attributeName via
+                        onPickDiscoveredClaim); it never reflects
+                        item.attributeName back, so :value is always empty
+                        and it always shows its own placeholder.
                     #}
                     <template #column-attributeName="{ item }">
                         <div style="display: flex; gap: 4px; align-items: center;">
                             <div style="flex: 1; min-width: 0;">
                                 <sw-text-field v-model="item.attributeName" size="small" placeholder="e.g. preferred_username" />
                             </div>
-                            <sw-context-button
-                                :menu-width="260"
-                                style="flex: 0 0 auto;"
-                                v-tooltip="{ message: $tc('sw6oidc.provider.detail.pickDiscoveredClaimTooltip') }"
+                            <div
+                                v-if="discoveredClaimKeys.length"
+                                style="flex: 0 0 180px;"
                             >
-                                <sw-context-menu-item
-                                    v-for="suggestion in claimNameSuggestions"
-                                    :key="suggestion.key"
-                                    @click="onPickDiscoveredClaim(item, suggestion.key)"
-                                >
-                                    {{ suggestion.key }}<template v-if="suggestion.discovered"> ({{ $tc('sw6oidc.provider.detail.claimSuggestionObserved') }})</template>
-                                </sw-context-menu-item>
-                            </sw-context-button>
+                                <sw-single-select
+                                    value=""
+                                    :options="claimSelectOptions"
+                                    :placeholder="$tc('sw6oidc.provider.detail.pickDiscoveredClaimPlaceholder')"
+                                    size="small"
+                                    @update:value="onPickDiscoveredClaim(item, $event)"
+                                />
+                            </div>
                         </div>
                     </template>
                     <template #column-syncOnSso="{ item }">

@@ -4,36 +4,15 @@ const { Component, Mixin } = Shopware;
 const { Criteria } = Shopware.Data;
 
 /**
- * Always-available claim-name suggestions, independent of any live test —
- * mirrors AttributeMapper::DEFAULT_CLAIM_KEYS (the identity fields' built-in
- * OIDC-standard defaults) plus a few other identity claims common enough
- * across IdPs to be worth offering (`name`, `groups`, etc.), so the picker
- * is useful the first time this page is opened, before anyone has ever run
- * a live login test against this provider.
- */
-const STANDARD_CLAIM_SUGGESTIONS = [
-    'email',
-    'preferred_username',
-    'given_name',
-    'family_name',
-    'name',
-    'birthdate',
-    'gender',
-    'phone_number',
-    'groups',
-    'locale',
-    'nickname',
-    'picture',
-];
-
-/**
  * Protocol/token-metadata claims — never useful as an attribute-mapping
- * target (there's no Shopware field they'd sensibly map to), so excluded
- * from both the standard suggestions and whatever a live test happens to
- * observe. `sub`/`updated_at` deliberately excluded here too even though
- * they're valid OIDC standard claims: `sub` is an opaque per-IdP identifier
- * with nothing to map it to, and `updated_at` is a timestamp, not an
- * identity field.
+ * target (there's no Shopware field they'd sensibly map to). `sub`/
+ * `updated_at` deliberately excluded here too even though they're valid
+ * OIDC standard claims: `sub` is an opaque per-IdP identifier with nothing
+ * to map it to, and `updated_at` is a timestamp, not an identity field.
+ *
+ * Matched by exact key AND by dot-flattened prefix (`amr.0`, `aud.1`, ...):
+ * ClaimsNormalizer::flatten() turns an array-valued claim like
+ * `amr: ["pwd", "otp"]` into `amr.0`/`amr.1` — see isTechnicalClaim() below.
  */
 const TECHNICAL_CLAIM_EXCLUSIONS = new Set([
     'amr',
@@ -50,6 +29,16 @@ const TECHNICAL_CLAIM_EXCLUSIONS = new Set([
     'rat',
     'updated_at',
 ]);
+
+function isTechnicalClaim(key) {
+    if (TECHNICAL_CLAIM_EXCLUSIONS.has(key)) {
+        return true;
+    }
+
+    const dotIndex = key.indexOf('.');
+
+    return dotIndex !== -1 && TECHNICAL_CLAIM_EXCLUSIONS.has(key.slice(0, dotIndex));
+}
 
 /**
  * Registered as a lazy factory (matching how Shopware's own core components
@@ -167,32 +156,23 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
 
         /**
          * Claim names actually received on the most recent live login test —
-         * always the ground truth for this specific IdP once available, but
-         * empty until that test has been run at least once. Excludes
-         * protocol/token-metadata claims (see TECHNICAL_CLAIM_EXCLUSIONS) —
-         * an IdP's raw response always includes these, but they're never a
+         * the only source for the attribute-mapping picker (no static
+         * "common claims" list): showing a claim this specific IdP doesn't
+         * actually send would just be misleading. Empty until a live test
+         * has been run at least once. Excludes protocol/token-metadata
+         * claims (see TECHNICAL_CLAIM_EXCLUSIONS/isTechnicalClaim) — an
+         * IdP's raw response always includes these, but they're never a
          * sensible attribute-mapping target.
          */
         discoveredClaimKeys() {
-            return Object.keys(this.liveTestClaims ?? {}).filter((key) => !TECHNICAL_CLAIM_EXCLUSIONS.has(key));
+            return Object.keys(this.liveTestClaims ?? {}).filter((key) => !isTechnicalClaim(key));
         },
 
         /**
-         * Quick-fill suggestions for the attribute mapping's claim-name
-         * field: claims actually observed for this provider first (the
-         * ground truth, once a live test has run), then the standard
-         * suggestions not already covered by those — so the picker is
-         * useful immediately, before any live test has ever been run, and
-         * gets more precise afterwards. `discovered` distinguishes the two
-         * groups in the menu.
+         * sw-single-select's own option shape.
          */
-        claimNameSuggestions() {
-            const discovered = this.discoveredClaimKeys.map((key) => ({ key, discovered: true }));
-            const standard = STANDARD_CLAIM_SUGGESTIONS
-                .filter((key) => !this.discoveredClaimKeys.includes(key))
-                .map((key) => ({ key, discovered: false }));
-
-            return [...discovered, ...standard];
+        claimSelectOptions() {
+            return this.discoveredClaimKeys.map((key) => ({ value: key, label: key }));
         },
     },
 
