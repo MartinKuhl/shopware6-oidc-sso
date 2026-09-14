@@ -29,6 +29,8 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
             connectionTestResult: null,
             isRunningLiveTest: false,
             liveTestReport: null,
+            /** @type {Record<string, unknown>} claims received on the last live login test, keyed by claim name */
+            liveTestClaims: {},
         };
     },
 
@@ -113,6 +115,17 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
                 && this.provider.roleMappings?.some((mapping) => mapping.mappingType === 'superadmin');
 
             return !hasRoleMapping && !hasActiveSuperadminMapping;
+        },
+
+        /**
+         * Claim names from the most recent live login test, offered as
+         * quick-fill suggestions for the attribute mapping's claim-name
+         * field — the IdP's actual claims are otherwise only visible in the
+         * test-result popup / debug log, so the admin would have to
+         * transcribe them by hand.
+         */
+        discoveredClaimKeys() {
+            return Object.keys(this.liveTestClaims ?? {});
         },
     },
 
@@ -320,10 +333,20 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
             }
 
             this.liveTestReport = event.data;
+            this.liveTestClaims = event.data.claims && typeof event.data.claims === 'object' ? event.data.claims : {};
 
             if (this.provider && this.provider.id) {
                 this.loadEntity(this.provider.id);
             }
+        },
+
+        /**
+         * Quick-fill for a discovered claim, invoked from the picker next to
+         * the attribute mapping's claim-name field — the admin can still
+         * type over it afterwards, this just saves the transcription step.
+         */
+        onPickDiscoveredClaim(item, claimKey) {
+            item.attributeName = claimKey;
         },
 
         sw6oidcApiFetch(path, bodyFields) {

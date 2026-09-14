@@ -218,7 +218,7 @@
                 <sw-data-grid
                     :data-source="provider.attributeMappings"
                     :columns="[
-                        { property: 'attributeType', label: $tc('sw6oidc.provider.detail.attributeType.label') },
+                        { property: 'attributeType', label: $tc('sw6oidc.provider.detail.attributeType.label'), width: '220px' },
                         { property: 'attributeName', label: $tc('sw6oidc.provider.detail.attributeClaimName') },
                         { property: 'syncOnSso', label: $tc('sw6oidc.provider.detail.syncOnSso') },
                     ]"
@@ -227,8 +227,35 @@
                     <template #column-attributeType="{ item }">
                         <sw-single-select v-model:value="item.attributeType" :options="attributeTypeOptions" size="small" />
                     </template>
+                    {#
+                        The picker button is plain flex, not a slot on
+                        sw-text-field — mt-text-field's slot contract isn't
+                        something this plugin controls, so this avoids
+                        depending on it supporting a suffix/addon slot.
+                    #}
                     <template #column-attributeName="{ item }">
-                        <sw-text-field v-model="item.attributeName" size="small" placeholder="e.g. preferred_username" />
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                            <div style="flex: 1; min-width: 0;">
+                                <sw-text-field v-model="item.attributeName" size="small" placeholder="e.g. preferred_username" />
+                            </div>
+                            <sw-context-button
+                                v-if="discoveredClaimKeys.length"
+                                :menu-width="240"
+                                style="flex: 0 0 auto;"
+                                v-tooltip="{ message: $tc('sw6oidc.provider.detail.pickDiscoveredClaimTooltip') }"
+                            >
+                                <template #button>
+                                    <sw-button size="small" square>▾</sw-button>
+                                </template>
+                                <sw-context-menu-item
+                                    v-for="claimKey in discoveredClaimKeys"
+                                    :key="claimKey"
+                                    @click="onPickDiscoveredClaim(item, claimKey)"
+                                >
+                                    {{ claimKey }}
+                                </sw-context-menu-item>
+                            </sw-context-button>
+                        </div>
                     </template>
                     <template #column-syncOnSso="{ item }">
                         <sw-switch-field v-model:value="item.syncOnSso" />

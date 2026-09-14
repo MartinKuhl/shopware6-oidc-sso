@@ -101,6 +101,7 @@
                 "attributeClaimName": "OIDC claim name",
                 "syncOnSso": "Sync on every login",
                 "addAttributeMapping": "Add attribute mapping",
+                "pickDiscoveredClaimTooltip": "Pick from claims received during the last live login test",
                 "oidcGroup": "OIDC group/role value",
                 "target": "Target",
                 "targetPlaceholderRole": "Select an Administration role...",

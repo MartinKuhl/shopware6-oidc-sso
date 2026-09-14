@@ -283,8 +283,14 @@ class OidcProviderAdminController extends AbstractController
         // is embedded directly as a JS object literal inside <script>, whose
         // content is raw text to the HTML parser — HTML entities would not be
         // decoded and would break the literal instead of protecting it.
+        //
+        // `claims` rides along so the provider detail page can offer them as
+        // attribute-mapping suggestions — no new exposure, since the same
+        // claim values are already rendered in plain text on this same popup
+        // page (see the "Claims received" table above) to the same
+        // authenticated admin who triggered this test.
         $payloadJson = json_encode(
-            ['type' => 'sw6oidc-test-result', 'status' => $status, 'steps' => $steps],
+            ['type' => 'sw6oidc-test-result', 'status' => $status, 'steps' => $steps, 'claims' => $claims],
             \JSON_HEX_TAG | \JSON_HEX_AMP | \JSON_HEX_APOS | \JSON_HEX_QUOT,
         ) ?: '{}';
 
