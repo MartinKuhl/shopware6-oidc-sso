@@ -239,7 +239,7 @@
                         </sw-context-menu-item>
                     </template>
                 </sw-data-grid>
-                <sw-button size="small" @click="onAddAttributeMapping">
+                <sw-button size="small" style="margin-top: 16px;" @click="onAddAttributeMapping">
                     {{ $tc('sw6oidc.provider.detail.addAttributeMapping') }}
                 </sw-button>
             </sw-card>
@@ -253,7 +253,7 @@
                 <sw-data-grid
                     :data-source="provider.roleMappings"
                     :columns="[
-                        { property: 'mappingType', label: $tc('sw6oidc.provider.detail.mappingType.label') },
+                        { property: 'mappingType', label: $tc('sw6oidc.provider.detail.mappingType.label'), width: '220px' },
                         { property: 'oidcGroup', label: $tc('sw6oidc.provider.detail.oidcGroup') },
                         { property: 'target', label: $tc('sw6oidc.provider.detail.target') },
                         { property: 'sortOrder', label: $tc('sw6oidc.provider.detail.sortOrder') },
@@ -312,7 +312,7 @@
                         </sw-context-menu-item>
                     </template>
                 </sw-data-grid>
-                <sw-button size="small" @click="onAddRoleMapping">
+                <sw-button size="small" style="margin-top: 16px;" @click="onAddRoleMapping">
                     {{ $tc('sw6oidc.provider.detail.addRoleMapping') }}
                 </sw-button>
             </sw-card>
