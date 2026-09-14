@@ -1,0 +1,8 @@
+.sw6oidc-oauth-card {
+    // mt-field-label's own default is --font-weight-regular; !important is
+    // needed because that rule carries a scoped-style data-v attribute,
+    // which outweighs a plain class selector here.
+    .mt-field-label {
+        font-weight: var(--font-weight-bold) !important;
+    }
+}

@@ -1,4 +1,5 @@
 import template from './sw6oidc-provider-detail.html.twig';
+import './sw6oidc-provider-detail.scss';
 
 const { Component, Mixin } = Shopware;
 const { Criteria } = Shopware.Data;
@@ -68,6 +69,13 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
             liveTestReport: null,
             /** @type {Record<string, unknown>} claims received on the last live login test, keyed by claim name */
             liveTestClaims: {},
+            // Fallback until syncMappingColumnWidths() measures the real
+            // "add mapping" buttons below each grid and overwrites these -
+            // kept in sync with them (rather than the reverse) because the
+            // buttons are text-driven and their two labels are different
+            // lengths per locale, so no single constant fits both.
+            attributeTypeColumnWidth: '220px',
+            mappingTypeColumnWidth: '220px',
         };
     },
 
@@ -176,6 +184,22 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         },
     },
 
+    watch: {
+        /**
+         * Both mapping grids' first column is only rendered once `provider`
+         * is loaded (the cards are behind v-if="provider.attributeMappings"/
+         * "provider.roleMappings"), so the "add mapping" buttons this measures
+         * against don't exist as DOM refs before then - isLoading flipping to
+         * false is the one signal common to both the existing-entity load
+         * path (loadEntity()) and the new-entity path (createdComponent()).
+         */
+        isLoading(loading) {
+            if (!loading) {
+                this.$nextTick(() => this.syncMappingColumnWidths());
+            }
+        },
+    },
+
     created() {
         this.createdComponent();
     },
@@ -189,6 +213,28 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
     },
 
     methods: {
+        /**
+         * Sizes the "Feld"/"Zuordnungstyp" columns to match the rendered
+         * width of each grid's own "add mapping" button below it, so the
+         * column and the button line up visually. Measured rather than
+         * hardcoded because the two buttons carry different label text
+         * ("Add attribute mapping" vs "Add role mapping", longer still in
+         * German) and so are never the same width as each other.
+         */
+        syncMappingColumnWidths() {
+            const attributeButtonWidth = this.$refs.addAttributeMappingButton?.$el?.offsetWidth;
+
+            if (attributeButtonWidth) {
+                this.attributeTypeColumnWidth = `${attributeButtonWidth}px`;
+            }
+
+            const roleButtonWidth = this.$refs.addRoleMappingButton?.$el?.offsetWidth;
+
+            if (roleButtonWidth) {
+                this.mappingTypeColumnWidth = `${roleButtonWidth}px`;
+            }
+        },
+
         createdComponent() {
             if (this.$route.params.id) {
                 this.loadEntity(this.$route.params.id);
