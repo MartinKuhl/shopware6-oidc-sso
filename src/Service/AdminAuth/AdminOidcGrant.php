@@ -11,6 +11,7 @@ use League\OAuth2\Server\RequestEvent;
 use League\OAuth2\Server\RequestRefreshTokenEvent;
 use League\OAuth2\Server\ResponseTypes\ResponseTypeInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Shopware\Core\Framework\Api\OAuth\ScopeRepository;
 use Shopware\Core\Framework\Api\OAuth\User\User as ShopwareOAuthUser;
 
 /**
@@ -56,7 +57,17 @@ class AdminOidcGrant extends AbstractGrant
         $scopes = $this->validateScopes($this->getRequestParameter('scope', $request, $this->defaultScope));
         $user = $this->validateUser($request);
 
-        $finalizedScopes = $this->scopeRepository->finalizeScopes($scopes, $this->getIdentifier(), $client, $user->getIdentifier());
+        // Shopware's ScopeRepository::finalizeScopes() only attaches `write`
+        // for grant-type strings it recognizes (password, client_credentials
+        // with write access, its own SSO grant); our own identifier
+        // ('sw6oidc_admin') isn't one, so it would otherwise strip `write`
+        // from the minted token even though the Administration SPA always
+        // requests it - the next silent refresh through the real
+        // /api/oauth/token then fails with invalid_scope, logging the admin
+        // out early. Passing PASSWORD_GRANT here is correct, not a workaround:
+        // this grant already fully vouches for the user via a pre-verified
+        // OIDC/Passkey login, the same trust level as a password check.
+        $finalizedScopes = $this->scopeRepository->finalizeScopes($scopes, ScopeRepository::PASSWORD_GRANT, $client, $user->getIdentifier());
 
         $accessToken = $this->issueAccessToken($accessTokenTTL, $client, $user->getIdentifier(), $finalizedScopes);
         $this->getEmitter()->emit(new RequestAccessTokenEvent(RequestEvent::ACCESS_TOKEN_ISSUED, $request, $accessToken));
