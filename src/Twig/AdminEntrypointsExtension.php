@@ -50,7 +50,7 @@ class AdminEntrypointsExtension extends AbstractExtension
      */
     private function readEntrypoint(): array
     {
-        $manifestPath = \dirname(__DIR__) . '/Resources/public/administration/.vite/entrypoints.json';
+        $manifestPath = __DIR__ . '/../Resources/public/administration/.vite/entrypoints.json';
 
         if (!is_file($manifestPath)) {
             return [];
