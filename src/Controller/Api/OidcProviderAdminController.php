@@ -122,7 +122,7 @@ class OidcProviderAdminController extends AbstractController
     {
         $provider = $this->loadProvider($id, $context);
 
-        if ($provider === null) {
+        if (!$provider instanceof Sw6OidcProviderEntity) {
             return new JsonResponse(['error' => 'not_found', 'message' => 'Unknown provider.'], 404);
         }
 
@@ -195,7 +195,7 @@ class OidcProviderAdminController extends AbstractController
         $code = $request->query->get('code');
         $provider = $this->loadProvider($flow->providerId, $context);
 
-        if ($provider === null || $code === null || $code === '') {
+        if (!$provider instanceof Sw6OidcProviderEntity || $code === null || $code === '') {
             $this->persistTestStatus($flow->providerId, 'fail', $context);
 
             return $this->renderTestResultPage('fail', [
