@@ -299,13 +299,25 @@
                         and it always shows its own placeholder.
                     #}
                     <template #column-attributeName="{ item }">
-                        <div style="display: flex; gap: 4px; align-items: center;">
+                        {#
+                            width: 100% is load-bearing: .sw-data-grid__cell-content
+                            is itself display:flex (core CSS), so without an
+                            explicit width this row is just one shrink-to-fit
+                            flex item in that outer flex context — the flex:1/
+                            flex:0-0-Npx split below has no container width to
+                            actually divide, so the text field collapses to
+                            near-nothing and the picker's own placeholder text
+                            (unclipped, sw-single-select has no text-overflow
+                            CSS) visibly overflows past its intended lane,
+                            which is also what made it look "too wide".
+                        #}
+                        <div style="display: flex; gap: 4px; align-items: center; width: 100%;">
                             <div style="flex: 1; min-width: 0;">
                                 <sw-text-field v-model="item.attributeName" size="small" placeholder="e.g. preferred_username" />
                             </div>
                             <div
                                 v-if="discoveredClaimKeys.length"
-                                style="flex: 0 0 180px;"
+                                style="flex: 0 0 140px; min-width: 0;"
                             >
                                 <sw-single-select
                                     value=""
@@ -318,7 +330,16 @@
                         </div>
                     </template>
                     <template #column-syncOnSso="{ item }">
-                        <sw-switch-field v-model:value="item.syncOnSso" />
+                        {#
+                            mt-switch's own default CSS gives it margin-top:
+                            24px (meant for standalone form spacing). The
+                            data-grid's own CSS resets margin-bottom to 0 for
+                            it but never touches margin-top, so left alone it
+                            sits visibly low/off-center in the fixed-height
+                            cell next to the other columns' fields. mt-switch
+                            ships this exact modifier class for that case.
+                        #}
+                        <sw-switch-field class="mt-switch--no-top-margin" v-model:value="item.syncOnSso" />
                     </template>
                     <template #actions="{ item }">
                         <sw-context-menu-item variant="danger" @click="onRemoveAttributeMapping(item)">
