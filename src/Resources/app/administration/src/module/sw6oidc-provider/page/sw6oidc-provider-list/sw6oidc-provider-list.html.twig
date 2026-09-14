@@ -2,13 +2,13 @@
 <sw-page class="sw6oidc-provider-list">
     {% block sw6oidc_provider_list_smart_bar_actions %}
     <template #smart-bar-actions>
-        <sw-button-process
+        <sw-button
             variant="primary"
             :router-link="{ name: 'sw6oidc.provider.create' }"
             v-if="acl.can('sw6oidc_provider.creator')"
         >
             {{ $tc('sw6oidc.provider.list.buttonAdd') }}
-        </sw-button-process>
+        </sw-button>
     </template>
     {% endblock %}
 
