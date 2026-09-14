@@ -57,6 +57,10 @@ class AdminProvisioningService
                 $this->syncRole($provider, $existing->getId(), $profile->groups, $context);
             }
 
+            if ($provider->isSyncAdminProfileOnSso()) {
+                $this->syncProfile($existing->getId(), $profile, $context);
+            }
+
             return $existing;
         }
 
@@ -155,6 +159,30 @@ class AdminProvisioningService
             'id' => $userId,
             'aclRoles' => [['id' => $aclRoleId]],
         ]], $context);
+    }
+
+    /**
+     * Partial update only — a claim that isn't mapped (null on the profile)
+     * is left alone rather than overwritten, same rationale as
+     * CustomerProvisioningService::syncExisting(). Administration users
+     * have no birthday/gender/salutation fields, unlike customers, so this
+     * only ever touches first/last name.
+     */
+    private function syncProfile(string $userId, MappedProfile $profile, Context $context): void
+    {
+        $payload = ['id' => $userId];
+
+        if ($profile->firstName !== null) {
+            $payload['firstName'] = $profile->firstName;
+        }
+
+        if ($profile->lastName !== null) {
+            $payload['lastName'] = $profile->lastName;
+        }
+
+        if (\count($payload) > 1) {
+            $this->userRepository->update([$payload], $context);
+        }
     }
 
     private function resolveUniqueUsername(MappedProfile $profile, Context $context): string

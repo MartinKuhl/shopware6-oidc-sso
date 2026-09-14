@@ -93,7 +93,7 @@ Unlike a typical Shopware plugin, providers are **not** configured in `Settings 
    - **Auto Create Customer** / **Auto Create Admin**: enable JIT provisioning per user type
    - **Show Customer Link** / **Show Admin Link**: whether the SSO button appears on the respective login page
    - **Is Active**: whether this provider is usable at all
-   - **Default Customer Group** / **Default ACL Role** *(Provisioning & sync card)*: fallback assignment when no group mapping matches
+   - **Default Customer Group** / **Default ACL Role** *(Account creation card)*: fallback assignment when no group mapping matches
    - **HTTP Timeout**, **JWKS Cache TTL**: per-provider tuning (defaults: 30s, 86400s)
 3. Save.
 
@@ -127,10 +127,24 @@ A Shopware **superadmin** (`admin = true` on the user) bypasses ACL entirely —
 
 If you specifically need that, it requires **two deliberate, independent steps** on the provider — this is intentionally not a side effect of any other setting, since granting full superadmin from IdP group membership is security-sensitive:
 
-1. Enable **Allow "Grant superadmin" group mappings** (Provisioning & sync card).
+1. Enable **Allow "Grant superadmin" group mappings** (Superadmin grant card).
 2. Add a Group/Role Mapping row with mapping type **Grant superadmin**, with the OIDC group that should receive it.
 
 Only when *both* are true does a group match result in `admin = true`. Only grant this for a narrow, tightly controlled IdP group — everyone in it gets unrestricted access to the entire shop. Superadmin is only ever granted, never automatically revoked by a later login whose groups no longer match (to avoid a transient IdP claims issue silently locking out your only superadmin) — revoke it manually in the Administration if a person's access should be downgraded.
+
+### Sync on every login
+
+By default, a mapped claim is only ever applied once, at account creation — logging in again afterwards just authenticates the existing account, untouched. The **Sync on every login** card adds five independent, opt-in toggles that instead re-apply the current claims/mapping on every single login, for an account already bound to this provider:
+
+| Toggle | Re-applies on every login |
+|---|---|
+| Sync customer profile | First name, last name, date of birth, salutation (Storefront) |
+| Sync customer address | The existing default billing address (Storefront) — no effect unless a billing address is mapped |
+| Sync customer group | The Group/Role Mapping's resolved customer group (Storefront) |
+| Sync admin profile | First name, last name (Administration) |
+| Sync admin role | The Group/Role Mapping's resolved ACL role, or superadmin grant (Administration) |
+
+Each is a partial update: a claim that isn't mapped, or a group/role mapping that doesn't resolve to anything, is simply left as-is rather than being cleared or reset to a placeholder. Address sync only ever updates a customer's *existing* address in place — it never creates one. None of the role/group sync toggles ever revoke an existing superadmin grant (see above).
 
 ### Passkey Settings
 
@@ -268,7 +282,7 @@ Per-user IdP binding is enforced — the account is already bound to a different
 
 ### Admin JIT creation fails with "no suitable role"
 
-Admin JIT creation requires a resolvable ACL role — either a matching group mapping or a configured default. Verify the **Group Attribute** name matches what your IdP actually sends, and that at least one role mapping (or a **Default ACL Role**) is configured for the provider. The **Default ACL Role** / **Default Customer Group** selects live in the provider's **Provisioning & sync** card — the simplest fix is usually to set a Default ACL Role there, so a role is always resolved even without any group match.
+Admin JIT creation requires a resolvable ACL role — either a matching group mapping or a configured default. Verify the **Group Attribute** name matches what your IdP actually sends, and that at least one role mapping (or a **Default ACL Role**) is configured for the provider. The **Default ACL Role** / **Default Customer Group** selects live in the provider's **Account creation** card — the simplest fix is usually to set a Default ACL Role there, so a role is always resolved even without any group match.
 
 If `autoCreateAdmin` is on but neither a Default ACL Role nor an `admin_role`/`superadmin` mapping is configured, the provider detail page shows a warning banner in the Provisioning card so this can be caught before anyone actually tries to log in. When the denial does happen at login time, the admin login screen shows a specific message (rather than a generic "SSO login failed") and `sw6oidc.log` includes the denial `reason`, the `providerId`, and the `groups` the IdP actually sent — useful for spotting a group-attribute/claim-name mismatch.
 

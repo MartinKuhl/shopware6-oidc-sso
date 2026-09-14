@@ -153,10 +153,28 @@
                 {% endblock %}
             </sw-card>
 
-            <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioning')">
+            {#
+                Split into separate titled cards (Account creation /
+                Superadmin grant / Login restrictions / Sync on every login)
+                rather than one long "Provisioning & sync" card — matches
+                the pattern already used for every other section on this
+                page (General, OAuth, Attribute Mapping, Role Mapping are
+                all their own card), and groups these ~14 toggles/fields by
+                what they actually affect instead of one undifferentiated
+                wall of switches.
+            #}
+            <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioningAccounts')">
                 <sw-container columns="1fr 1fr" gap="0 30px">
-                    <sw-switch-field v-model:value="provider.autoCreateCustomer" :label="$tc('sw6oidc.provider.detail.autoCreateCustomer')" />
-                    <sw-switch-field v-model:value="provider.autoCreateAdmin" :label="$tc('sw6oidc.provider.detail.autoCreateAdmin')" />
+                    <sw-switch-field
+                        v-model:value="provider.autoCreateCustomer"
+                        :label="$tc('sw6oidc.provider.detail.autoCreateCustomer')"
+                        :help-text="$tc('sw6oidc.provider.detail.autoCreateCustomerHelp')"
+                    />
+                    <sw-switch-field
+                        v-model:value="provider.autoCreateAdmin"
+                        :label="$tc('sw6oidc.provider.detail.autoCreateAdmin')"
+                        :help-text="$tc('sw6oidc.provider.detail.autoCreateAdminHelp')"
+                    />
                 </sw-container>
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-entity-single-select
@@ -165,6 +183,7 @@
                         label-property="name"
                         :label="$tc('sw6oidc.provider.detail.defaultCustomerGroupId')"
                         :placeholder="$tc('sw6oidc.provider.detail.targetPlaceholderGroup')"
+                        :help-text="$tc('sw6oidc.provider.detail.defaultCustomerGroupIdHelp')"
                     />
                     <sw-entity-single-select
                         v-model:value="provider.defaultAclRoleId"
@@ -172,15 +191,18 @@
                         label-property="name"
                         :label="$tc('sw6oidc.provider.detail.defaultAclRoleId')"
                         :placeholder="$tc('sw6oidc.provider.detail.targetPlaceholderRole')"
+                        :help-text="$tc('sw6oidc.provider.detail.defaultAclRoleIdHelp')"
                     />
                 </sw-container>
                 <mt-banner
                     v-if="adminProvisioningWarning"
                     variant="attention"
-                    style="margin-bottom: 16px;"
                 >
                     {{ $tc('sw6oidc.provider.detail.adminProvisioningWarning') }}
                 </mt-banner>
+            </sw-card>
+
+            <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioningSuperadmin')">
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-switch-field
                         v-model:value="provider.allowSuperadminGroupMapping"
@@ -191,22 +213,55 @@
                 <mt-banner
                     v-if="provider.allowSuperadminGroupMapping"
                     variant="critical"
-                    style="margin-bottom: 16px;"
                 >
                     {{ $tc('sw6oidc.provider.detail.superadminMappingActiveWarning') }}
                 </mt-banner>
+            </sw-card>
+
+            <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioningLoginRestrictions')">
                 <sw-container columns="1fr 1fr" gap="0 30px">
-                    <sw-switch-field v-model:value="provider.disableNonOidcCustomerLogin" :label="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLogin')" />
-                    <sw-switch-field v-model:value="provider.disableNonOidcAdminLogin" :label="$tc('sw6oidc.provider.detail.disableNonOidcAdminLogin')" />
+                    <sw-switch-field
+                        v-model:value="provider.disableNonOidcCustomerLogin"
+                        :label="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLogin')"
+                        :help-text="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLoginHelp')"
+                    />
+                    <sw-switch-field
+                        v-model:value="provider.disableNonOidcAdminLogin"
+                        :label="$tc('sw6oidc.provider.detail.disableNonOidcAdminLogin')"
+                        :help-text="$tc('sw6oidc.provider.detail.disableNonOidcAdminLoginHelp')"
+                    />
                 </sw-container>
+            </sw-card>
+
+            <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioningSync')">
                 <sw-container columns="1fr 1fr 1fr" gap="0 30px">
-                    <sw-switch-field v-model:value="provider.syncCustomerProfileOnSso" :label="$tc('sw6oidc.provider.detail.syncCustomerProfileOnSso')" />
-                    <sw-switch-field v-model:value="provider.syncCustomerAddressOnSso" :label="$tc('sw6oidc.provider.detail.syncCustomerAddressOnSso')" />
-                    <sw-switch-field v-model:value="provider.syncCustomerGroupOnSso" :label="$tc('sw6oidc.provider.detail.syncCustomerGroupOnSso')" />
+                    <sw-switch-field
+                        v-model:value="provider.syncCustomerProfileOnSso"
+                        :label="$tc('sw6oidc.provider.detail.syncCustomerProfileOnSso')"
+                        :help-text="$tc('sw6oidc.provider.detail.syncCustomerProfileOnSsoHelp')"
+                    />
+                    <sw-switch-field
+                        v-model:value="provider.syncCustomerAddressOnSso"
+                        :label="$tc('sw6oidc.provider.detail.syncCustomerAddressOnSso')"
+                        :help-text="$tc('sw6oidc.provider.detail.syncCustomerAddressOnSsoHelp')"
+                    />
+                    <sw-switch-field
+                        v-model:value="provider.syncCustomerGroupOnSso"
+                        :label="$tc('sw6oidc.provider.detail.syncCustomerGroupOnSso')"
+                        :help-text="$tc('sw6oidc.provider.detail.syncCustomerGroupOnSsoHelp')"
+                    />
                 </sw-container>
                 <sw-container columns="1fr 1fr" gap="0 30px">
-                    <sw-switch-field v-model:value="provider.syncAdminProfileOnSso" :label="$tc('sw6oidc.provider.detail.syncAdminProfileOnSso')" />
-                    <sw-switch-field v-model:value="provider.syncAdminRoleOnSso" :label="$tc('sw6oidc.provider.detail.syncAdminRoleOnSso')" />
+                    <sw-switch-field
+                        v-model:value="provider.syncAdminProfileOnSso"
+                        :label="$tc('sw6oidc.provider.detail.syncAdminProfileOnSso')"
+                        :help-text="$tc('sw6oidc.provider.detail.syncAdminProfileOnSsoHelp')"
+                    />
+                    <sw-switch-field
+                        v-model:value="provider.syncAdminRoleOnSso"
+                        :label="$tc('sw6oidc.provider.detail.syncAdminRoleOnSso')"
+                        :help-text="$tc('sw6oidc.provider.detail.syncAdminRoleOnSsoHelp')"
+                    />
                 </sw-container>
             </sw-card>
 

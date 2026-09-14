@@ -63,6 +63,8 @@ class CustomerProvisioningService
                 $context,
             );
 
+            $this->syncExisting($provider, $existing, $profile, $salesChannelContext);
+
             return $existing;
         }
 
@@ -187,6 +189,107 @@ class CustomerProvisioningService
         ]);
 
         return $customerId;
+    }
+
+    /**
+     * Re-applies mapped claims to an already-existing (bound) customer on
+     * every login, per the provider's independent sync_* toggles. Each is
+     * additive/partial-update only: a claim that isn't mapped (null on the
+     * profile) or a group mapping that doesn't resolve is simply left
+     * alone, never overwritten with a placeholder — this is a refresh of
+     * whatever the IdP actually provided, not a reset to defaults. Address
+     * sync only ever updates the customer's *existing* default billing
+     * address in place (never creates one here) — this method never grows
+     * to be a rerun of the full create() path, which is unaware of the
+     * pre-existing customer_address invariants (customerId, all Shopware-
+     * required fields) an update to a currently-nonexistent id would need.
+     */
+    private function syncExisting(
+        Sw6OidcProviderEntity $provider,
+        CustomerEntity $existing,
+        MappedProfile $profile,
+        SalesChannelContext $salesChannelContext,
+    ): void {
+        $context = $salesChannelContext->getContext();
+        $payload = ['id' => $existing->getId()];
+
+        if ($provider->isSyncCustomerProfileOnSso()) {
+            if ($profile->firstName !== null) {
+                $payload['firstName'] = $profile->firstName;
+            }
+
+            if ($profile->lastName !== null) {
+                $payload['lastName'] = $profile->lastName;
+            }
+
+            if ($profile->birthday !== null) {
+                $payload['birthday'] = new \DateTimeImmutable($profile->birthday);
+            }
+
+            if ($profile->salutationTechnicalName !== null) {
+                $salutationId = $this->resolveSalutationId($profile->salutationTechnicalName, $context);
+
+                if ($salutationId !== null) {
+                    $payload['salutationId'] = $salutationId;
+                }
+            }
+        }
+
+        if ($provider->isSyncCustomerGroupOnSso()) {
+            $groupId = $this->groupMappingResolver->resolveCustomerGroupId($provider, $profile->groups, $context);
+
+            if ($groupId !== null) {
+                $payload['groupId'] = $groupId;
+            }
+        }
+
+        if ($provider->isSyncCustomerAddressOnSso()) {
+            $addressPayload = $this->buildAddressSyncPayload($existing, $profile->billingAddress, $context);
+
+            if ($addressPayload !== null) {
+                $payload['addresses'] = [$addressPayload];
+            }
+        }
+
+        if (\count($payload) > 1) {
+            $this->customerRepository->update([$payload], $context);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null null if there's nothing mapped to sync
+     */
+    private function buildAddressSyncPayload(CustomerEntity $existing, ?AddressProfile $billing, Context $context): ?array
+    {
+        if (!$billing instanceof AddressProfile || $billing->isEmpty()) {
+            return null;
+        }
+
+        $addressPayload = ['id' => $existing->getDefaultBillingAddressId()];
+
+        if ($billing->street !== null) {
+            $addressPayload['street'] = $billing->street;
+        }
+
+        if ($billing->zipcode !== null) {
+            $addressPayload['zipcode'] = $billing->zipcode;
+        }
+
+        if ($billing->city !== null) {
+            $addressPayload['city'] = $billing->city;
+        }
+
+        if ($billing->phone !== null) {
+            $addressPayload['phoneNumber'] = $billing->phone;
+        }
+
+        $countryId = $this->countryResolver->resolveCountryId($billing->country, $context);
+
+        if ($countryId !== null) {
+            $addressPayload['countryId'] = $countryId;
+        }
+
+        return \count($addressPayload) > 1 ? $addressPayload : null;
     }
 
     private function resolveSalutationId(?string $technicalName, Context $context): ?string
