@@ -17,6 +17,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\PrimaryKey;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Required;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IdField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IntField;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\JsonField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\ManyToOneAssociationField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\OneToManyAssociationField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\StringField;
@@ -86,6 +87,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new IntField('jwks_cache_ttl', 'jwksCacheTtl'))->addFlags(new ApiAware()),
             (new StringField('last_test_status', 'lastTestStatus', 16))->addFlags(new ApiAware()),
             (new DateTimeField('last_test_at', 'lastTestAt'))->addFlags(new ApiAware()),
+            (new JsonField('last_test_claims', 'lastTestClaims'))->addFlags(new ApiAware()),
             (new FkField('default_customer_group_id', 'defaultCustomerGroupId', CustomerGroupDefinition::class))->addFlags(new ApiAware()),
             (new FkField('default_acl_role_id', 'defaultAclRoleId', AclRoleDefinition::class))->addFlags(new ApiAware()),
             new CreatedAtField(),

@@ -59,6 +59,8 @@ class Sw6OidcProviderEntity extends Entity
     /** 'pass'|'fail'|'warning'|null (never tested) — set only by the live login test */
     protected ?string $lastTestStatus = null;
     protected ?\DateTimeInterface $lastTestAt = null;
+    /** @var array<string, mixed>|null flattened claims received on the last live login test, keyed by claim name */
+    protected ?array $lastTestClaims = null;
     protected ?string $defaultCustomerGroupId = null;
     protected ?string $defaultAclRoleId = null;
 
@@ -445,6 +447,22 @@ class Sw6OidcProviderEntity extends Entity
     public function setLastTestAt(?\DateTimeInterface $lastTestAt): void
     {
         $this->lastTestAt = $lastTestAt;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getLastTestClaims(): ?array
+    {
+        return $this->lastTestClaims;
+    }
+
+    /**
+     * @param array<string, mixed>|null $lastTestClaims
+     */
+    public function setLastTestClaims(?array $lastTestClaims): void
+    {
+        $this->lastTestClaims = $lastTestClaims;
     }
 
     public function getDefaultCustomerGroupId(): ?string

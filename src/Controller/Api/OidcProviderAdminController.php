@@ -215,7 +215,7 @@ class OidcProviderAdminController extends AbstractController
         $redirectUri = $this->generateUrl('api.action.sw6oidc.provider.test-callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
         $result = $this->liveLoginTestService->run($provider, $code, $flow->codeVerifier, $redirectUri, $flow->nonce);
 
-        $this->persistTestStatus($provider->getId(), $result['status'], $context);
+        $this->persistTestStatus($provider->getId(), $result['status'], $context, $result['claims']);
 
         return $this->renderTestResultPage($result['status'], $result['steps'], $result['claims'], $cspNonce);
     }
@@ -227,13 +227,28 @@ class OidcProviderAdminController extends AbstractController
         return $provider instanceof Sw6OidcProviderEntity ? $provider : null;
     }
 
-    private function persistTestStatus(string $providerId, string $status, Context $context): void
+    /**
+     * @param array<string, mixed> $claims
+     */
+    private function persistTestStatus(string $providerId, string $status, Context $context, array $claims = []): void
     {
-        $this->providerRepository->update([[
+        $payload = [
             'id' => $providerId,
             'lastTestStatus' => $status,
             'lastTestAt' => new \DateTimeImmutable(),
-        ]], $context);
+        ];
+
+        // Only overwrite previously-persisted claims when this run actually
+        // produced some — a re-test that fails before reaching the IdP at
+        // all (or the early guard clauses above, which never call this with
+        // any $claims) must not wipe out the claims a prior successful test
+        // already gave the admin to work with in the attribute-mapping
+        // picker.
+        if ($claims !== []) {
+            $payload['lastTestClaims'] = $claims;
+        }
+
+        $this->providerRepository->update([$payload], $context);
     }
 
     /**

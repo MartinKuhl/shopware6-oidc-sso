@@ -6,10 +6,10 @@ const { Criteria } = Shopware.Data;
 /**
  * Always-available claim-name suggestions, independent of any live test —
  * mirrors AttributeMapper::DEFAULT_CLAIM_KEYS (the identity fields' built-in
- * OIDC-standard defaults) plus a few other claims common enough across IdPs
- * to be worth offering (`sub`, `name`, `groups`, etc.), so the picker is
- * useful the first time this page is opened, before anyone has ever run a
- * live login test against this provider.
+ * OIDC-standard defaults) plus a few other identity claims common enough
+ * across IdPs to be worth offering (`name`, `groups`, etc.), so the picker
+ * is useful the first time this page is opened, before anyone has ever run
+ * a live login test against this provider.
  */
 const STANDARD_CLAIM_SUGGESTIONS = [
     'email',
@@ -20,13 +20,36 @@ const STANDARD_CLAIM_SUGGESTIONS = [
     'birthdate',
     'gender',
     'phone_number',
-    'sub',
     'groups',
     'locale',
     'nickname',
     'picture',
-    'updated_at',
 ];
+
+/**
+ * Protocol/token-metadata claims — never useful as an attribute-mapping
+ * target (there's no Shopware field they'd sensibly map to), so excluded
+ * from both the standard suggestions and whatever a live test happens to
+ * observe. `sub`/`updated_at` deliberately excluded here too even though
+ * they're valid OIDC standard claims: `sub` is an opaque per-IdP identifier
+ * with nothing to map it to, and `updated_at` is a timestamp, not an
+ * identity field.
+ */
+const TECHNICAL_CLAIM_EXCLUSIONS = new Set([
+    'amr',
+    'at_hash',
+    'aud',
+    'auth_time',
+    'azp',
+    'exp',
+    'iat',
+    'iss',
+    'jti',
+    'nonce',
+    'sub',
+    'rat',
+    'updated_at',
+]);
 
 /**
  * Registered as a lazy factory (matching how Shopware's own core components
@@ -145,10 +168,13 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         /**
          * Claim names actually received on the most recent live login test —
          * always the ground truth for this specific IdP once available, but
-         * empty until that test has been run at least once.
+         * empty until that test has been run at least once. Excludes
+         * protocol/token-metadata claims (see TECHNICAL_CLAIM_EXCLUSIONS) —
+         * an IdP's raw response always includes these, but they're never a
+         * sensible attribute-mapping target.
          */
         discoveredClaimKeys() {
-            return Object.keys(this.liveTestClaims ?? {});
+            return Object.keys(this.liveTestClaims ?? {}).filter((key) => !TECHNICAL_CLAIM_EXCLUSIONS.has(key));
         },
 
         /**
@@ -211,6 +237,13 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
 
             return this.providerRepository.get(id, Shopware.Context.api, criteria).then((entity) => {
                 this.provider = entity;
+                // Seeds the claim picker from whatever the last live login
+                // test actually observed, persisted server-side precisely so
+                // it survives a reload — this in-memory state otherwise has
+                // nowhere else to come from on a fresh page load.
+                this.liveTestClaims = entity.lastTestClaims && typeof entity.lastTestClaims === 'object'
+                    ? entity.lastTestClaims
+                    : {};
                 this.isLoading = false;
             });
         },
