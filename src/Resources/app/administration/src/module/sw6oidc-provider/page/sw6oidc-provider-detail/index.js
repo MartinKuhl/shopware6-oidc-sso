@@ -88,6 +88,19 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         claimEncodingOptions() {
             return ['none', 'base64'].map((value) => ({ value, label: value }));
         },
+
+        /**
+         * Mirrors AdminProvisioningService::findOrCreateAdmin()'s own
+         * refusal condition — warn here, before it fails a real login, that
+         * a resolvable ACL role is required to JIT-create an admin.
+         */
+        adminProvisioningWarning() {
+            if (!this.provider?.autoCreateAdmin || this.provider.defaultAclRoleId) {
+                return false;
+            }
+
+            return !this.provider.roleMappings?.some((mapping) => mapping.mappingType === 'admin_role');
+        },
     },
 
     created() {

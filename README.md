@@ -93,7 +93,7 @@ Unlike a typical Shopware plugin, providers are **not** configured in `Settings 
    - **Auto Create Customer** / **Auto Create Admin**: enable JIT provisioning per user type
    - **Show Customer Link** / **Show Admin Link**: whether the SSO button appears on the respective login page
    - **Is Active**: whether this provider is usable at all
-   - **Default Customer Group** / **Default ACL Role**: fallback assignment when no group mapping matches
+   - **Default Customer Group** / **Default ACL Role** *(Provisioning & sync card)*: fallback assignment when no group mapping matches
    - **HTTP Timeout**, **JWKS Cache TTL**: per-provider tuning (defaults: 30s, 86400s)
 3. Save.
 
@@ -257,7 +257,9 @@ Per-user IdP binding is enforced — the account is already bound to a different
 
 ### Admin JIT creation fails with "no suitable role"
 
-Admin JIT creation requires a resolvable ACL role — either a matching group mapping or a configured default. Verify the **Group Attribute** name matches what your IdP actually sends, and that at least one role mapping (or a Default ACL Role) is configured for the provider.
+Admin JIT creation requires a resolvable ACL role — either a matching group mapping or a configured default. Verify the **Group Attribute** name matches what your IdP actually sends, and that at least one role mapping (or a **Default ACL Role**) is configured for the provider. The **Default ACL Role** / **Default Customer Group** selects live in the provider's **Provisioning & sync** card — the simplest fix is usually to set a Default ACL Role there, so a role is always resolved even without any group match.
+
+If `autoCreateAdmin` is on but neither a Default ACL Role nor an `admin_role` mapping is configured, the provider detail page shows a warning banner in the Provisioning card so this can be caught before anyone actually tries to log in. When the denial does happen at login time, the admin login screen shows a specific message (rather than a generic "SSO login failed") and `sw6oidc.log` includes the denial `reason`, the `providerId`, and the `groups` the IdP actually sent — useful for spotting a group-attribute/claim-name mismatch.
 
 ### "Login with Passkey" doesn't appear
 

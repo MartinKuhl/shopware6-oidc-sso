@@ -61,18 +61,13 @@ class AdminProvisioningService
         }
 
         if (!$provider->isAutoCreateAdmin()) {
-            throw new AdminProvisioningDeniedException(sprintf(
-                'No admin account exists for "%s" and auto-creation is disabled for this provider.',
-                $profile->email,
-            ));
+            throw AdminProvisioningDeniedException::autoCreateDisabled($profile->email);
         }
 
         $aclRoleId = $this->groupMappingResolver->resolveAclRoleId($provider, $profile->groups, $context);
 
         if ($aclRoleId === null) {
-            throw new AdminProvisioningDeniedException(
-                "No admin role mapping (or default role) matched this user's OIDC groups; refusing to create an admin without a role.",
-            );
+            throw AdminProvisioningDeniedException::noRoleResolved();
         }
 
         $userId = $this->create($provider, $profile, $aclRoleId, $context);

@@ -159,6 +159,29 @@
                     <sw-switch-field v-model:value="provider.autoCreateAdmin" :label="$tc('sw6oidc.provider.detail.autoCreateAdmin')" />
                 </sw-container>
                 <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-entity-single-select
+                        v-model:value="provider.defaultCustomerGroupId"
+                        entity="customer_group"
+                        label-property="name"
+                        :label="$tc('sw6oidc.provider.detail.defaultCustomerGroupId')"
+                        :placeholder="$tc('sw6oidc.provider.detail.targetPlaceholderGroup')"
+                    />
+                    <sw-entity-single-select
+                        v-model:value="provider.defaultAclRoleId"
+                        entity="acl_role"
+                        label-property="name"
+                        :label="$tc('sw6oidc.provider.detail.defaultAclRoleId')"
+                        :placeholder="$tc('sw6oidc.provider.detail.targetPlaceholderRole')"
+                    />
+                </sw-container>
+                <mt-banner
+                    v-if="adminProvisioningWarning"
+                    variant="warning"
+                    style="margin-bottom: 16px;"
+                >
+                    {{ $tc('sw6oidc.provider.detail.adminProvisioningWarning') }}
+                </mt-banner>
+                <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-switch-field v-model:value="provider.disableNonOidcCustomerLogin" :label="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLogin')" />
                     <sw-switch-field v-model:value="provider.disableNonOidcAdminLogin" :label="$tc('sw6oidc.provider.detail.disableNonOidcAdminLogin')" />
                 </sw-container>

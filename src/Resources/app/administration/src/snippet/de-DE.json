@@ -3,6 +3,8 @@
         "login": {
             "ssoButton": "Mit SSO anmelden",
             "error": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
+            "errorRoleMissing": "Ihr Konto konnte nicht automatisch angelegt werden, da keine Administratorrolle zugewiesen werden konnte. Bitte wenden Sie sich an Ihren Administrator.",
+            "errorAutoCreateDisabled": "Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.",
             "passkeyButton": "Mit Passkey anmelden",
             "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an."
         },
@@ -83,6 +85,9 @@
                 "jwksCacheTtl": "JWKS-Cache-TTL (Sekunden)",
                 "autoCreateCustomer": "Kunden automatisch anlegen",
                 "autoCreateAdmin": "Administration-Benutzer automatisch anlegen",
+                "defaultAclRoleId": "Standard-ACL-Rolle (Fallback, falls keine Gruppenzuordnung passt)",
+                "defaultCustomerGroupId": "Standard-Kundengruppe (Fallback, falls keine Gruppenzuordnung passt)",
+                "adminProvisioningWarning": "Das automatische Anlegen von Administration-Benutzern ist aktiviert, aber es ist weder eine Standard-ACL-Rolle noch eine Zuordnung vom Typ \"Administration-Rolle\" konfiguriert. Neue Admin-Anmeldungen werden abgelehnt, bis eines von beidem eingerichtet ist.",
                 "disableNonOidcCustomerLogin": "Nicht-OIDC-Kundenanmeldung deaktivieren",
                 "disableNonOidcAdminLogin": "Nicht-OIDC-Administration-Anmeldung deaktivieren",
                 "syncCustomerProfileOnSso": "Kundenprofil bei jeder Anmeldung synchronisieren",

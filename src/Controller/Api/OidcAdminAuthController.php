@@ -12,6 +12,7 @@ use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
@@ -137,6 +138,19 @@ class OidcAdminAuthController extends AbstractController
             $nonce = $this->loginNonceService->createNonce($adminUser->getId());
 
             return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_nonce' => $nonce]));
+        } catch (AdminProvisioningDeniedException $exception) {
+            $this->logger->warning('sw6oidc: admin OIDC callback failed.', [
+                'exception' => $exception->getMessage(),
+                'reason' => $exception->reason,
+                'providerId' => $result->provider->getId(),
+                'groups' => $result->profile->groups,
+            ]);
+
+            return new RedirectResponse($this->administrationLoginUrl([
+                'sw6oidc_error' => $exception->reason === AdminProvisioningDeniedException::REASON_NO_ROLE
+                    ? 'admin_role_missing'
+                    : 'admin_auto_create_disabled',
+            ]));
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: admin OIDC callback failed.', [
                 'exception' => $exception->getMessage(),

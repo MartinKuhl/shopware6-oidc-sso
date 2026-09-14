@@ -40,6 +40,36 @@ Component.override('sw-login-login', {
         this.sw6oidcLoadLoginOptions();
     },
 
+    computed: {
+        /**
+         * `sw6oidc_error` on the admin callback redirect distinguishes a few
+         * known denial reasons (see OidcAdminAuthController::callback()) —
+         * map each to its own message, worded generically enough for a
+         * pre-auth screen (no group/role names), and fall back to the
+         * original generic message for anything else (provider_unavailable,
+         * exchange_failed, unrecognized future codes).
+         */
+        sw6oidcErrorMessage() {
+            const messages = {
+                admin_role_missing: [
+                    'sw6oidc.login.errorRoleMissing',
+                    'Your account could not be created automatically because no administrator role could be assigned. Please contact your administrator.',
+                ],
+                admin_auto_create_disabled: [
+                    'sw6oidc.login.errorAutoCreateDisabled',
+                    'Automatic account creation is disabled for this login method. Please contact your administrator.',
+                ],
+            };
+
+            const [key, fallback] = messages[this.sw6oidcExchangeError] ?? [
+                'sw6oidc.login.error',
+                'Single sign-on login failed. Please try again or log in with your username and password.',
+            ];
+
+            return this.sw6oidcTranslate(key, fallback);
+        },
+    },
+
     methods: {
         /**
          * Shopware's own bootLogin() (core/application.ts) always stamps

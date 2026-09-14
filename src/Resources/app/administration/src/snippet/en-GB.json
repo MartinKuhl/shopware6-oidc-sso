@@ -3,6 +3,8 @@
         "login": {
             "ssoButton": "Login with SSO",
             "error": "Single sign-on login failed. Please try again or log in with your username and password.",
+            "errorRoleMissing": "Your account could not be created automatically because no administrator role could be assigned. Please contact your administrator.",
+            "errorAutoCreateDisabled": "Automatic account creation is disabled for this login method. Please contact your administrator.",
             "passkeyButton": "Login with Passkey",
             "passkeyError": "Passkey login failed. Please try again or log in with your username and password."
         },
@@ -83,6 +85,9 @@
                 "jwksCacheTtl": "JWKS cache TTL (seconds)",
                 "autoCreateCustomer": "Auto-create customers",
                 "autoCreateAdmin": "Auto-create Administration users",
+                "defaultAclRoleId": "Default ACL role (fallback if no group mapping matches)",
+                "defaultCustomerGroupId": "Default customer group (fallback if no group mapping matches)",
+                "adminProvisioningWarning": "Auto-creation of Administration users is enabled, but no Default ACL role is set and no \"Administration role\" mapping exists. New admin logins will be refused until one of these is configured.",
                 "disableNonOidcCustomerLogin": "Disable non-OIDC customer logins",
                 "disableNonOidcAdminLogin": "Disable non-OIDC Administration logins",
                 "syncCustomerProfileOnSso": "Sync customer profile on every login",
