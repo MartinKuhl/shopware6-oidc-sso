@@ -283,51 +283,23 @@
                         <sw-single-select v-model:value="item.attributeType" :options="attributeTypeOptions" size="small" />
                     </template>
                     {#
-                        The picker is plain flex, not a slot on sw-text-field
-                        — mt-text-field's slot contract isn't something this
-                        plugin controls, so this avoids depending on it
-                        supporting a suffix/addon slot. sw-single-select
-                        (rather than a hand-rolled context menu) for the
-                        picker itself: it already has a built-in search box
-                        and a scrollable, max-height result list
-                        (sw-select-result-list), which matters once a live
-                        test has discovered a lot of claims — a plain
-                        unbounded menu would just grow forever. It's used
-                        one-way only (pick fills item.attributeName via
-                        onPickDiscoveredClaim); it never reflects
-                        item.attributeName back, so :value is always empty
-                        and it always shows its own placeholder.
+                        A plain select, same pattern as #column-attributeType
+                        above: only claims actually observed on the last live
+                        test (claimSelectOptions/discoveredClaimKeys) are ever
+                        valid choices here — typing a claim name the IdP
+                        doesn't actually send would just be a silent
+                        misconfiguration, so there's no free-text fallback.
+                        Empty (no live test run yet, or the test found no
+                        claims) simply means nothing to pick — the select
+                        still renders, just with an empty result list.
                     #}
                     <template #column-attributeName="{ item }">
-                        {#
-                            width: 100% is load-bearing: .sw-data-grid__cell-content
-                            is itself display:flex (core CSS), so without an
-                            explicit width this row is just one shrink-to-fit
-                            flex item in that outer flex context — the flex:1/
-                            flex:0-0-Npx split below has no container width to
-                            actually divide, so the text field collapses to
-                            near-nothing and the picker's own placeholder text
-                            (unclipped, sw-single-select has no text-overflow
-                            CSS) visibly overflows past its intended lane,
-                            which is also what made it look "too wide".
-                        #}
-                        <div style="display: flex; gap: 4px; align-items: center; width: 100%;">
-                            <div style="flex: 1; min-width: 0;">
-                                <sw-text-field v-model="item.attributeName" size="small" placeholder="e.g. preferred_username" />
-                            </div>
-                            <div
-                                v-if="discoveredClaimKeys.length"
-                                style="flex: 0 0 140px; min-width: 0;"
-                            >
-                                <sw-single-select
-                                    value=""
-                                    :options="claimSelectOptions"
-                                    :placeholder="$tc('sw6oidc.provider.detail.pickDiscoveredClaimPlaceholder')"
-                                    size="small"
-                                    @update:value="onPickDiscoveredClaim(item, $event)"
-                                />
-                            </div>
-                        </div>
+                        <sw-single-select
+                            v-model:value="item.attributeName"
+                            :options="claimSelectOptions"
+                            :placeholder="$tc('sw6oidc.provider.detail.pickDiscoveredClaimPlaceholder')"
+                            size="small"
+                        />
                     </template>
                     <template #column-syncOnSso="{ item }">
                         {#

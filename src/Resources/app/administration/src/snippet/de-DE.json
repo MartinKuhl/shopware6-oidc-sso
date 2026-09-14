@@ -115,7 +115,7 @@
                 "attributeClaimName": "OIDC-Claim-Name",
                 "syncOnSso": "Bei jeder Anmeldung synchronisieren",
                 "addAttributeMapping": "Attributzuordnung hinzufügen",
-                "pickDiscoveredClaimPlaceholder": "Aus Test wählen",
+                "pickDiscoveredClaimPlaceholder": "Claim auswählen",
                 "oidcGroup": "OIDC-Gruppen-/Rollenwert",
                 "target": "Ziel",
                 "targetPlaceholderRole": "Administration-Rolle auswählen...",

@@ -394,15 +394,6 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
             }
         },
 
-        /**
-         * Quick-fill for a discovered claim, invoked from the picker next to
-         * the attribute mapping's claim-name field — the admin can still
-         * type over it afterwards, this just saves the transcription step.
-         */
-        onPickDiscoveredClaim(item, claimKey) {
-            item.attributeName = claimKey;
-        },
-
         sw6oidcApiFetch(path, bodyFields) {
             return fetch(path, {
                 method: 'POST',
