@@ -9,6 +9,7 @@ use Shopware\Core\Framework\Api\Acl\Role\AclRoleDefinition;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityDefinition;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\BoolField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\CreatedAtField;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\DateTimeField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\FkField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ApiAware;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\CascadeDelete;
@@ -82,6 +83,8 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new BoolField('sync_admin_role_on_sso', 'syncAdminRoleOnSso'))->addFlags(new ApiAware()),
             (new IntField('http_timeout', 'httpTimeout'))->addFlags(new ApiAware()),
             (new IntField('jwks_cache_ttl', 'jwksCacheTtl'))->addFlags(new ApiAware()),
+            (new StringField('last_test_status', 'lastTestStatus', 16))->addFlags(new ApiAware()),
+            (new DateTimeField('last_test_at', 'lastTestAt'))->addFlags(new ApiAware()),
             (new FkField('default_customer_group_id', 'defaultCustomerGroupId', CustomerGroupDefinition::class))->addFlags(new ApiAware()),
             (new FkField('default_acl_role_id', 'defaultAclRoleId', AclRoleDefinition::class))->addFlags(new ApiAware()),
             new CreatedAtField(),

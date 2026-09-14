@@ -13,12 +13,46 @@
                 "columnDisplayName": "Anzeigename",
                 "columnAppName": "Technischer Name",
                 "columnLoginType": "Anmeldetyp",
-                "columnActive": "Aktiv"
+                "columnActive": "Aktiv",
+                "columnLastTestStatus": "Teststatus",
+                "lastTestStatus": {
+                    "pass": "Erfolgreich",
+                    "fail": "Fehlgeschlagen",
+                    "untested": "Noch nicht getestet"
+                }
             },
             "detail": {
                 "buttonSave": "Speichern",
                 "buttonCancel": "Abbrechen",
                 "saveError": "Der Anbieter konnte nicht gespeichert werden.",
+                "buttonLoadConfiguration": "Konfiguration laden",
+                "buttonTestConnection": "Verbindung testen",
+                "discoverySuccess": "Konfiguration von der Well-Known-URL geladen.",
+                "discoveryError": "Die Konfiguration konnte nicht von der Well-Known-URL geladen werden.",
+                "discoverySaveWarningTitle": "Endpunkt-Aktualisierung übersprungen",
+                "wellKnownConfigUrlRequired": "Bitte zuerst eine Well-Known-Konfigurations-URL eingeben.",
+                "testConnectionResultTitle": "Ergebnisse des Verbindungstests",
+                "testConnectionError": "Der Verbindungstest konnte nicht ausgeführt werden.",
+                "testConnection": {
+                    "check": {
+                        "well_known_reachable": "Well-Known-Konfigurations-URL",
+                        "required_endpoints_present": "Erforderliche Endpunkte",
+                        "client_credentials_present": "Client-Zugangsdaten",
+                        "jwks_reachable": "JWKS-Endpunkt"
+                    }
+                },
+                "buttonRunLiveTest": "Live-Login-Test ausführen",
+                "liveTestRequiresSaveHint": "Speichern Sie den Anbieter zuerst, um einen Live-Login-Test auszuführen.",
+                "liveTestError": "Der Live-Login-Test konnte nicht gestartet werden.",
+                "liveTestResultTitle": "Ergebnisse des Live-Login-Tests",
+                "lastTestStatusLabel": "Letzter Test",
+                "liveTest": {
+                    "step": {
+                        "token_exchange": "Token-Austausch",
+                        "id_token_verification": "ID-Token-Prüfung",
+                        "userinfo_fetch": "Userinfo-Abruf"
+                    }
+                },
                 "cardGeneral": "Allgemein",
                 "cardOAuth": "OAuth-/OIDC-Einstellungen",
                 "cardProvisioning": "Provisionierung & Synchronisierung",

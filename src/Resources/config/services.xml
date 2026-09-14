@@ -100,6 +100,21 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient" />
         </service>
 
+        <service id="MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator" />
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\TokenExchangeService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\UserInfoService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\ClaimsNormalizer" />
+        </service>
+
         <!-- Provisioning / group mapping -->
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService">
             <argument type="service" id="sw6oidc_user_provider.repository" />
@@ -286,6 +301,20 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
+            <call method="setContainer">
+                <argument type="service" id="service_container" />
+            </call>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcProviderAdminController" public="true">
+            <argument type="service" id="sw6oidc_provider.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>

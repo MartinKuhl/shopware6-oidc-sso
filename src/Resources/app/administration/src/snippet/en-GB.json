@@ -13,12 +13,46 @@
                 "columnDisplayName": "Display name",
                 "columnAppName": "Technical name",
                 "columnLoginType": "Login type",
-                "columnActive": "Active"
+                "columnActive": "Active",
+                "columnLastTestStatus": "Test status",
+                "lastTestStatus": {
+                    "pass": "Passed",
+                    "fail": "Failed",
+                    "untested": "Not tested yet"
+                }
             },
             "detail": {
                 "buttonSave": "Save",
                 "buttonCancel": "Cancel",
                 "saveError": "The provider could not be saved.",
+                "buttonLoadConfiguration": "Load configuration",
+                "buttonTestConnection": "Test connection",
+                "discoverySuccess": "Configuration loaded from the well-known URL.",
+                "discoveryError": "Could not load the configuration from the well-known URL.",
+                "discoverySaveWarningTitle": "Endpoint refresh skipped",
+                "wellKnownConfigUrlRequired": "Enter a well-known configuration URL first.",
+                "testConnectionResultTitle": "Connection test results",
+                "testConnectionError": "The connection test could not be run.",
+                "testConnection": {
+                    "check": {
+                        "well_known_reachable": "Well-known configuration URL",
+                        "required_endpoints_present": "Required endpoints",
+                        "client_credentials_present": "Client credentials",
+                        "jwks_reachable": "JWKS endpoint"
+                    }
+                },
+                "buttonRunLiveTest": "Run live login test",
+                "liveTestRequiresSaveHint": "Save the provider first to run a live login test.",
+                "liveTestError": "The live login test could not be started.",
+                "liveTestResultTitle": "Live login test results",
+                "lastTestStatusLabel": "Last test",
+                "liveTest": {
+                    "step": {
+                        "token_exchange": "Token exchange",
+                        "id_token_verification": "ID token verification",
+                        "userinfo_fetch": "Userinfo fetch"
+                    }
+                },
                 "cardGeneral": "General",
                 "cardOAuth": "OAuth / OIDC settings",
                 "cardProvisioning": "Provisioning & sync",

@@ -49,6 +49,9 @@ class Sw6OidcProviderEntity extends Entity
     protected bool $syncAdminRoleOnSso = false;
     protected int $httpTimeout = 30;
     protected int $jwksCacheTtl = 86400;
+    /** 'pass'|'fail'|'warning'|null (never tested) — set only by the live login test */
+    protected ?string $lastTestStatus = null;
+    protected ?\DateTimeInterface $lastTestAt = null;
     protected ?string $defaultCustomerGroupId = null;
     protected ?string $defaultAclRoleId = null;
 
@@ -405,6 +408,26 @@ class Sw6OidcProviderEntity extends Entity
     public function setJwksCacheTtl(int $jwksCacheTtl): void
     {
         $this->jwksCacheTtl = $jwksCacheTtl;
+    }
+
+    public function getLastTestStatus(): ?string
+    {
+        return $this->lastTestStatus;
+    }
+
+    public function setLastTestStatus(?string $lastTestStatus): void
+    {
+        $this->lastTestStatus = $lastTestStatus;
+    }
+
+    public function getLastTestAt(): ?\DateTimeInterface
+    {
+        return $this->lastTestAt;
+    }
+
+    public function setLastTestAt(?\DateTimeInterface $lastTestAt): void
+    {
+        $this->lastTestAt = $lastTestAt;
     }
 
     public function getDefaultCustomerGroupId(): ?string

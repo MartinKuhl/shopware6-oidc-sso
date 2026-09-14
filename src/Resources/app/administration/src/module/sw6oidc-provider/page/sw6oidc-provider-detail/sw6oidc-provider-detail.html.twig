@@ -45,6 +45,45 @@
                     <sw-password-field v-model="provider.clientSecret" :label="$tc('sw6oidc.provider.detail.clientSecret')" required />
                 </sw-container>
                 <sw-text-field v-model="provider.wellKnownConfigUrl" :label="$tc('sw6oidc.provider.detail.wellKnownConfigUrl')" />
+
+                {% block sw6oidc_provider_detail_discovery_actions %}
+                <sw-container columns="max-content max-content" gap="0 16px" style="margin-bottom: 16px;">
+                    <sw-button
+                        size="small"
+                        :is-loading="isLoadingConfiguration"
+                        :disabled="!provider.wellKnownConfigUrl"
+                        @click="onClickLoadConfiguration"
+                    >
+                        {{ $tc('sw6oidc.provider.detail.buttonLoadConfiguration') }}
+                    </sw-button>
+                    <sw-button
+                        size="small"
+                        :is-loading="isTestingConnection"
+                        @click="onClickTestConnection"
+                    >
+                        {{ $tc('sw6oidc.provider.detail.buttonTestConnection') }}
+                    </sw-button>
+                </sw-container>
+                {% endblock %}
+
+                {% block sw6oidc_provider_detail_connection_test_result %}
+                <sw-card v-if="connectionTestResult" :title="$tc('sw6oidc.provider.detail.testConnectionResultTitle')" style="margin-bottom: 16px;">
+                    <table class="sw6oidc-test-result-table">
+                        <tbody>
+                            <tr v-for="check in connectionTestResult.checks" :key="check.id">
+                                <td>{{ $tc(`sw6oidc.provider.detail.testConnection.check.${check.id}`) }}</td>
+                                <td>
+                                    <sw-label :variant="check.status === 'pass' ? 'success' : (check.status === 'warning' ? 'warning' : 'danger')">
+                                        {{ check.status }}
+                                    </sw-label>
+                                </td>
+                                <td>{{ check.detail }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </sw-card>
+                {% endblock %}
+
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-text-field v-model="provider.authorizeEndpoint" :label="$tc('sw6oidc.provider.detail.authorizeEndpoint')" />
                     <sw-text-field v-model="provider.accessTokenEndpoint" :label="$tc('sw6oidc.provider.detail.accessTokenEndpoint')" />
@@ -71,6 +110,47 @@
                     <sw-number-field v-model="provider.httpTimeout" :label="$tc('sw6oidc.provider.detail.httpTimeout')" />
                     <sw-number-field v-model="provider.jwksCacheTtl" :label="$tc('sw6oidc.provider.detail.jwksCacheTtl')" />
                 </sw-container>
+
+                {% block sw6oidc_provider_detail_live_test %}
+                <sw-container columns="max-content 1fr" gap="0 16px" style="align-items: center;">
+                    <sw-button
+                        size="small"
+                        :is-loading="isRunningLiveTest"
+                        :disabled="!canRunLiveTest"
+                        :tooltip="canRunLiveTest ? null : { message: $tc('sw6oidc.provider.detail.liveTestRequiresSaveHint') }"
+                        @click="onClickRunLiveTest"
+                    >
+                        {{ $tc('sw6oidc.provider.detail.buttonRunLiveTest') }}
+                    </sw-button>
+                    <span v-if="provider.lastTestStatus">
+                        {{ $tc('sw6oidc.provider.detail.lastTestStatusLabel') }}:
+                        <sw-label :variant="provider.lastTestStatus === 'pass' ? 'success' : 'danger'">
+                            {{ provider.lastTestStatus }}
+                        </sw-label>
+                        <template v-if="provider.lastTestAt">({{ provider.lastTestAt }})</template>
+                    </span>
+                </sw-container>
+
+                <sw-card
+                    v-if="liveTestReport"
+                    :title="$tc('sw6oidc.provider.detail.liveTestResultTitle')"
+                    style="margin-top: 16px;"
+                >
+                    <table class="sw6oidc-test-result-table">
+                        <tbody>
+                            <tr v-for="step in liveTestReport.steps" :key="step.id">
+                                <td>{{ $tc(`sw6oidc.provider.detail.liveTest.step.${step.id}`) }}</td>
+                                <td>
+                                    <sw-label :variant="step.status === 'pass' ? 'success' : (step.status === 'skipped' ? 'neutral' : 'danger')">
+                                        {{ step.status }}
+                                    </sw-label>
+                                </td>
+                                <td>{{ step.detail }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </sw-card>
+                {% endblock %}
             </sw-card>
 
             <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioning')">

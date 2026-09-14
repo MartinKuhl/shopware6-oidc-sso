@@ -22,7 +22,19 @@
             :is-loading="isLoading"
             :disable-data-fetching="true"
             detail-route="sw6oidc.provider.detail"
-        />
+        >
+            {% block sw6oidc_provider_list_column_last_test_status %}
+            <template #column-lastTestStatus="{ item }">
+                <sw-label v-if="item.lastTestStatus === 'pass'" variant="success">
+                    {{ $tc('sw6oidc.provider.list.lastTestStatus.pass') }}
+                </sw-label>
+                <sw-label v-else-if="item.lastTestStatus" variant="danger">
+                    {{ $tc('sw6oidc.provider.list.lastTestStatus.fail') }}
+                </sw-label>
+                <span v-else>{{ $tc('sw6oidc.provider.list.lastTestStatus.untested') }}</span>
+            </template>
+            {% endblock %}
+        </sw-entity-listing>
     </template>
     {% endblock %}
 </sw-page>

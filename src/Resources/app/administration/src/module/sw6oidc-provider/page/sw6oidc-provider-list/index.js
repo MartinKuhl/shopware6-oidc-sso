@@ -34,6 +34,7 @@ Component.register('sw6oidc-provider-list', {
                 { property: 'appName', label: this.$tc('sw6oidc.provider.list.columnAppName') },
                 { property: 'loginType', label: this.$tc('sw6oidc.provider.list.columnLoginType') },
                 { property: 'isActive', label: this.$tc('sw6oidc.provider.list.columnActive') },
+                { property: 'lastTestStatus', label: this.$tc('sw6oidc.provider.list.columnLastTestStatus') },
             ];
         },
     },
