@@ -26,12 +26,23 @@ class OidcHttpClient
      *
      * @return array<string, mixed>
      */
-    public function postForm(string $url, array $formParams, int $timeoutSeconds): array
-    {
+    public function postForm(
+        string $url,
+        array $formParams,
+        int $timeoutSeconds,
+        ?string $basicAuthUsername = null,
+        ?string $basicAuthPassword = null,
+    ): array {
+        $headers = ['Accept' => 'application/json'];
+
+        if ($basicAuthUsername !== null) {
+            $headers['Authorization'] = 'Basic ' . base64_encode($basicAuthUsername . ':' . ($basicAuthPassword ?? ''));
+        }
+
         return $this->requestJson('POST', $url, [
             'body' => $formParams,
             'timeout' => $timeoutSeconds,
-            'headers' => ['Accept' => 'application/json'],
+            'headers' => $headers,
         ]);
     }
 

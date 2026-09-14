@@ -225,6 +225,20 @@ Verify the redirect URI registered at the IdP exactly matches:
 
 Check protocol (HTTPS required in production) and trailing slashes. Most IdPs (Authelia, Keycloak, etc.) require an *exact* string match against every registered `redirect_uri` — if you see an error like Authelia's "The 'redirect_uris' registered with OAuth 2.0 Client ... did not match 'redirect_uri' value ...", add the missing URI to the client's registered list rather than trying to make the plugin send a different one.
 
+### Token exchange fails with HTTP 401 (`invalid_client` or similar)
+
+For a **confidential client** (i.e. `Public client` is *off* on the provider), the plugin authenticates to the token endpoint via **HTTP Basic auth** (`client_id`/`client_secret` in the `Authorization` header), matching the `client_secret_basic` default most IdPs — including Authelia — use unless configured otherwise. If your IdP's client is instead configured for `client_secret_post` (credentials expected in the POST body) and doesn't also accept Basic auth, the token endpoint will reject the request with a 401.
+
+For Authelia specifically, this "just works" as long as the client either omits `token_endpoint_auth_method` (defaults to `client_secret_basic`) or sets it explicitly:
+```yaml
+token_endpoint_auth_method: 'client_secret_basic'
+```
+Also double-check the `client_secret` value entered in the Shopware provider matches exactly (no trailing whitespace, and note Authelia typically expects the **hashed** secret in its own config while the *plaintext* value is what you enter in Shopware).
+
+### What endpoint value should I use for a given field?
+
+Rather than guessing at an IdP's exact endpoint paths (they vary by product and version), click **Load configuration** after entering the **Well-known configuration URL** (`https://your-idp.example/.well-known/openid-configuration`) — it fetches and fills in all six endpoint fields, including **End-Session (Logout) Endpoint**, directly from what the IdP itself publishes. You can also open that well-known URL in a browser to inspect the raw JSON if you want to verify a specific value.
+
 ### Login succeeds but profile fields are empty
 
 The OIDC claim names from your IdP likely don't match your attribute mapping. Set `SW6OIDC_LOG_LEVEL=debug` and check the plugin's log output for the raw claims received, then adjust the attribute mapping to match (claim names are case-sensitive).

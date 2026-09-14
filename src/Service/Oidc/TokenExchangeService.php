@@ -7,9 +7,14 @@ use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
 
 /**
  * Exchanges an authorization code (+ PKCE verifier) for tokens at the provider's
- * token endpoint. Mirrors Helper/OAuth/AccessTokenRequest.php: omits
- * client_secret entirely for public clients (RFC 6749 §2.1), always includes the
- * PKCE code_verifier.
+ * token endpoint. Mirrors the Magento sibling module's
+ * Helper/OAuth/AccessTokenRequestBody.php + Curl::sendAccessTokenRequest():
+ * confidential clients authenticate via HTTP Basic (RFC 6749 §2.3.1) — the
+ * de facto default `token_endpoint_auth_method` for Authelia, Keycloak, and
+ * most other IdPs — with client_id/client_secret omitted from the body to
+ * avoid duplicating client authentication across two mechanisms; only public
+ * clients (RFC 6749 §2.1) send client_id in the body with no Authorization
+ * header, since they have no secret to authenticate with.
  */
 class TokenExchangeService
 {
@@ -33,22 +38,18 @@ class TokenExchangeService
         string $redirectUri,
         string $codeVerifier,
     ): array {
-        $params = [
+        $params = array_merge([
             'grant_type' => 'authorization_code',
             'code' => $code,
             'redirect_uri' => $redirectUri,
-            'client_id' => $provider->getClientId(),
             'code_verifier' => $codeVerifier,
-        ];
-
-        if (!$provider->isPublicClient()) {
-            $params['client_secret'] = $provider->getClientSecret();
-        }
+        ], $this->clientIdBodyParam($provider));
 
         return $this->httpClient->postForm(
             (string) $provider->getAccessTokenEndpoint(),
             $params,
             $provider->getHttpTimeout(),
+            ...$this->basicAuthCredentials($provider),
         );
     }
 
@@ -57,20 +58,37 @@ class TokenExchangeService
      */
     public function refreshAccessToken(Sw6OidcProviderEntity $provider, string $refreshToken): array
     {
-        $params = [
+        $params = array_merge([
             'grant_type' => 'refresh_token',
             'refresh_token' => $refreshToken,
-            'client_id' => $provider->getClientId(),
-        ];
-
-        if (!$provider->isPublicClient()) {
-            $params['client_secret'] = $provider->getClientSecret();
-        }
+        ], $this->clientIdBodyParam($provider));
 
         return $this->httpClient->postForm(
             (string) $provider->getAccessTokenEndpoint(),
             $params,
             $provider->getHttpTimeout(),
+            ...$this->basicAuthCredentials($provider),
         );
+    }
+
+    /**
+     * Public clients have no secret to authenticate with, so the token
+     * endpoint can only identify them via a client_id body parameter (RFC
+     * 6749 §3.2.1). Confidential clients authenticate via the Authorization
+     * header instead and must not duplicate client_id in the body.
+     *
+     * @return array{client_id?: string}
+     */
+    private function clientIdBodyParam(Sw6OidcProviderEntity $provider): array
+    {
+        return $provider->isPublicClient() ? ['client_id' => $provider->getClientId()] : [];
+    }
+
+    /**
+     * @return array{0: string, 1: string}|array{}
+     */
+    private function basicAuthCredentials(Sw6OidcProviderEntity $provider): array
+    {
+        return $provider->isPublicClient() ? [] : [$provider->getClientId(), $provider->getClientSecret()];
     }
 }

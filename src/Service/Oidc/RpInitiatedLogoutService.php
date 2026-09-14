@@ -63,17 +63,25 @@ class RpInitiatedLogoutService
             return;
         }
 
-        $params = [
-            'token' => $accessToken,
-            'client_id' => $provider->getClientId(),
-        ];
+        // Same client-authentication convention as TokenExchangeService: a
+        // confidential client authenticates via HTTP Basic and omits
+        // client_id from the body; a public client has no secret, so it
+        // identifies itself via client_id in the body instead (RFC 7009 §2.1
+        // references the token endpoint's authentication methods).
+        $params = ['token' => $accessToken];
 
-        if (!$provider->isPublicClient()) {
-            $params['client_secret'] = $provider->getClientSecret();
+        if ($provider->isPublicClient()) {
+            $params['client_id'] = $provider->getClientId();
         }
 
         try {
-            $this->httpClient->postForm($revocationEndpoint, $params, $provider->getHttpTimeout());
+            $this->httpClient->postForm(
+                $revocationEndpoint,
+                $params,
+                $provider->getHttpTimeout(),
+                $provider->isPublicClient() ? null : $provider->getClientId(),
+                $provider->isPublicClient() ? null : $provider->getClientSecret(),
+            );
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: RFC 7009 token revocation failed (non-fatal).', [
                 'providerId' => $provider->getId(),
