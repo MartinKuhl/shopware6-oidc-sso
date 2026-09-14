@@ -173,6 +173,15 @@ Component.override('sw-login-login', {
 
                 const tokenData = await verifyResponse.json();
 
+                // Mirrors loginService.loginByUsername(): resets the
+                // inactivity clock localStorage['lastActivity'] tracks. Without
+                // this, a stale timestamp left over from a previous session
+                // (anything older than 30 minutes) makes the auto-refresh
+                // timer that setBearerAuthentication() arms (firing at half
+                // the access token's TTL) treat this brand-new login as
+                // "inactive" and force a logout instead of refreshing.
+                Shopware.Service('userActivityService').updateLastUserActivity();
+
                 this.loginService.setBearerAuthentication({
                     access: tokenData.access_token,
                     refresh: tokenData.refresh_token,
@@ -221,6 +230,11 @@ Component.override('sw-login-login', {
                 }
 
                 const tokenData = await response.json();
+
+                // See the matching comment in sw6oidcStartPasskeyLogin() -
+                // same inactivity-clock reset loginByUsername() does, which
+                // this nonce-exchange path otherwise skips entirely.
+                Shopware.Service('userActivityService').updateLastUserActivity();
 
                 // Mirrors what Shopware's own password-grant login does with
                 // the /api/oauth/token response — verify the exact shape
