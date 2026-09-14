@@ -4,14 +4,6 @@ const { Component, Mixin } = Shopware;
 const { Criteria } = Shopware.Data;
 
 /**
- * VERIFICATION NEEDED: the client-side association-collection API used here
- * (`this.provider.attributeMappings.repository.create()` / `.add()` / `.remove()`)
- * matches Shopware's documented pattern for editing nested one-to-many
- * associations in the Administration, but confirm the exact shape against the
- * installed Shopware 6.7 Administration core before relying on it — see the
- * plan's Verification section.
- */
-/**
  * Registered as a lazy factory (matching how Shopware's own core components
  * are registered), not a plain object, so that Mixin.getByName('notification')
  * below is only evaluated once Shopware actually builds this component -
@@ -53,6 +45,22 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
 
         providerRepository() {
             return this.repositoryFactory.create('sw6oidc_provider');
+        },
+
+        /**
+         * EntityCollection itself has no `.repository` — a nested
+         * association's own repository has to be created explicitly via
+         * `entity`/`source` off the collection (Shopware's documented
+         * pattern, e.g. `this.product.media.entity`/`.source` in core), then
+         * used to `.create()` a new row before `.add()`-ing it to the
+         * collection.
+         */
+        attributeMappingRepository() {
+            return this.repositoryFactory.create(this.provider.attributeMappings.entity, this.provider.attributeMappings.source);
+        },
+
+        roleMappingRepository() {
+            return this.repositoryFactory.create(this.provider.roleMappings.entity, this.provider.roleMappings.source);
         },
 
         canRunLiveTest() {
@@ -332,7 +340,7 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         },
 
         onAddAttributeMapping() {
-            const mapping = this.provider.attributeMappings.repository.create(Shopware.Context.api);
+            const mapping = this.attributeMappingRepository.create(Shopware.Context.api);
             mapping.providerId = this.provider.id;
             mapping.attributeType = 'email';
             mapping.attributeName = '';
@@ -345,7 +353,7 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         },
 
         onAddRoleMapping() {
-            const mapping = this.provider.roleMappings.repository.create(Shopware.Context.api);
+            const mapping = this.roleMappingRepository.create(Shopware.Context.api);
             mapping.providerId = this.provider.id;
             mapping.mappingType = 'customer_group';
             mapping.oidcGroup = '';
