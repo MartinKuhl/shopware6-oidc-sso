@@ -342,7 +342,11 @@
                         </sw-context-menu-item>
                     </template>
                 </sw-data-grid>
-                <sw-button ref="addAttributeMappingButton" size="small" style="margin-top: 16px;" @click="onAddAttributeMapping">
+                <sw-button
+                    size="small"
+                    :style="{ marginTop: '16px', width: attributeTypeColumnWidth }"
+                    @click="onAddAttributeMapping"
+                >
                     {{ $tc('sw6oidc.provider.detail.addAttributeMapping') }}
                 </sw-button>
             </sw-card>
@@ -415,7 +419,11 @@
                         </sw-context-menu-item>
                     </template>
                 </sw-data-grid>
-                <sw-button ref="addRoleMappingButton" size="small" style="margin-top: 16px;" @click="onAddRoleMapping">
+                <sw-button
+                    size="small"
+                    :style="{ marginTop: '16px', width: mappingTypeColumnWidth }"
+                    @click="onAddRoleMapping"
+                >
                     {{ $tc('sw6oidc.provider.detail.addRoleMapping') }}
                 </sw-button>
             </sw-card>

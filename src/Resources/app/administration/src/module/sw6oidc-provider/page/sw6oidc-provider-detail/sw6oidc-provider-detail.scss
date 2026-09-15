@@ -1,8 +1,12 @@
 .sw6oidc-oauth-card {
-    // mt-field-label's own default is --font-weight-regular; !important is
-    // needed because that rule carries a scoped-style data-v attribute,
-    // which outweighs a plain class selector here.
-    .mt-field-label {
-        font-weight: var(--font-weight-bold) !important;
+    // .mt-field__label (double underscore, BEM-child of .mt-field) is what
+    // mt-text-field/mt-select/mt-number-field render their own label
+    // through - NOT the same thing as the standalone .mt-field-label
+    // (single dash) component mt-switch/mt-datepicker use for theirs.
+    // Targeting the wrong one is why an earlier version of this rule
+    // bolded the "Public Client" switch's label instead of the plain
+    // text/select fields' labels this was actually meant for.
+    .mt-field__label {
+        font-weight: var(--font-weight-bold);
     }
 }
