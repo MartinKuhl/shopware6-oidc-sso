@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
 use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
@@ -14,7 +15,9 @@ use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
@@ -48,6 +51,7 @@ class OidcAdminAuthController extends AbstractController
         private readonly LoggerInterface $logger,
         private readonly PasskeyConfig $passkeyConfig,
         private readonly PasskeyCredentialRepository $passkeyCredentialRepository,
+        private readonly UserProviderBindingService $bindingService,
     ) {
     }
 
@@ -245,6 +249,87 @@ class OidcAdminAuthController extends AbstractController
         $this->logger->debug('sw6oidc: admin token exchange succeeded.', ['userId' => $userId]);
 
         return (new HttpFoundationFactory())->createResponse($tokenResponse);
+    }
+
+    /**
+     * Mints a fresh access/refresh token pair carrying the `user-verified`
+     * OAuth scope for the *currently authenticated* Administration user,
+     * without asking for a password — Shopware's own "confirm your password"
+     * modal (shown on every profile save, and independently re-enforced
+     * server-side for any user with `user:editor` rights, which includes
+     * every superadmin) has no way to succeed for an account this plugin
+     * provisioned, since its password is a random, permanently unknown
+     * value (see AdminProvisioningService::create()). The `sw-profile`
+     * override calls this first and only falls back to the real password
+     * modal if it 403s.
+     *
+     * Requires an already-valid bearer token (`auth_required: true`,
+     * overriding the class-level default) — the acting user id comes from
+     * that token's own resolved AdminApiSource, never from client input —
+     * and additionally requires the account to actually be OIDC- or
+     * Passkey-provisioned (bound in sw6oidc_user_provider, or owning at
+     * least one sw6oidc_passkey_credential row), so a normal local-password
+     * admin can't use this to skip their own password reconfirmation.
+     *
+     * The minted token is otherwise identical to a normal login token (same
+     * AdminOidcGrant, same 10-minute TTL, same write/admin scope
+     * resolution) — only `user-verified` is new. See AdminOidcGrant's own
+     * docblock for why passing that trust through this bridge is
+     * appropriate: this grant already fully vouches for the user via a
+     * pre-verified OIDC/Passkey login, the same trust level Shopware's own
+     * password check provides.
+     */
+    #[Route(
+        path: '/api/sw6oidc/admin/verify-session',
+        name: 'api.action.sw6oidc.admin.verify-session',
+        defaults: ['auth_required' => true],
+        methods: ['POST'],
+    )]
+    public function verifySession(Request $request, Context $context): Response
+    {
+        $source = $context->getSource();
+        $userId = $source instanceof AdminApiSource ? $source->getUserId() : null;
+
+        if ($userId === null) {
+            return $this->json(['error' => 'invalid_request', 'error_description' => 'No authenticated Administration user.'], 401);
+        }
+
+        if (!$this->isSsoProvisioned($userId, $context)) {
+            return $this->json(['error' => 'invalid_request', 'error_description' => 'This account was not authenticated via OIDC/Passkey SSO.'], 403);
+        }
+
+        $request->attributes->set(AdminOidcGrant::REQUEST_ATTRIBUTE_USER_ID, $userId);
+        $request->request->set('grant_type', AdminOidcGrant::GRANT_IDENTIFIER);
+        $request->request->set('client_id', 'administration');
+        $request->request->set('scope', 'user-verified');
+
+        $psrRequest = $this->psrHttpFactory->createRequest($request);
+        $psrResponse = $this->psrHttpFactory->createResponse(new Response());
+
+        try {
+            $tokenResponse = $this->adminAuthorizationServer->respondToAccessTokenRequest($psrRequest, $psrResponse);
+        } catch (\League\OAuth2\Server\Exception\OAuthServerException $exception) {
+            $this->logger->warning('sw6oidc: admin session verification failed.', [
+                'userId' => $userId,
+                'exceptionClass' => $exception::class,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            return $this->json(['error' => 'invalid_grant', 'error_description' => $exception->getMessage()], 400);
+        }
+
+        $this->logger->debug('sw6oidc: admin session verification succeeded, skipping password reconfirmation.', ['userId' => $userId]);
+
+        return (new HttpFoundationFactory())->createResponse($tokenResponse);
+    }
+
+    private function isSsoProvisioned(string $userId, Context $context): bool
+    {
+        if ($this->bindingService->getBoundProviderId(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $userId, $context) !== null) {
+            return true;
+        }
+
+        return $this->passkeyCredentialRepository->findAllForOwner('admin', $userId, $context) !== [];
     }
 
     /**
