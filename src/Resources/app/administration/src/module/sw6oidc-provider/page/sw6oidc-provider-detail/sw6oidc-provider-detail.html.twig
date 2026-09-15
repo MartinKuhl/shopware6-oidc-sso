@@ -354,7 +354,6 @@
                     :columns="[
                         { property: 'attributeType', label: $tc('sw6oidc.provider.detail.attributeType.label'), width: attributeTypeColumnWidth },
                         { property: 'attributeName', label: $tc('sw6oidc.provider.detail.attributeClaimName'), width: '294px' },
-                        { property: 'syncOnSso', label: $tc('sw6oidc.provider.detail.syncOnSso'), width: '220px' },
                     ]"
                     :show-selection="false"
                 >
@@ -379,18 +378,6 @@
                             :placeholder="$tc('sw6oidc.provider.detail.pickDiscoveredClaimPlaceholder')"
                             size="small"
                         />
-                    </template>
-                    <template #column-syncOnSso="{ item }">
-                        {#
-                            mt-switch's own default CSS gives it margin-top:
-                            24px (meant for standalone form spacing). The
-                            data-grid's own CSS resets margin-bottom to 0 for
-                            it but never touches margin-top, so left alone it
-                            sits visibly low/off-center in the fixed-height
-                            cell next to the other columns' fields. mt-switch
-                            ships this exact modifier class for that case.
-                        #}
-                        <sw-switch-field class="mt-switch--no-top-margin" v-model:value="item.syncOnSso" />
                     </template>
                     <template #actions="{ item }">
                         <sw-context-menu-item variant="danger" @click="onRemoveAttributeMapping(item)">

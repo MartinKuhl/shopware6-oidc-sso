@@ -136,7 +136,7 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^4.7** (see `TODO.md` for th
 ## Database schema (`Migration1730000001CreateOidcSchema` + follow-up migrations)
 
 - **`sw6oidc_provider`** — one row per configured IdP: identity/OAuth fields (`app_name`, `client_id`, `client_secret`, `public_client`), endpoints (auto-fillable via discovery), protocol knobs (`scope`, `pkce_flow`, `claim_encoding`, `group_attribute`), behavior flags (`auto_create_customer`/`auto_create_admin`, `disable_non_oidc_*_login`, `show_*_link`, `is_active`, `login_type`), sync-on-SSO toggles (all five wired, see Provisioning & mapping above), `allow_superadmin_group_mapping` (gates `superadmin`-type role mapping rows, see Provisioning & mapping above), ops settings (`http_timeout`, `jwks_cache_ttl`), live-test bookkeeping (`last_test_status`, `last_test_at`, `last_test_claims`), and FK defaults (`default_customer_group_id`, `default_acl_role_id`).
-- **`sw6oidc_attribute_mapping`** — per-provider claim → Shopware-field mapping (`attribute_type`, `attribute_name`, `sync_on_sso`, `transform_function`/`transform_params` — the last two are unused, see gaps below).
+- **`sw6oidc_attribute_mapping`** — per-provider claim → Shopware-field mapping (`attribute_type`, `attribute_name`, `sync_on_sso`, `transform_function`/`transform_params` — all three of the last are unused, see gaps below).
 - **`sw6oidc_role_mapping`** — per-provider OIDC-group → ACL role / customer group / superadmin grant (`mapping_type`: `admin_role`|`customer_group`|`superadmin`, `oidc_group`, `acl_role_id`, `customer_group_id`, `sort_order`); `superadmin` rows leave both `acl_role_id`/`customer_group_id` null.
 - **`sw6oidc_user_provider`** — permanent IdP binding, polymorphic (`user_type`, `user_id`) → `provider_id`, unique per account.
 - **`sw6oidc_passkey_credential`** — one WebAuthn credential per user (polymorphic `user_type`/`user_id`, `credential_id`, `public_key`, `sign_count`, `user_handle`, `nickname`).
@@ -145,7 +145,7 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^4.7** (see `TODO.md` for th
 
 Do not assume the following are fully wired just because the schema or config UI suggests they are:
 
-- `transform_function`/`transform_params` columns on `sw6oidc_attribute_mapping` are schema-only — no code path reads or applies them.
+- `transform_function`/`transform_params` columns on `sw6oidc_attribute_mapping` are schema-only — no code path reads or applies them. `sync_on_sso` on the same table is the same story: only the coarse, per-user-type toggles on `sw6oidc_provider` (`sync_customer_profile_on_sso` etc.) actually gate re-sync; the per-field column has no reader and was removed from the admin UI grid for that reason (previously a misleading always-editable no-op).
 - `config.xml`'s `debugLoggingEnabled` toggle is not wired to the Monolog channel; the actual log level is controlled solely by the `SW6OIDC_LOG_LEVEL` env var (default `debug`), set in `services.xml`.
 - `client_secret` is stored **in plaintext** on `sw6oidc_provider` (the entity carries a `// TODO(later phase): encrypt at rest` comment) — unlike the Magento sibling module, which encrypts secrets at rest today.
 - No OIDC Back-Channel Logout support; no admin-side RP-initiated logout (only the Storefront/customer logout path redirects to the IdP).

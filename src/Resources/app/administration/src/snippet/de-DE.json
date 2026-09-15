@@ -131,7 +131,6 @@
                 "syncAdminRoleOnSso": "Admin-Rolle bei jeder Anmeldung synchronisieren",
                 "syncAdminRoleOnSsoHelp": "Wertet die Rollen-/Gruppenzuordnung (einschließlich einer eventuellen Superadmin-Vergabe) bei jeder Anmeldung neu aus und aktualisiert die ACL-Rolle des Administration-Benutzers, falls sich eine andere Rolle ergibt.",
                 "attributeClaimName": "OIDC-Claim-Name",
-                "syncOnSso": "Bei jeder Anmeldung synchronisieren",
                 "addAttributeMapping": "Attributzuordnung hinzufügen",
                 "pickDiscoveredClaimPlaceholder": "Claim auswählen",
                 "attributeMappingRequiresLiveTestHint": "Das Feld für den Claim-Namen bietet nur Claims an, die bei einem erfolgreichen Live-Login-Test beobachtet wurden. Führen Sie oben „Live-Login-Test ausführen“ aus und speichern Sie den Anbieter nach einem erfolgreichen Test, um diese Liste zu befüllen.",

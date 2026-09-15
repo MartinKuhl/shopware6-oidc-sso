@@ -426,7 +426,6 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
             mapping.providerId = this.provider.id;
             mapping.attributeType = 'email';
             mapping.attributeName = '';
-            mapping.syncOnSso = false;
             this.provider.attributeMappings.add(mapping);
         },
 
