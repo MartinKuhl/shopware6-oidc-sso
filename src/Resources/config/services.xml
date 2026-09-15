@@ -150,6 +150,7 @@
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService">
             <argument type="service" id="user.repository" />
             <argument type="service" id="locale.repository" />
+            <argument type="service" id="media.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\GroupMappingResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="Shopware\Core\Content\Media\MediaService" />

@@ -28,6 +28,7 @@ class AdminProvisioningService
     public function __construct(
         private readonly EntityRepository $userRepository,
         private readonly EntityRepository $localeRepository,
+        private readonly EntityRepository $mediaRepository,
         private readonly GroupMappingResolver $groupMappingResolver,
         private readonly UserProviderBindingService $bindingService,
         private readonly MediaService $mediaService,
@@ -240,6 +241,14 @@ class AdminProvisioningService
      * BasicData's `avatarUser` association) rather than leaving the Media
      * row unassigned — same folder a manually-uploaded avatar would land
      * in, so it gets the same thumbnail-size config.
+     *
+     * Media is always forced public (`private: false`): a `private` Media
+     * entity is only servable through an authenticated download action,
+     * not a plain `<img src>`, so a private avatar would never render
+     * anywhere in the Administration UI. The explicit follow-up update
+     * covers both a brand-new Media row and one from a previous sync that
+     * was created private, self-healing on the next login rather than
+     * requiring a one-off manual fix.
      */
     private function syncAvatar(string $userId, string $pictureUrl, ?string $existingAvatarId, Context $context): ?string
     {
@@ -258,8 +267,10 @@ class AdminProvisioningService
                 $context,
                 'user',
                 $existingAvatarId,
-                true,
+                false,
             );
+
+            $this->mediaRepository->update([['id' => $avatarId, 'private' => false]], $context);
 
             $this->logger->info('sw6oidc: imported Administration user avatar from picture claim.', [
                 'userId' => $userId,
