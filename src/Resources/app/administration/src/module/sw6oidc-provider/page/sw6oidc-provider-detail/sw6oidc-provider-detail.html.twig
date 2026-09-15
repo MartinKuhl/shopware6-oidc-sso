@@ -282,22 +282,6 @@
                 </mt-banner>
             </sw-card>
 
-            <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioningSuperadmin')">
-                <sw-container columns="1fr 1fr" gap="0 30px">
-                    <sw-switch-field
-                        v-model:value="provider.allowSuperadminGroupMapping"
-                        :label="$tc('sw6oidc.provider.detail.allowSuperadminGroupMapping')"
-                        :help-text="$tc('sw6oidc.provider.detail.allowSuperadminGroupMappingHelp')"
-                    />
-                </sw-container>
-                <mt-banner
-                    v-if="provider.allowSuperadminGroupMapping"
-                    variant="critical"
-                >
-                    {{ $tc('sw6oidc.provider.detail.superadminMappingActiveWarning') }}
-                </mt-banner>
-            </sw-card>
-
             <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioningLoginRestrictions')">
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-switch-field
@@ -500,6 +484,22 @@
                 </sw-button>
             </sw-card>
             {% endblock %}
+
+            <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioningSuperadmin')">
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-switch-field
+                        v-model:value="provider.allowSuperadminGroupMapping"
+                        :label="$tc('sw6oidc.provider.detail.allowSuperadminGroupMapping')"
+                        :help-text="$tc('sw6oidc.provider.detail.allowSuperadminGroupMappingHelp')"
+                    />
+                </sw-container>
+                <mt-banner
+                    v-if="provider.allowSuperadminGroupMapping"
+                    variant="critical"
+                >
+                    {{ $tc('sw6oidc.provider.detail.superadminMappingActiveWarning') }}
+                </mt-banner>
+            </sw-card>
         </sw-card-view>
     </template>
     {% endblock %}
