@@ -275,6 +275,9 @@ class AdminProvisioningService
             $this->logger->info('sw6oidc: imported Administration user avatar from picture claim.', [
                 'userId' => $userId,
                 'avatarId' => $avatarId,
+                'mimeType' => $mediaFile->getMimeType(),
+                'fileExtension' => $mediaFile->getFileExtension(),
+                'fileSize' => $mediaFile->getFileSize(),
             ]);
 
             return $avatarId;
