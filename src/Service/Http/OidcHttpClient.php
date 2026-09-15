@@ -78,17 +78,17 @@ class OidcHttpClient
      */
     private function requestJson(string $method, string $url, array $options): array
     {
-        // Temporary diagnostic aid: every request/response to the IdP logged
-        // at debug (SensitiveDataProcessor masks client_secret/code/
-        // code_verifier/*_token keys wherever they appear, recursively, so
-        // this is safe at the default debug log level). $options['headers']
-        // is deliberately never logged - that's where a Basic-auth
-        // Authorization header lives for a confidential client, and masking
-        // by key wouldn't catch a secret baked into a header value.
+        // Only ever logs field *names*, never values - a userinfo response in
+        // particular is arbitrary IdP-supplied PII (email, address, phone,
+        // birthdate, ...) with no fixed set of key names to denylist the way
+        // SensitiveDataProcessor does for known credential fields
+        // (client_secret/code/code_verifier/*_token). $options['headers'] is
+        // deliberately never logged at all - that's where a Basic-auth
+        // Authorization header lives for a confidential client.
         $this->logger->debug('sw6oidc: sending IdP HTTP request.', [
             'method' => $method,
             'url' => $url,
-            'formParams' => $options['body'] ?? null,
+            'formParamKeys' => array_keys($options['body'] ?? []),
         ]);
 
         try {
@@ -105,13 +105,12 @@ class OidcHttpClient
         }
 
         $decoded = json_decode($content, true);
-        $loggableBody = \is_array($decoded) ? $decoded : $content;
 
         $this->logger->log($statusCode >= 400 ? 'warning' : 'debug', 'sw6oidc: received IdP HTTP response.', [
             'method' => $method,
             'url' => $url,
             'statusCode' => $statusCode,
-            'body' => $loggableBody,
+            'bodyKeys' => \is_array($decoded) ? array_keys($decoded) : null,
         ]);
 
         if ($statusCode >= 400) {
