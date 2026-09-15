@@ -2,6 +2,7 @@
     "sw6oidc": {
         "login": {
             "button": "Login with SSO",
+            "buttonWithProvider": "Login with %name%",
             "providerUnavailable": "Single sign-on is currently unavailable. Please log in with your email and password.",
             "failed": "Single sign-on login failed. Please try again or log in with your email and password."
         },

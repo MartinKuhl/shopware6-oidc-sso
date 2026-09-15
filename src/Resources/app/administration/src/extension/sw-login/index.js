@@ -109,7 +109,11 @@ Component.override('sw-login-login', {
          * buttons apart.
          */
         sw6oidcSsoButtonLabel(provider) {
-            return provider.label || this.sw6oidcTranslate('sw6oidc.login.ssoButton', 'Login with SSO');
+            if (!provider.label) {
+                return this.sw6oidcTranslate('sw6oidc.login.ssoButton', 'Login with SSO');
+            }
+
+            return this.sw6oidcTranslate('sw6oidc.login.ssoButtonWithProvider', 'Login with {name}').replace('{name}', provider.label);
         },
 
         /**

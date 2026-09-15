@@ -2,6 +2,7 @@
     "sw6oidc": {
         "login": {
             "ssoButton": "Login with SSO",
+            "ssoButtonWithProvider": "Login with {name}",
             "error": "Single sign-on login failed. Please try again or log in with your username and password.",
             "errorRoleMissing": "Your account could not be created automatically because no administrator role could be assigned. Please contact your administrator.",
             "errorAutoCreateDisabled": "Automatic account creation is disabled for this login method. Please contact your administrator.",

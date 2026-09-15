@@ -41,11 +41,11 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
     }
 
     /**
-     * One button per visible provider, ordered by sortOrder — labeled with
-     * the provider's own displayName so "Login with SSO" doesn't get shown
-     * for every configured IdP regardless of which one it actually is; only
-     * ever falls back to the generic translated string if a provider has no
-     * displayName set.
+     * One button per visible provider, ordered by sortOrder — labeled
+     * "Login with {displayName}" so "Login with SSO" doesn't get shown for
+     * every configured IdP regardless of which one it actually is; only
+     * ever falls back to the plain generic string if a provider has no
+     * displayName set (there's nothing to interpolate into the pattern).
      *
      * @return array<int, array{id: string, label: string}>
      */
@@ -55,7 +55,7 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
             fn (Sw6OidcProviderEntity $provider): array => [
                 'id' => $provider->getId(),
                 'label' => $provider->getDisplayName() !== null && $provider->getDisplayName() !== ''
-                    ? $provider->getDisplayName()
+                    ? $this->translator->trans('sw6oidc.login.buttonWithProvider', ['%name%' => $provider->getDisplayName()])
                     : $this->translator->trans('sw6oidc.login.button'),
             ],
             $this->providerResolver->getVisibleProviders('customer', $context->getContext()),

@@ -2,11 +2,12 @@
     "sw6oidc": {
         "login": {
             "button": "Mit SSO anmelden",
+            "buttonWithProvider": "Login mit %name%",
             "providerUnavailable": "Single Sign-on ist derzeit nicht verfuegbar. Bitte melden Sie sich mit E-Mail und Passwort an.",
             "failed": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit E-Mail und Passwort an."
         },
         "passkey": {
-            "button": "Mit Passkey anmelden",
+            "button": "Login mit Passkey",
             "pageTitle": "Passkeys",
             "pageIntro": "Verwalten Sie die Passkeys, mit denen Sie sich ohne Passwort anmelden koennen.",
             "registerButton": "Neuen Passkey registrieren",

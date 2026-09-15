@@ -2,10 +2,11 @@
     "sw6oidc": {
         "login": {
             "ssoButton": "Mit SSO anmelden",
+            "ssoButtonWithProvider": "Login mit {name}",
             "error": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
             "errorRoleMissing": "Ihr Konto konnte nicht automatisch angelegt werden, da keine Administratorrolle zugewiesen werden konnte. Bitte wenden Sie sich an Ihren Administrator.",
             "errorAutoCreateDisabled": "Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.",
-            "passkeyButton": "Mit Passkey anmelden",
+            "passkeyButton": "Login mit Passkey",
             "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an."
         },
         "provider": {
