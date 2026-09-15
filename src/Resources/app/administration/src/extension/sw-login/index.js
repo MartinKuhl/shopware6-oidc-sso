@@ -234,7 +234,14 @@ Component.override('sw-login-login', {
         },
 
         async sw6oidcHandleCallback() {
-            const params = new URLSearchParams(window.location.search);
+            // window.location.search is always empty here: the Administration
+            // router uses hash mode, so the URL this nonce actually arrives on
+            // is ".../admin#/login?sw6oidc_nonce=..." - the query string is
+            // part of the hash fragment, not the "real" URL query string.
+            // Reading window.location.search silently found nothing, so this
+            // never even attempted the token exchange - no fetch, no log, no
+            // visible error, just a login page that never logs in.
+            const params = this.sw6oidcHashUrl().searchParams;
             const nonce = params.get('sw6oidc_nonce');
             const error = params.get('sw6oidc_error');
 
@@ -290,11 +297,24 @@ Component.override('sw-login-login', {
             }
         },
 
+        /**
+         * Parses the query string out of the hash fragment (window.location.hash,
+         * e.g. "#/login?sw6oidc_nonce=...") rather than window.location.search,
+         * which the Administration's hash-based router never touches.
+         */
+        sw6oidcHashUrl() {
+            return new URL(window.location.hash.slice(1) || '/', window.location.origin);
+        },
+
         sw6oidcCleanUrl() {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('sw6oidc_nonce');
-            url.searchParams.delete('sw6oidc_error');
-            window.history.replaceState({}, document.title, url.toString());
+            const hashUrl = this.sw6oidcHashUrl();
+            hashUrl.searchParams.delete('sw6oidc_nonce');
+            hashUrl.searchParams.delete('sw6oidc_error');
+
+            const query = hashUrl.searchParams.toString();
+            const newHash = `#${hashUrl.pathname}${query ? `?${query}` : ''}`;
+
+            window.history.replaceState({}, document.title, window.location.pathname + newHash);
         },
 
         // $tc() always returns the raw key on this specific screen, never

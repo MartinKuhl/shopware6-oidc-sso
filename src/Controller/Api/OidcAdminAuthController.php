@@ -146,9 +146,21 @@ class OidcAdminAuthController extends AbstractController
             );
 
             $adminUser = $this->adminProvisioningService->findOrCreateAdmin($result->provider, $result->profile, $context);
-            $nonce = $this->loginNonceService->createNonce($adminUser->getId());
 
-            return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_nonce' => $nonce]));
+            $this->logger->debug('sw6oidc: admin user resolved, minting login nonce.', [
+                'providerId' => $result->provider->getId(),
+                'userId' => $adminUser->getId(),
+            ]);
+
+            $nonce = $this->loginNonceService->createNonce($adminUser->getId());
+            $redirectUrl = $this->administrationLoginUrl(['sw6oidc_nonce' => $nonce]);
+
+            $this->logger->debug('sw6oidc: admin OIDC callback succeeded, redirecting back into the Administration SPA.', [
+                'userId' => $adminUser->getId(),
+                'redirectUrl' => $redirectUrl,
+            ]);
+
+            return new RedirectResponse($redirectUrl);
         } catch (AdminProvisioningDeniedException $exception) {
             $this->logger->warning('sw6oidc: admin OIDC callback failed.', [
                 'exception' => $exception->getMessage(),
@@ -195,8 +207,21 @@ class OidcAdminAuthController extends AbstractController
         $userId = $this->loginNonceService->redeemNonce(\is_string($nonce) ? $nonce : null);
 
         if ($userId === null) {
+            // Was silent before - a redirect back from the IdP that looks
+            // clean in the logs above (provisioning succeeded, nonce
+            // minted, redirect issued) can still end here if the SPA calls
+            // this twice (nonces are single-use) or the redirect round-trip
+            // took long enough for the 120s TTL to lapse.
+            $this->logger->warning('sw6oidc: admin token exchange rejected - unknown, expired, or already-used nonce.', [
+                'hasNonce' => \is_string($nonce) && $nonce !== '',
+            ]);
+
             return $this->json(['error' => 'invalid_grant', 'error_description' => 'Unknown, expired, or already-used login nonce.'], 400);
         }
+
+        $this->logger->debug('sw6oidc: admin login nonce redeemed, exchanging for an access token.', [
+            'userId' => $userId,
+        ]);
 
         $request->attributes->set(AdminOidcGrant::REQUEST_ATTRIBUTE_USER_ID, $userId);
         $request->request->set('grant_type', AdminOidcGrant::GRANT_IDENTIFIER);
@@ -207,10 +232,17 @@ class OidcAdminAuthController extends AbstractController
         try {
             $tokenResponse = $this->adminAuthorizationServer->respondToAccessTokenRequest($psrRequest, $psrResponse);
         } catch (\League\OAuth2\Server\Exception\OAuthServerException $exception) {
-            $this->logger->warning('sw6oidc: admin token exchange failed.', ['exception' => $exception->getMessage()]);
+            $this->logger->warning('sw6oidc: admin token exchange failed.', [
+                'userId' => $userId,
+                'exceptionClass' => $exception::class,
+                'exception' => $exception->getMessage(),
+                'previousException' => $exception->getPrevious()?->getMessage(),
+            ]);
 
             return $this->json(['error' => 'invalid_grant', 'error_description' => $exception->getMessage()], 400);
         }
+
+        $this->logger->debug('sw6oidc: admin token exchange succeeded.', ['userId' => $userId]);
 
         return (new HttpFoundationFactory())->createResponse($tokenResponse);
     }
