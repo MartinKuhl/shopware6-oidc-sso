@@ -164,7 +164,13 @@ class OidcAdminAuthController extends AbstractController
             ]));
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: admin OIDC callback failed.', [
+                'exceptionClass' => $exception::class,
                 'exception' => $exception->getMessage(),
+                // Often the actually-useful detail: e.g. a DB/DBAL exception
+                // wraps the driver's own message (missing column, FK
+                // violation, ...) as the previous exception rather than in
+                // its own getMessage().
+                'previousException' => $exception->getPrevious()?->getMessage(),
             ]);
 
             return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_error' => 'oidc_failed']));

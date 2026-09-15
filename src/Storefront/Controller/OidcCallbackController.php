@@ -96,7 +96,9 @@ class OidcCallbackController extends StorefrontController
             return new RedirectResponse($this->resolveSafeRelayState($result->flow->relayState));
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: customer OIDC callback failed.', [
+                'exceptionClass' => $exception::class,
                 'exception' => $exception->getMessage(),
+                'previousException' => $exception->getPrevious()?->getMessage(),
             ]);
 
             $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.failed'));

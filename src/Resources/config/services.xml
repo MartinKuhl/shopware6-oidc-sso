@@ -159,6 +159,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor">

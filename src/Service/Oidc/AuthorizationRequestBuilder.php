@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Oidc;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
+use Psr\Log\LoggerInterface;
 
 /**
  * Builds the IdP authorize-endpoint redirect URL: starts a new
@@ -13,8 +14,10 @@ use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
  */
 class AuthorizationRequestBuilder
 {
-    public function __construct(private readonly OidcSecurityHelper $securityHelper)
-    {
+    public function __construct(
+        private readonly OidcSecurityHelper $securityHelper,
+        private readonly LoggerInterface $logger,
+    ) {
     }
 
     public function build(
@@ -42,7 +45,20 @@ class AuthorizationRequestBuilder
         ]);
 
         $separator = str_contains((string) $provider->getAuthorizeEndpoint(), '?') ? '&' : '?';
+        $authorizeUrl = $provider->getAuthorizeEndpoint() . $separator . $query;
 
-        return $provider->getAuthorizeEndpoint() . $separator . $query;
+        // Temporary diagnostic aid: this is the exact outbound redirect to
+        // the IdP - if the flow never reaches our callback afterward
+        // (nothing else logs, since our code never runs again until then),
+        // comparing this URL against the IdP's registered client (redirect_uri
+        // in particular) is usually the fastest way to tell why.
+        $this->logger->debug('sw6oidc: redirecting to IdP authorize endpoint.', [
+            'providerId' => $provider->getId(),
+            'loginType' => $loginType,
+            'authorizeUrl' => $authorizeUrl,
+            'redirectUri' => $redirectUri,
+        ]);
+
+        return $authorizeUrl;
     }
 }

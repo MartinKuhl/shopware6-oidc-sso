@@ -78,6 +78,19 @@ class OidcHttpClient
      */
     private function requestJson(string $method, string $url, array $options): array
     {
+        // Temporary diagnostic aid: every request/response to the IdP logged
+        // at debug (SensitiveDataProcessor masks client_secret/code/
+        // code_verifier/*_token keys wherever they appear, recursively, so
+        // this is safe at the default debug log level). $options['headers']
+        // is deliberately never logged - that's where a Basic-auth
+        // Authorization header lives for a confidential client, and masking
+        // by key wouldn't catch a secret baked into a header value.
+        $this->logger->debug('sw6oidc: sending IdP HTTP request.', [
+            'method' => $method,
+            'url' => $url,
+            'formParams' => $options['body'] ?? null,
+        ]);
+
         try {
             $response = $this->httpClient->request($method, $url, $options);
             $content = $response->getContent(false);
@@ -91,11 +104,19 @@ class OidcHttpClient
             [$content, $statusCode] = $this->retryOnce($method, $url, $options);
         }
 
+        $decoded = json_decode($content, true);
+        $loggableBody = \is_array($decoded) ? $decoded : $content;
+
+        $this->logger->log($statusCode >= 400 ? 'warning' : 'debug', 'sw6oidc: received IdP HTTP response.', [
+            'method' => $method,
+            'url' => $url,
+            'statusCode' => $statusCode,
+            'body' => $loggableBody,
+        ]);
+
         if ($statusCode >= 400) {
             throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed with status %d.', $url, $statusCode));
         }
-
-        $decoded = json_decode($content, true);
 
         if (!\is_array($decoded)) {
             throw new OidcHttpException(sprintf('OIDC HTTP response from "%s" was not valid JSON.', $url));
