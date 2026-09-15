@@ -20,6 +20,26 @@ import {
 
 const { Component } = Shopware;
 
+/**
+ * German strings for the handful of sw6oidcTranslate() keys actually
+ * rendered on the pre-auth login screen - see the comment on
+ * sw6oidcTranslate() below for why $tc() can never resolve these here.
+ * Kept in sync with de-DE.json's own "login" section by hand; there's no
+ * good way to share this at build time since de-DE.json is never loaded
+ * on this screen either.
+ */
+const FALLBACK_LOCALE_DICTIONARY = {
+    'de-DE': {
+        'sw6oidc.login.ssoButton': 'Mit SSO anmelden',
+        'sw6oidc.login.ssoButtonWithProvider': 'Login mit {name}',
+        'sw6oidc.login.passkeyButton': 'Login mit Passkey',
+        'sw6oidc.login.passkeyError': 'Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.',
+        'sw6oidc.login.error': 'Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.',
+        'sw6oidc.login.errorRoleMissing': 'Ihr Konto konnte nicht automatisch angelegt werden, da keine Administratorrolle zugewiesen werden konnte. Bitte wenden Sie sich an Ihren Administrator.',
+        'sw6oidc.login.errorAutoCreateDisabled': 'Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.',
+    },
+};
+
 Component.override('sw-login-login', {
     template,
 
@@ -277,17 +297,51 @@ Component.override('sw-login-login', {
             window.history.replaceState({}, document.title, url.toString());
         },
 
-        // This plugin's own de-DE/en-GB snippet files are only ever loaded
-        // via Shopware's normal post-login loadPlugins() mechanism, which
-        // never runs on the pre-auth login screen (see
-        // Resources/views/administration/index.html.twig) - so $tc() here
-        // always returns the raw key on this specific screen, not just
-        // during some brief loading window. Fall back to a plain hardcoded
-        // English string rather than ever showing that to the user.
+        // $tc() always returns the raw key on this specific screen, never
+        // the actual translation - not a loading-order fluke, but a
+        // deliberate server-side filter: GET /api/_admin/snippets (see
+        // AdministrationController::filterByAuthentication() in Shopware
+        // core) only ever returns the "sw-login"/"global" snippet
+        // namespaces to an unauthenticated request, and this plugin's own
+        // "sw6oidc" namespace isn't and can never be on that allow-list.
+        // Core's own "Melde Dich bei Shopware an" text on this exact
+        // screen is unaffected because it lives in "sw-login" - so it
+        // localizes correctly while ours doesn't, unless we resolve the
+        // fallback text's own language ourselves instead of hardcoding
+        // English. FALLBACK_LOCALE_DICTIONARY intentionally covers only
+        // the handful of keys actually rendered on this screen.
         sw6oidcTranslate(key, fallback) {
             const translated = this.$tc(key);
 
-            return !translated || translated === key ? fallback : translated;
+            if (translated && translated !== key) {
+                return translated;
+            }
+
+            return FALLBACK_LOCALE_DICTIONARY[this.sw6oidcPreAuthLocale()]?.[key] ?? fallback;
+        },
+
+        /**
+         * Mirrors core's own locale.factory.ts getLastKnownLocale(): prefers
+         * the same localStorage key core itself writes on every locale
+         * switch (so this matches whatever language "Melde Dich bei
+         * Shopware an" is already showing in), then falls back to the
+         * browser's own language. Only "de-DE" is special-cased since
+         * that's the only other locale this plugin ships translations for
+         * at all (see de-DE.json/en-GB.json) - anything else already
+         * wants the English fallback.
+         */
+        sw6oidcPreAuthLocale() {
+            let stored = null;
+
+            try {
+                stored = window.localStorage.getItem('sw-admin-locale');
+            } catch {
+                // localStorage can throw (private browsing, blocked storage) - fall through to the browser language below.
+            }
+
+            const locale = stored || navigator.language || 'en-GB';
+
+            return locale.toLowerCase().startsWith('de') ? 'de-DE' : 'en-GB';
         },
     },
 });
