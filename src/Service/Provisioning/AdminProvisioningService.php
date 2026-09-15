@@ -258,6 +258,8 @@ class AdminProvisioningService
         } catch (\Throwable $e) {
             $this->logger->warning('sw6oidc: failed to import Administration user avatar from picture claim.', [
                 'userId' => $userId,
+                'pictureUrl' => $pictureUrl,
+                'exception' => $e::class,
                 'error' => $e->getMessage(),
             ]);
 
