@@ -116,6 +116,7 @@ class Migration1730000001CreateOidcSchema extends MigrationStep
                 `user_id` BINARY(16) NOT NULL,
                 `provider_id` BINARY(16) NOT NULL,
                 `created_at` DATETIME(3) NOT NULL,
+                `updated_at` DATETIME(3) NULL,
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uniq.sw6oidc_user_provider.user` (`user_type`, `user_id`),
                 KEY `fk.sw6oidc_user_provider.provider_id` (`provider_id`),
