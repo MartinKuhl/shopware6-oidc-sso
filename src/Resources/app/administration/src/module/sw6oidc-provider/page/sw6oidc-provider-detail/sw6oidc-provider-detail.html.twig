@@ -369,7 +369,7 @@
                     :data-source="provider.attributeMappings"
                     :columns="[
                         { property: 'attributeType', label: $tc('sw6oidc.provider.detail.attributeType.label'), width: attributeTypeColumnWidth },
-                        { property: 'attributeName', label: $tc('sw6oidc.provider.detail.attributeClaimName'), width: '420px' },
+                        { property: 'attributeName', label: $tc('sw6oidc.provider.detail.attributeClaimName'), width: '294px' },
                         { property: 'syncOnSso', label: $tc('sw6oidc.provider.detail.syncOnSso'), width: '220px' },
                     ]"
                     :show-selection="false"
@@ -416,7 +416,7 @@
                 </sw-data-grid>
                 <sw-button
                     size="small"
-                    :style="{ marginTop: '16px', width: attributeTypeColumnWidth }"
+                    style="margin-top: 16px;"
                     @click="onAddAttributeMapping"
                 >
                     {{ $tc('sw6oidc.provider.detail.addAttributeMapping') }}
@@ -493,7 +493,7 @@
                 </sw-data-grid>
                 <sw-button
                     size="small"
-                    :style="{ marginTop: '16px', width: mappingTypeColumnWidth }"
+                    style="margin-top: 16px;"
                     @click="onAddRoleMapping"
                 >
                     {{ $tc('sw6oidc.provider.detail.addRoleMapping') }}
