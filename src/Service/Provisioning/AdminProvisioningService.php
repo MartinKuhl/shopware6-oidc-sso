@@ -235,6 +235,11 @@ class AdminProvisioningService
      * system config). A bad/unreachable picture claim must never break
      * login, so any failure is logged and swallowed, returning the
      * previous avatar id (if any) unchanged.
+     *
+     * Uses Shopware core's own 'user' default media folder (seeded by
+     * BasicData's `avatarUser` association) rather than leaving the Media
+     * row unassigned — same folder a manually-uploaded avatar would land
+     * in, so it gets the same thumbnail-size config.
      */
     private function syncAvatar(string $userId, string $pictureUrl, ?string $existingAvatarId, Context $context): ?string
     {
@@ -247,14 +252,21 @@ class AdminProvisioningService
         try {
             $mediaFile = $this->fileFetcher->fetchFromURL($pictureUrl, $tempFile);
 
-            return $this->mediaService->saveMediaFile(
+            $avatarId = $this->mediaService->saveMediaFile(
                 $mediaFile,
                 'sw6oidc-avatar-' . $userId,
                 $context,
-                null,
+                'user',
                 $existingAvatarId,
                 true,
             );
+
+            $this->logger->info('sw6oidc: imported Administration user avatar from picture claim.', [
+                'userId' => $userId,
+                'avatarId' => $avatarId,
+            ]);
+
+            return $avatarId;
         } catch (\Throwable $e) {
             $this->logger->warning('sw6oidc: failed to import Administration user avatar from picture claim.', [
                 'userId' => $userId,
