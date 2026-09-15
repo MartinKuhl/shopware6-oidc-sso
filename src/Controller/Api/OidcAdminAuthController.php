@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
 use League\OAuth2\Server\AuthorizationServer;
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
@@ -72,7 +73,17 @@ class OidcAdminAuthController extends AbstractController
         $context = Context::createDefaultContext();
 
         return new JsonResponse([
-            'ssoAvailable' => $this->providerResolver->hasVisibleProvider('admin', $context),
+            // One entry per visible admin-scoped provider, ordered by
+            // sortOrder - `label` is null (rather than a hardcoded generic
+            // string) when the provider has no displayName, so the JS side
+            // can fall back to its own translated "Login with SSO" text.
+            'ssoProviders' => array_map(
+                static fn (Sw6OidcProviderEntity $provider): array => [
+                    'id' => $provider->getId(),
+                    'label' => $provider->getDisplayName(),
+                ],
+                $this->providerResolver->getVisibleProviders('admin', $context),
+            ),
             'passkeyAvailable' => $this->passkeyConfig->isEnabledForAdmin()
                 && $this->passkeyCredentialRepository->existsForUserType('admin', $context),
         ]);

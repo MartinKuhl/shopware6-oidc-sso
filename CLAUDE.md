@@ -129,7 +129,7 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^4.7** (see `TODO.md` for th
 
 **`Twig/`**
 - `AdminEntrypointsExtension` — registers `sw6oidc_admin_scripts()`/`sw6oidc_admin_styles()`, reading the plugin's own Vite `entrypoints.json` directly (Pentatrion's helper only resolves Shopware's own pre-registered bundle name). Forces the plugin's admin JS to load on the pre-auth login screen, which Shopware's normal `loadPlugins()` boot path otherwise skips.
-- `StorefrontLoginOptionsExtension` — registers `sw6oidc_storefront_sso_available(context)` / `sw6oidc_storefront_passkey_available(context)`, used by the storefront login template override to conditionally show the SSO/Passkey buttons.
+- `StorefrontLoginOptionsExtension` — registers `sw6oidc_storefront_sso_providers(context)` (one `{id, label}` per visible customer-scoped provider, `label` falling back to a generic translated string only when a provider has no `displayName`) / `sw6oidc_storefront_passkey_available(context)`, used by the storefront login template override to render one SSO button per provider plus the Passkey button.
 
 **`Sw6Oidc.php`** — plugin bootstrap; no custom `install()`/`activate()`/`deactivate()`. `uninstall()` drops all 5 tables (FK-safe order) unless the admin checks "keep user data" in the uninstall dialog.
 

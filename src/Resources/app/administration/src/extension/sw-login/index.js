@@ -30,7 +30,8 @@ Component.override('sw-login-login', {
             sw6oidcExchangeError: null,
             sw6oidcPasskeyError: null,
             sw6oidcPasskeyPending: false,
-            sw6oidcSsoAvailable: false,
+            /** @type {Array<{id: string, label: string|null}>} one entry per visible admin-scoped provider */
+            sw6oidcSsoProviders: [],
             sw6oidcPasskeyAvailable: false,
         };
     },
@@ -97,8 +98,18 @@ Component.override('sw-login-login', {
             }
         },
 
-        sw6oidcStartLogin() {
-            window.location.href = '/api/sw6oidc/admin/login';
+        sw6oidcStartLogin(providerId) {
+            window.location.href = `/api/sw6oidc/admin/login?providerId=${encodeURIComponent(providerId)}`;
+        },
+
+        /**
+         * Falls back to the generic translated string only when this
+         * specific provider has no displayName set - a shop with more than
+         * one active admin provider otherwise has no way to tell their
+         * buttons apart.
+         */
+        sw6oidcSsoButtonLabel(provider) {
+            return provider.label || this.sw6oidcTranslate('sw6oidc.login.ssoButton', 'Login with SSO');
         },
 
         /**
@@ -117,9 +128,9 @@ Component.override('sw-login-login', {
                     return;
                 }
 
-                const { ssoAvailable, passkeyAvailable } = await response.json();
+                const { ssoProviders, passkeyAvailable } = await response.json();
 
-                this.sw6oidcSsoAvailable = Boolean(ssoAvailable);
+                this.sw6oidcSsoProviders = Array.isArray(ssoProviders) ? ssoProviders : [];
                 this.sw6oidcPasskeyAvailable = Boolean(passkeyAvailable);
             } catch (exception) {
                 // eslint-disable-next-line no-console

@@ -370,6 +370,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
+            <argument type="service" id="Symfony\Contracts\Translation\TranslatorInterface" />
             <tag name="twig.extension" />
         </service>
     </services>

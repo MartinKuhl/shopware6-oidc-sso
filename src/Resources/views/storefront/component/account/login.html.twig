@@ -19,10 +19,10 @@
 {% block component_account_login_form %}
     {{ parent() }}
 
-    {% set sw6oidcSsoAvailable = sw6oidc_storefront_sso_available(context) %}
+    {% set sw6oidcSsoProviders = sw6oidc_storefront_sso_providers(context) %}
     {% set sw6oidcPasskeyAvailable = sw6oidc_storefront_passkey_available(context) %}
 
-    {% if sw6oidcSsoAvailable or sw6oidcPasskeyAvailable %}
+    {% if sw6oidcSsoProviders is not empty or sw6oidcPasskeyAvailable %}
         {#
             Bootstrap 5 (this theme ships 5.3.8) removed `.btn-block` -
             it silently does nothing here, so both buttons fell back to
@@ -32,12 +32,19 @@
             consistent spacing, no per-button width/margin classes needed.
         #}
         <div class="sw6oidc-login-actions d-grid gap-2 mt-3">
-            {% if sw6oidcSsoAvailable %}
-                <a href="{{ path('frontend.sw6oidc.login', { redirectTo: app.request.get('redirectTo') }) }}"
+            {#
+                One button per visible provider (each already carries its own
+                resolved label - the provider's displayName, or the generic
+                translated fallback if that's blank) rather than a single
+                hardcoded "Login with SSO" - a shop with more than one active
+                provider otherwise has no way to tell them apart here.
+            #}
+            {% for sw6oidcSsoProvider in sw6oidcSsoProviders %}
+                <a href="{{ path('frontend.sw6oidc.login', { redirectTo: app.request.get('redirectTo'), providerId: sw6oidcSsoProvider.id }) }}"
                    class="btn btn-secondary">
-                    {{ 'sw6oidc.login.button'|trans|sw_sanitize }}
+                    {{ sw6oidcSsoProvider.label|sw_sanitize }}
                 </a>
-            {% endif %}
+            {% endfor %}
 
             {% if sw6oidcPasskeyAvailable %}
                 <button type="button"

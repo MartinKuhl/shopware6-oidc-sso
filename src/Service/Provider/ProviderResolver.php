@@ -52,26 +52,29 @@ class ProviderResolver
     }
 
     /**
-     * Whether the "Login with SSO" button should be shown for this login
-     * type at all. Deliberately a separate check from getActiveProviders():
+     * The providers whose SSO button should actually be shown for this login
+     * type — deliberately a separate check from getActiveProviders():
      * "active" only reflects isActive/loginType, not the independent
      * show_customer_link/show_admin_link visibility toggle — a provider can
      * be active (and its login route fully reachable) while its button is
      * hidden from the login page, e.g. for an IdP an admin wants available
      * but not advertised. Only ever gates the button's visibility, not the
      * login route itself, which stays reachable by direct URL regardless.
+     * Already sorted by sortOrder via getActiveProviders().
+     *
+     * @return Sw6OidcProviderEntity[]
      */
+    public function getVisibleProviders(string $loginType, Context $context): array
+    {
+        return array_values(array_filter(
+            $this->getActiveProviders($loginType, $context),
+            static fn (Sw6OidcProviderEntity $provider): bool => $loginType === 'admin' ? $provider->isShowAdminLink() : $provider->isShowCustomerLink(),
+        ));
+    }
+
     public function hasVisibleProvider(string $loginType, Context $context): bool
     {
-        foreach ($this->getActiveProviders($loginType, $context) as $provider) {
-            $visible = $loginType === 'admin' ? $provider->isShowAdminLink() : $provider->isShowCustomerLink();
-
-            if ($visible) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->getVisibleProviders($loginType, $context) !== [];
     }
 
     /**

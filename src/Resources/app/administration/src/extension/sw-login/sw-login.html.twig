@@ -26,19 +26,27 @@
     same as it does for the real "Anmelden" button right above.
 #}
 <div
-    v-if="sw6oidcSsoAvailable || sw6oidcPasskeyAvailable"
+    v-if="sw6oidcSsoProviders.length || sw6oidcPasskeyAvailable"
     class="sw6oidc-login-actions"
 >
+    {#
+        One button per visible admin-scoped provider - each labeled with its
+        own displayName (sw6oidcSsoButtonLabel() falls back to the generic
+        translated text only when a provider has none), rather than a single
+        button that only ever reaches whichever provider happens to resolve
+        as the "default" one.
+    #}
     <mt-button
-        v-if="sw6oidcSsoAvailable"
+        v-for="provider in sw6oidcSsoProviders"
+        :key="provider.id"
         class="sw6oidc-login-actions__sso-button"
         variant="primary"
         size="default"
         :block="true"
         type="button"
-        @click="sw6oidcStartLogin"
+        @click="sw6oidcStartLogin(provider.id)"
     >
-        {{ sw6oidcTranslate('sw6oidc.login.ssoButton', 'Login with SSO') }}
+        {{ sw6oidcSsoButtonLabel(provider) }}
     </mt-button>
 
     <mt-button

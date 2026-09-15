@@ -1,12 +1,20 @@
-.sw6oidc-oauth-card {
-    // .mt-field__label (double underscore, BEM-child of .mt-field) is what
-    // mt-text-field/mt-select/mt-number-field render their own label
-    // through - NOT the same thing as the standalone .mt-field-label
-    // (single dash) component mt-switch/mt-datepicker use for theirs.
-    // Targeting the wrong one is why an earlier version of this rule
-    // bolded the "Public Client" switch's label instead of the plain
-    // text/select fields' labels this was actually meant for.
-    .mt-field__label {
+// Shared marker for "bold every plain field's label in this card" - applied
+// to both the Allgemein and OAuth-/OIDC-Einstellungen cards. Two different
+// label classes need targeting, not one:
+//   - .mt-field__label (double underscore): mt-text-field/mt-number-field
+//     (auto-switched, non-deprecated by default) render their label through
+//     this shared mt-base-field markup.
+//   - .sw-field__label (single dash, "sw-" prefix): sw-single-select never
+//     auto-switches to an "mt-select" - it still goes through the older
+//     sw-select-base -> sw-block-field -> sw-base-field chain, which uses
+//     this older, differently-named class instead.
+// Deliberately NOT .mt-field-label (single dash, "mt-" prefix) - that's yet
+// another, unrelated component (MtFieldLabel) that mt-switch/mt-datepicker
+// use for their own label, and switch labels ("Public Client", "Aktiv", ...)
+// are meant to stay regular weight here.
+.sw6oidc-bold-field-labels {
+    .mt-field__label,
+    .sw-field__label {
         font-weight: var(--font-weight-bold);
     }
 }

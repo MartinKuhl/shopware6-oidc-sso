@@ -19,7 +19,7 @@
     {% block sw6oidc_provider_detail_content %}
     <template #content>
         <sw-card-view v-if="provider">
-            <sw-card :title="$tc('sw6oidc.provider.detail.cardGeneral')">
+            <sw-card class="sw6oidc-bold-field-labels" :title="$tc('sw6oidc.provider.detail.cardGeneral')">
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-text-field v-model="provider.appName" :label="$tc('sw6oidc.provider.detail.appName')" required />
                     <sw-text-field v-model="provider.displayName" :label="$tc('sw6oidc.provider.detail.displayName')" />
@@ -39,12 +39,26 @@
                 </sw-container>
             </sw-card>
 
-            <sw-card class="sw6oidc-oauth-card" :title="$tc('sw6oidc.provider.detail.cardOAuth')">
+            <sw-card class="sw6oidc-bold-field-labels" :title="$tc('sw6oidc.provider.detail.cardOAuth')">
                 <sw-container columns="1fr 1fr" gap="0 30px">
-                    <sw-text-field v-model="provider.clientId" :label="$tc('sw6oidc.provider.detail.clientId')" required />
-                    <sw-password-field v-model="provider.clientSecret" :label="$tc('sw6oidc.provider.detail.clientSecret')" required />
+                    <sw-text-field
+                        v-model="provider.clientId"
+                        :label="$tc('sw6oidc.provider.detail.clientId')"
+                        :help-text="$tc('sw6oidc.provider.detail.clientIdHelp')"
+                        required
+                    />
+                    <sw-password-field
+                        v-model="provider.clientSecret"
+                        :label="$tc('sw6oidc.provider.detail.clientSecret')"
+                        :help-text="$tc('sw6oidc.provider.detail.clientSecretHelp')"
+                        required
+                    />
                 </sw-container>
-                <sw-text-field v-model="provider.wellKnownConfigUrl" :label="$tc('sw6oidc.provider.detail.wellKnownConfigUrl')" />
+                <sw-text-field
+                    v-model="provider.wellKnownConfigUrl"
+                    :label="$tc('sw6oidc.provider.detail.wellKnownConfigUrl')"
+                    :help-text="$tc('sw6oidc.provider.detail.wellKnownConfigUrlHelp')"
+                />
 
                 {% block sw6oidc_provider_detail_discovery_actions %}
                 <sw-container columns="max-content max-content" gap="0 16px" style="margin-bottom: 16px;">
@@ -85,30 +99,88 @@
                 {% endblock %}
 
                 <sw-container columns="1fr 1fr" gap="0 30px">
-                    <sw-text-field v-model="provider.authorizeEndpoint" :label="$tc('sw6oidc.provider.detail.authorizeEndpoint')" />
-                    <sw-text-field v-model="provider.accessTokenEndpoint" :label="$tc('sw6oidc.provider.detail.accessTokenEndpoint')" />
+                    <sw-text-field
+                        v-model="provider.authorizeEndpoint"
+                        :label="$tc('sw6oidc.provider.detail.authorizeEndpoint')"
+                        :help-text="$tc('sw6oidc.provider.detail.authorizeEndpointHelp')"
+                    />
+                    <sw-text-field
+                        v-model="provider.accessTokenEndpoint"
+                        :label="$tc('sw6oidc.provider.detail.accessTokenEndpoint')"
+                        :help-text="$tc('sw6oidc.provider.detail.accessTokenEndpointHelp')"
+                    />
                 </sw-container>
                 <sw-container columns="1fr 1fr" gap="0 30px">
-                    <sw-text-field v-model="provider.userInfoEndpoint" :label="$tc('sw6oidc.provider.detail.userInfoEndpoint')" />
-                    <sw-text-field v-model="provider.jwksEndpoint" :label="$tc('sw6oidc.provider.detail.jwksEndpoint')" />
+                    <sw-text-field
+                        v-model="provider.userInfoEndpoint"
+                        :label="$tc('sw6oidc.provider.detail.userInfoEndpoint')"
+                        :help-text="$tc('sw6oidc.provider.detail.userInfoEndpointHelp')"
+                    />
+                    <sw-text-field
+                        v-model="provider.jwksEndpoint"
+                        :label="$tc('sw6oidc.provider.detail.jwksEndpoint')"
+                        :help-text="$tc('sw6oidc.provider.detail.jwksEndpointHelp')"
+                    />
                 </sw-container>
                 <sw-container columns="1fr 1fr" gap="0 30px">
-                    <sw-text-field v-model="provider.endSessionEndpoint" :label="$tc('sw6oidc.provider.detail.endSessionEndpoint')" />
-                    <sw-text-field v-model="provider.revocationEndpoint" :label="$tc('sw6oidc.provider.detail.revocationEndpoint')" />
+                    <sw-text-field
+                        v-model="provider.endSessionEndpoint"
+                        :label="$tc('sw6oidc.provider.detail.endSessionEndpoint')"
+                        :help-text="$tc('sw6oidc.provider.detail.endSessionEndpointHelp')"
+                    />
+                    <sw-text-field
+                        v-model="provider.revocationEndpoint"
+                        :label="$tc('sw6oidc.provider.detail.revocationEndpoint')"
+                        :help-text="$tc('sw6oidc.provider.detail.revocationEndpointHelp')"
+                    />
                 </sw-container>
                 <sw-container columns="1fr 1fr 1fr" gap="0 30px">
-                    <sw-text-field v-model="provider.issuer" :label="$tc('sw6oidc.provider.detail.issuer')" />
-                    <sw-text-field v-model="provider.scope" :label="$tc('sw6oidc.provider.detail.scope')" />
-                    <sw-text-field v-model="provider.groupAttribute" :label="$tc('sw6oidc.provider.detail.groupAttribute')" />
+                    <sw-text-field
+                        v-model="provider.issuer"
+                        :label="$tc('sw6oidc.provider.detail.issuer')"
+                        :help-text="$tc('sw6oidc.provider.detail.issuerHelp')"
+                    />
+                    <sw-text-field
+                        v-model="provider.scope"
+                        :label="$tc('sw6oidc.provider.detail.scope')"
+                        :help-text="$tc('sw6oidc.provider.detail.scopeHelp')"
+                    />
+                    <sw-text-field
+                        v-model="provider.groupAttribute"
+                        :label="$tc('sw6oidc.provider.detail.groupAttribute')"
+                        :help-text="$tc('sw6oidc.provider.detail.groupAttributeHelp')"
+                    />
                 </sw-container>
                 <sw-container columns="1fr 1fr 1fr" gap="0 30px">
-                    <sw-single-select v-model:value="provider.pkceFlow" :label="$tc('sw6oidc.provider.detail.pkceFlow')" :options="pkceFlowOptions" />
-                    <sw-single-select v-model:value="provider.claimEncoding" :label="$tc('sw6oidc.provider.detail.claimEncoding')" :options="claimEncodingOptions" />
-                    <sw-switch-field v-model:value="provider.publicClient" :label="$tc('sw6oidc.provider.detail.publicClient')" />
+                    <sw-single-select
+                        v-model:value="provider.pkceFlow"
+                        :label="$tc('sw6oidc.provider.detail.pkceFlow')"
+                        :help-text="$tc('sw6oidc.provider.detail.pkceFlowHelp')"
+                        :options="pkceFlowOptions"
+                    />
+                    <sw-single-select
+                        v-model:value="provider.claimEncoding"
+                        :label="$tc('sw6oidc.provider.detail.claimEncoding')"
+                        :help-text="$tc('sw6oidc.provider.detail.claimEncodingHelp')"
+                        :options="claimEncodingOptions"
+                    />
+                    <sw-switch-field
+                        v-model:value="provider.publicClient"
+                        :label="$tc('sw6oidc.provider.detail.publicClient')"
+                        :help-text="$tc('sw6oidc.provider.detail.publicClientHelp')"
+                    />
                 </sw-container>
                 <sw-container columns="1fr 1fr" gap="0 30px">
-                    <sw-number-field v-model="provider.httpTimeout" :label="$tc('sw6oidc.provider.detail.httpTimeout')" />
-                    <sw-number-field v-model="provider.jwksCacheTtl" :label="$tc('sw6oidc.provider.detail.jwksCacheTtl')" />
+                    <sw-number-field
+                        v-model="provider.httpTimeout"
+                        :label="$tc('sw6oidc.provider.detail.httpTimeout')"
+                        :help-text="$tc('sw6oidc.provider.detail.httpTimeoutHelp')"
+                    />
+                    <sw-number-field
+                        v-model="provider.jwksCacheTtl"
+                        :label="$tc('sw6oidc.provider.detail.jwksCacheTtl')"
+                        :help-text="$tc('sw6oidc.provider.detail.jwksCacheTtlHelp')"
+                    />
                 </sw-container>
 
                 {% block sw6oidc_provider_detail_live_test %}
