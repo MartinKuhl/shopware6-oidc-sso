@@ -20,6 +20,12 @@ final readonly class MappedProfile
         /** normalized via GenderMapper before this DTO is built */
         public ?string $salutationTechnicalName = null,
         public ?string $phone = null,
+        /** raw claim value, e.g. "de-DE" */
+        public ?string $locale = null,
+        /** raw claim value, IANA identifier, e.g. "Europe/Berlin" */
+        public ?string $zoneinfo = null,
+        /** raw claim value, a URL to the profile picture */
+        public ?string $picture = null,
         public ?AddressProfile $billingAddress = null,
         public ?AddressProfile $shippingAddress = null,
         /** @var string[] */

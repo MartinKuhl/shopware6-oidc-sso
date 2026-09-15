@@ -29,6 +29,9 @@ class AttributeMapper
         Attr::TYPE_BIRTHDAY => 'birthdate',
         Attr::TYPE_GENDER => 'gender',
         Attr::TYPE_PHONE => 'phone_number',
+        Attr::TYPE_LOCALE => 'locale',
+        Attr::TYPE_ZONEINFO => 'zoneinfo',
+        Attr::TYPE_PICTURE => 'picture',
     ];
 
     public function __construct(
@@ -91,6 +94,9 @@ class AttributeMapper
             birthday: $read(Attr::TYPE_BIRTHDAY),
             salutationTechnicalName: $this->genderMapper->toSalutationTechnicalName($read(Attr::TYPE_GENDER)),
             phone: $read(Attr::TYPE_PHONE),
+            locale: $read(Attr::TYPE_LOCALE),
+            zoneinfo: $read(Attr::TYPE_ZONEINFO),
+            picture: $read(Attr::TYPE_PICTURE),
             billingAddress: $billingAddress->isEmpty() ? null : $billingAddress,
             shippingAddress: $shippingAddress->isEmpty() ? null : $shippingAddress,
             groups: $groups,

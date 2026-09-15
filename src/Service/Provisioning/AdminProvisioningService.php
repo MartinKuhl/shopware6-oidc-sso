@@ -6,6 +6,8 @@ use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Content\Media\File\FileFetcher;
+use Shopware\Core\Content\Media\MediaService;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -28,6 +30,9 @@ class AdminProvisioningService
         private readonly EntityRepository $localeRepository,
         private readonly GroupMappingResolver $groupMappingResolver,
         private readonly UserProviderBindingService $bindingService,
+        private readonly MediaService $mediaService,
+        private readonly FileFetcher $fileFetcher,
+        private readonly TimeZoneValidator $timeZoneValidator,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -106,9 +111,9 @@ class AdminProvisioningService
     {
         $userId = Uuid::randomHex();
 
-        $this->userRepository->create([[
+        $payload = [
             'id' => $userId,
-            'localeId' => $this->resolveDefaultLocaleId($context),
+            'localeId' => $this->resolveLocaleId($profile->locale, $context),
             'username' => $this->resolveUniqueUsername($profile, $context),
             'firstName' => $profile->firstName ?? $profile->email,
             'lastName' => $profile->lastName ?? '-',
@@ -117,7 +122,23 @@ class AdminProvisioningService
             'active' => true,
             'admin' => $isSuperadmin,
             'aclRoles' => $isSuperadmin ? [] : [['id' => $aclRoleId]],
-        ]], $context);
+        ];
+
+        $timeZone = $this->resolveTimeZone($profile->zoneinfo);
+
+        if ($timeZone !== null) {
+            $payload['timeZone'] = $timeZone;
+        }
+
+        $this->userRepository->create([$payload], $context);
+
+        if ($profile->picture !== null) {
+            $avatarId = $this->syncAvatar($userId, $profile->picture, null, $context);
+
+            if ($avatarId !== null) {
+                $this->userRepository->update([['id' => $userId, 'avatarId' => $avatarId]], $context);
+            }
+        }
 
         $this->logger->info('sw6oidc: JIT-created Administration user via OIDC.', [
             'providerId' => $provider->getId(),
@@ -166,7 +187,7 @@ class AdminProvisioningService
      * is left alone rather than overwritten, same rationale as
      * CustomerProvisioningService::syncExisting(). Administration users
      * have no birthday/gender/salutation fields, unlike customers, so this
-     * only ever touches first/last name.
+     * only touches first/last name plus locale/timezone/avatar.
      */
     private function syncProfile(string $userId, MappedProfile $profile, Context $context): void
     {
@@ -180,8 +201,73 @@ class AdminProvisioningService
             $payload['lastName'] = $profile->lastName;
         }
 
+        if ($profile->locale !== null) {
+            $payload['localeId'] = $this->resolveLocaleId($profile->locale, $context);
+        }
+
+        $timeZone = $this->resolveTimeZone($profile->zoneinfo);
+
+        if ($timeZone !== null) {
+            $payload['timeZone'] = $timeZone;
+        }
+
+        if ($profile->picture !== null) {
+            $existing = $this->userRepository->search(new Criteria([$userId]), $context)->first();
+            \assert($existing instanceof UserEntity);
+
+            $avatarId = $this->syncAvatar($userId, $profile->picture, $existing->getAvatarId(), $context);
+
+            if ($avatarId !== null) {
+                $payload['avatarId'] = $avatarId;
+            }
+        }
+
         if (\count($payload) > 1) {
             $this->userRepository->update([$payload], $context);
+        }
+    }
+
+    /**
+     * Fetches the picture claim's URL and imports it as (or overwrites) the
+     * user's avatar Media entity, reusing Shopware core's own SSRF-hardened
+     * FileFetcher (NoPrivateNetworkHttpClient + blocked-subnet resolver,
+     * gated by the core.media.enableUrlUploadFeature/enableUrlValidation
+     * system config). A bad/unreachable picture claim must never break
+     * login, so any failure is logged and swallowed, returning the
+     * previous avatar id (if any) unchanged.
+     */
+    private function syncAvatar(string $userId, string $pictureUrl, ?string $existingAvatarId, Context $context): ?string
+    {
+        $tempFile = tempnam(sys_get_temp_dir(), 'sw6oidc_avatar_');
+
+        if ($tempFile === false) {
+            return $existingAvatarId;
+        }
+
+        try {
+            $mediaFile = $this->fileFetcher->fetchFromURL($pictureUrl, $tempFile);
+
+            return $this->mediaService->saveMediaFile(
+                $mediaFile,
+                'sw6oidc-avatar-' . $userId,
+                $context,
+                null,
+                $existingAvatarId,
+                true,
+            );
+        } catch (\Throwable $e) {
+            $this->logger->warning('sw6oidc: failed to import Administration user avatar from picture claim.', [
+                'userId' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $existingAvatarId;
+        } finally {
+            if (isset($mediaFile)) {
+                $this->fileFetcher->cleanUpTempFile($mediaFile);
+            } elseif (is_file($tempFile)) {
+                unlink($tempFile);
+            }
         }
     }
 
@@ -209,8 +295,25 @@ class AdminProvisioningService
         return $this->userRepository->searchIds($criteria, $context)->getTotal() > 0;
     }
 
-    private function resolveDefaultLocaleId(Context $context): string
+    /**
+     * Resolves the `locale` claim (e.g. "de-DE") against an exact `Locale.code`
+     * match; falls back to the previous hardcoded "en-GB"-or-first-available
+     * behavior when the claim is absent or doesn't match any known locale.
+     */
+    private function resolveLocaleId(?string $localeClaim, Context $context): string
     {
+        if ($localeClaim !== null) {
+            $criteria = new Criteria();
+            $criteria->addFilter(new EqualsFilter('code', $localeClaim));
+            $criteria->setLimit(1);
+
+            $id = $this->localeRepository->searchIds($criteria, $context)->firstId();
+
+            if ($id !== null) {
+                return $id;
+            }
+        }
+
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('code', 'en-GB'));
         $criteria->setLimit(1);
@@ -225,5 +328,16 @@ class AdminProvisioningService
         \assert($fallback !== null);
 
         return $fallback;
+    }
+
+    /**
+     * Validates the `zoneinfo` claim against PHP's known IANA identifiers
+     * (the same set Shopware's own TimeZoneFieldSerializer validates
+     * against) — returns null (leave the field untouched) for a missing or
+     * malformed claim rather than letting the DAL write fail the login.
+     */
+    private function resolveTimeZone(?string $zoneinfoClaim): ?string
+    {
+        return $this->timeZoneValidator->isValid($zoneinfoClaim) ? $zoneinfoClaim : null;
     }
 }

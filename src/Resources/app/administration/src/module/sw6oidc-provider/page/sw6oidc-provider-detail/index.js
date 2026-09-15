@@ -122,6 +122,7 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         attributeTypeOptions() {
             return [
                 'email', 'username', 'firstname', 'lastname', 'birthday', 'gender', 'phone',
+                'locale', 'zoneinfo', 'picture',
                 'billing_street', 'billing_zipcode', 'billing_city', 'billing_state', 'billing_country', 'billing_phone',
                 'shipping_street', 'shipping_zipcode', 'shipping_city', 'shipping_state', 'shipping_country', 'shipping_phone',
             ].map((value) => ({ value, label: this.$tc(`sw6oidc.provider.detail.attributeType.${value}`) }));

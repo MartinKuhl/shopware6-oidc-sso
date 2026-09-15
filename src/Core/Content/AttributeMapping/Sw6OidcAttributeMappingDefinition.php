@@ -29,6 +29,9 @@ class Sw6OidcAttributeMappingDefinition extends EntityDefinition
     public const TYPE_BIRTHDAY = 'birthday';
     public const TYPE_GENDER = 'gender';
     public const TYPE_PHONE = 'phone';
+    public const TYPE_LOCALE = 'locale';
+    public const TYPE_ZONEINFO = 'zoneinfo';
+    public const TYPE_PICTURE = 'picture';
     public const TYPE_BILLING_STREET = 'billing_street';
     public const TYPE_BILLING_ZIPCODE = 'billing_zipcode';
     public const TYPE_BILLING_CITY = 'billing_city';

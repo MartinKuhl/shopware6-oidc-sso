@@ -126,6 +126,8 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\GenderMapper" />
 
+        <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\TimeZoneValidator" />
+
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\CountryResolver">
             <argument type="service" id="country.repository" />
         </service>
@@ -150,6 +152,9 @@
             <argument type="service" id="locale.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\GroupMappingResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="Shopware\Core\Content\Media\MediaService" />
+            <argument type="service" id="Shopware\Core\Content\Media\File\FileFetcher" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\TimeZoneValidator" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
 
