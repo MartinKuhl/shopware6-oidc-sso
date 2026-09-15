@@ -122,6 +122,9 @@ class CustomerProvisioningService
 
         $billing = $profile->billingAddress;
 
+        $billingCountryId = $this->countryResolver->resolveCountryId($billing?->country, $context)
+            ?? $salesChannelContext->getSalesChannel()->getCountryId();
+
         // $billing is genuinely nullable (no billing address claim mapped) -
         // PHPStan's nullsafe.neverNull flags each `?->` below as
         // "unnecessary" even in a minimal repro where $billing is narrowed
@@ -138,8 +141,8 @@ class CustomerProvisioningService
             'zipcode' => $billing?->zipcode ?? '-', // @phpstan-ignore nullsafe.neverNull
             'city' => $billing?->city ?? '-', // @phpstan-ignore nullsafe.neverNull
             'phoneNumber' => $billing?->phone ?? $profile->phone, // @phpstan-ignore nullsafe.neverNull
-            'countryId' => $this->countryResolver->resolveCountryId($billing?->country, $context)
-                ?? $salesChannelContext->getSalesChannel()->getCountryId(),
+            'countryId' => $billingCountryId,
+            'countryStateId' => $this->countryResolver->resolveCountryStateId($billing?->state, $billingCountryId, $context),
         ];
 
         $customerPayload = [
@@ -166,6 +169,9 @@ class CustomerProvisioningService
             $shippingAddressId = Uuid::randomHex();
             $shipping = $profile->shippingAddress;
 
+            $shippingCountryId = $this->countryResolver->resolveCountryId($shipping->country, $context)
+                ?? $salesChannelContext->getSalesChannel()->getCountryId();
+
             $customerPayload['addresses'][] = [
                 'id' => $shippingAddressId,
                 'customerId' => $customerId,
@@ -175,8 +181,8 @@ class CustomerProvisioningService
                 'zipcode' => $shipping->zipcode ?? '-',
                 'city' => $shipping->city ?? '-',
                 'phoneNumber' => $shipping->phone,
-                'countryId' => $this->countryResolver->resolveCountryId($shipping->country, $context)
-                    ?? $salesChannelContext->getSalesChannel()->getCountryId(),
+                'countryId' => $shippingCountryId,
+                'countryStateId' => $this->countryResolver->resolveCountryStateId($shipping->state, $shippingCountryId, $context),
             ];
             $customerPayload['defaultShippingAddressId'] = $shippingAddressId;
         }
@@ -198,11 +204,17 @@ class CustomerProvisioningService
      * profile) or a group mapping that doesn't resolve is simply left
      * alone, never overwritten with a placeholder — this is a refresh of
      * whatever the IdP actually provided, not a reset to defaults. Address
-     * sync only ever updates the customer's *existing* default billing
-     * address in place (never creates one here) — this method never grows
-     * to be a rerun of the full create() path, which is unaware of the
-     * pre-existing customer_address invariants (customerId, all Shopware-
-     * required fields) an update to a currently-nonexistent id would need.
+     * sync only ever updates the customer's *existing* default billing/
+     * shipping addresses in place (never creates one here) — this method
+     * never grows to be a rerun of the full create() path, which is unaware
+     * of the pre-existing customer_address invariants (customerId, all
+     * Shopware-required fields) an update to a currently-nonexistent id
+     * would need. Shipping is skipped entirely when it's the same address
+     * row as billing (create() only ever splits them into two rows when a
+     * distinct shipping address was actually mapped) — syncing it a second
+     * time from separate shipping-claim data would otherwise overwrite that
+     * one shared row with two different, possibly conflicting sets of
+     * values in the same update call.
      */
     private function syncExisting(
         Sw6OidcProviderEntity $provider,
@@ -244,10 +256,27 @@ class CustomerProvisioningService
         }
 
         if ($provider->isSyncCustomerAddressOnSso()) {
-            $addressPayload = $this->buildAddressSyncPayload($existing, $profile->billingAddress, $context);
+            $addressPayloads = [];
 
-            if ($addressPayload !== null) {
-                $payload['addresses'] = [$addressPayload];
+            $billingAddressId = $existing->getDefaultBillingAddressId();
+            $billingPayload = $this->buildAddressSyncPayload($billingAddressId, $profile->billingAddress, $context);
+
+            if ($billingPayload !== null) {
+                $addressPayloads[] = $billingPayload;
+            }
+
+            $shippingAddressId = $existing->getDefaultShippingAddressId();
+
+            if ($shippingAddressId !== $billingAddressId) {
+                $shippingPayload = $this->buildAddressSyncPayload($shippingAddressId, $profile->shippingAddress, $context);
+
+                if ($shippingPayload !== null) {
+                    $addressPayloads[] = $shippingPayload;
+                }
+            }
+
+            if ($addressPayloads !== []) {
+                $payload['addresses'] = $addressPayloads;
             }
         }
 
@@ -259,34 +288,46 @@ class CustomerProvisioningService
     /**
      * @return array<string, mixed>|null null if there's nothing mapped to sync
      */
-    private function buildAddressSyncPayload(CustomerEntity $existing, ?AddressProfile $billing, Context $context): ?array
+    private function buildAddressSyncPayload(string $addressId, ?AddressProfile $address, Context $context): ?array
     {
-        if (!$billing instanceof AddressProfile || $billing->isEmpty()) {
+        if (!$address instanceof AddressProfile || $address->isEmpty()) {
             return null;
         }
 
-        $addressPayload = ['id' => $existing->getDefaultBillingAddressId()];
+        $addressPayload = ['id' => $addressId];
 
-        if ($billing->street !== null) {
-            $addressPayload['street'] = $billing->street;
+        if ($address->street !== null) {
+            $addressPayload['street'] = $address->street;
         }
 
-        if ($billing->zipcode !== null) {
-            $addressPayload['zipcode'] = $billing->zipcode;
+        if ($address->zipcode !== null) {
+            $addressPayload['zipcode'] = $address->zipcode;
         }
 
-        if ($billing->city !== null) {
-            $addressPayload['city'] = $billing->city;
+        if ($address->city !== null) {
+            $addressPayload['city'] = $address->city;
         }
 
-        if ($billing->phone !== null) {
-            $addressPayload['phoneNumber'] = $billing->phone;
+        if ($address->phone !== null) {
+            $addressPayload['phoneNumber'] = $address->phone;
         }
 
-        $countryId = $this->countryResolver->resolveCountryId($billing->country, $context);
+        $countryId = $this->countryResolver->resolveCountryId($address->country, $context);
 
         if ($countryId !== null) {
             $addressPayload['countryId'] = $countryId;
+        }
+
+        // State can only be resolved once its country is known - if the
+        // country claim isn't mapped/didn't resolve this login, the state
+        // claim (if any) is simply left unsynced rather than guessed against
+        // whatever country the address currently happens to have.
+        if ($countryId !== null && $address->state !== null) {
+            $countryStateId = $this->countryResolver->resolveCountryStateId($address->state, $countryId, $context);
+
+            if ($countryStateId !== null) {
+                $addressPayload['countryStateId'] = $countryStateId;
+            }
         }
 
         return \count($addressPayload) > 1 ? $addressPayload : null;

@@ -130,6 +130,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\CountryResolver">
             <argument type="service" id="country.repository" />
+            <argument type="service" id="country_state.repository" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeMapper">
