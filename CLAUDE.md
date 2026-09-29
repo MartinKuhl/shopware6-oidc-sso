@@ -33,7 +33,17 @@ bin/console cache:clear
 Schema is **migration-driven**, not `install()`-driven — `Sw6Oidc.php` has no custom `install()`/`activate()`/`deactivate()`, only `uninstall()`. Table creation happens the first time migrations run (automatically during `plugin:install`, or explicitly via):
 ```bash
 bin/console database:migrate Sw6Oidc --all
+bin/console database:migrate-destructive Sw6Oidc --all   # drops removed columns (e.g. sync_on_sso)
 ```
+
+### Provider config export/import (`Console/`, logic in `Service/Config/OidcConfigTransfer`)
+```bash
+bin/console sw6oidc:config:export [--provider-id=<id>] [-o file.json] [--keep-encrypted|--plaintext]
+bin/console sw6oidc:config:import -i file.json|- [--dry-run] [--overwrite] [--skip-unresolved]
+```
+- Versioned JSON (`version: 1`): provider fields + attribute/role mappings; `last_test_*`/timestamps left out. ACL roles/customer groups are exported as `{id, name}` and resolved on import by id, else unique name (otherwise the provider fails, or with `--skip-unresolved` the reference/row is dropped).
+- Client secret **omitted by default**; `--keep-encrypted` exports the stored envelope (only importable where `APP_SECRET` is identical — the field serializer rejects foreign envelopes), `--plaintext` the decrypted value. An import without a secret keeps the stored one; a *new* confidential provider without one fails.
+- Matches providers by `id`; existing ones are skipped unless `--overwrite` (then child mappings are replaced, per-provider transaction). Writes go through the repository, so encryption and `Sw6OidcProviderWriteGuardSubscriber` apply. `--dry-run` wraps the whole import in a rolled-back transaction.
 
 ## Architecture — OIDC flow
 

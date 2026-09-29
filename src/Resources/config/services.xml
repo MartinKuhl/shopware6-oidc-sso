@@ -460,5 +460,27 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
             <tag name="twig.extension" />
         </service>
+
+        <!-- CLI config export/import -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Config\OidcConfigTransfer">
+            <argument type="service" id="sw6oidc_provider.repository" />
+            <argument type="service" id="sw6oidc_attribute_mapping.repository" />
+            <argument type="service" id="sw6oidc_role_mapping.repository" />
+            <argument type="service" id="acl_role.repository" />
+            <argument type="service" id="customer_group.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Console\ExportOidcConfigCommand">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Config\OidcConfigTransfer" />
+            <tag name="console.command" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Console\ImportOidcConfigCommand">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Config\OidcConfigTransfer" />
+            <tag name="console.command" />
+        </service>
     </services>
 </container>
