@@ -176,9 +176,9 @@ Before you build a feature "on top of" one of these, check that it's actually re
 
 If a user signs out at the IdP directly (not through Shopware), nothing tells Shopware to end that session — there's no OIDC Back-Channel Logout endpoint implemented. And logging an admin out of the Administration panel does not redirect to the IdP to end that session there either — only the Storefront/customer logout flow does the full IdP round-trip.
 
-### The atomic cache isn't actually atomic by default
+### The atomic cache is only atomic with Redis
 
-The default `AtomicCacheInterface` implementation does a sequential get-then-delete against Shopware's app cache — fine for a single node, but not safe against a genuine race on the same key across concurrent requests on multiple nodes. A Redis-backed truly-atomic implementation (`RedisAtomicCache`) exists in the codebase but is **not wired into `services.xml`** — a multi-node deployment has to override the DI alias itself. If you're debugging an intermittent "state token already used" error under load on a multi-node deployment, this is the first thing to check.
+Without `SW6OIDC_REDIS_DSN`, `RedisAtomicCache` delegates to a sequential get-then-delete against Shopware's app cache — fine for a single node, but not safe against a genuine race on the same key across concurrent requests on multiple nodes. Multi-node deployments must set `SW6OIDC_REDIS_DSN`; the backend is selected at runtime, so no cache clear is needed after changing it. If you're debugging an intermittent "state token already used" error under load on a multi-node deployment, check that variable first — and the `sw6oidc` log for "Redis ... failed" warnings.
 
 ### Passkeys are locked to one domain
 
@@ -198,6 +198,5 @@ Roughly in order of "would most reduce risk right now":
 2. **Wire up or remove the dead schema/config surface.** The unused `sync_*_on_sso` columns (besides admin role), `transform_function`/`transform_params`, and the non-functional debug-logging toggle create a false impression of functionality. Either implement them or remove them so the admin UI doesn't lie about what the plugin does.
 3. **Add integration tests against a real (or containerized) Shopware instance.** Right now correctness of the actual login flows rests entirely on manual testing. Even a small integration suite covering the happy path for customer OIDC login, admin OIDC login, and one passkey round-trip would catch the regressions unit tests structurally can't.
 4. **Implement OIDC Back-Channel Logout and admin-side RP-initiated logout**, bringing session termination guarantees in line with the Storefront/customer flow and closing the gap where an IdP-side logout or admin-side logout doesn't propagate.
-5. **Wire `RedisAtomicCache` into `services.xml` behind an environment-driven toggle** (or document the manual override step prominently) so multi-node deployments don't discover the single-node caveat the hard way, under production load.
-6. **Add a CHANGELOG.md** — `LICENSE.txt` is already committed (MIT, matching `composer.json`), but there's still no changelog to track what changed between versions as the plugin matures past 0.1.0.
-7. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.
+5. **Add a CHANGELOG.md** — `LICENSE.txt` is already committed (MIT, matching `composer.json`), but there's still no changelog to track what changed between versions as the plugin matures past 0.1.0.
+6. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.

@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PHP_EXTENSIONS: mbstring, dom, fileinfo, gd, intl, pdo_mysql, zip, sodium, curl, ctype, filter, xml
+  PHP_EXTENSIONS: mbstring, dom, fileinfo, gd, intl, pdo_mysql, zip, sodium, curl, ctype, filter, xml, redis
 
 jobs:
   lint:

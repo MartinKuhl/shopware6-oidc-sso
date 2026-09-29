@@ -200,7 +200,7 @@ Every authorization request generates a single-use state token, PKCE code verifi
 
 ### JWT Verification
 
-ID tokens are verified for signature (RS256/384/512 only — HS*/ES* are not supported), expiry, not-before, issuer, audience, and nonce. JWKS keys are fetched and cached per provider.
+ID tokens are verified for signature (RS256/384/512 only — HS*/ES* are not supported), expiry, not-before, issuer, audience, and nonce. JWKS keys are fetched and cached per provider; a failed fetch pauses further fetches for 60s (circuit breaker), and a token signed with a key missing from the cached set triggers one refetch so IdP key rotation doesn't lock users out until the cache expires.
 
 ### Per-User IdP Binding
 
@@ -238,7 +238,7 @@ https://auth.your-domain.example/logout
 - **"Sync on SSO" is per provider, not per attribute** — all five provider-level toggles (customer profile/address/group, admin profile/role) are applied on repeat logins, but there is no per-attribute sync control.
 - **Attribute value transforms are not implemented** — the per-attribute transform function/params fields exist in the schema but are not applied anywhere.
 - **The "Enable debug logging" toggle does not control log verbosity** — the plugin's log level is set via the `SW6OIDC_LOG_LEVEL` environment variable (default `debug`), not this UI toggle. Logs are written to a plugin-specific log file/channel and can contain claim data — handle with the same care as any log containing PII.
-- **Single-node atomic cache by default** — one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. A Redis-backed atomic implementation exists in the codebase but requires a manual dependency-injection override to enable for multi-node/HA deployments.
+- **Single-node atomic cache unless Redis is configured** — without `SW6OIDC_REDIS_DSN`, one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. Multi-node/HA deployments must set `SW6OIDC_REDIS_DSN` (e.g. `redis://:password@redis:6379/2`, or `rediss://` for TLS); it is picked up at runtime.
 - **Early-stage test coverage** — unit tests cover a subset of services (HTTP client, discovery/connection tests, token exchange, attribute mapping, passkey helpers); JWT verification, state/PKCE handling, claims normalization and the provisioning services are still untested, and there is no automated integration testing against a live Shopware instance yet.
 - **No CHANGELOG.md is currently committed** — there's no changelog tracking what changed between versions yet (a `LICENSE.txt` is present).
 

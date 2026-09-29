@@ -10,7 +10,7 @@ use Psr\Log\LoggerInterface;
  * with — mirroring the Magento module's RedisConnectionFactory/RedisAtomicCache.
  *
  * Configured via the `SW6OIDC_REDIS_DSN` environment variable (e.g.
- * redis://[:password@]host:port[/db]). Deliberately a plugin-owned setting rather
+ * redis://[[user]:password@]host:port[/db], or rediss:// for TLS). Deliberately a plugin-owned setting rather
  * than introspecting Shopware's own cache config, since Shopware has no single
  * well-known "the cache backend is Redis at this DSN" parameter to read the way
  * Magento's env.php does — leaving it unset is a fully supported, safe default
@@ -32,7 +32,7 @@ class RedisConnectionFactory
 
         $parts = parse_url($this->dsn);
 
-        if ($parts === false || !isset($parts['host'])) {
+        if ($parts === false || !isset($parts['host']) || !\in_array($parts['scheme'] ?? '', ['redis', 'rediss'], true)) {
             $this->logger->warning('sw6oidc: SW6OIDC_REDIS_DSN is set but could not be parsed; falling back to the cache-pool atomic cache.');
 
             return null;
@@ -40,10 +40,11 @@ class RedisConnectionFactory
 
         try {
             $redis = new \Redis();
-            $redis->connect($parts['host'], $parts['port'] ?? 6379, 1.5);
+            $host = ($parts['scheme'] === 'rediss' ? 'tls://' : '') . $parts['host'];
+            $redis->connect($host, $parts['port'] ?? 6379, 1.5);
 
             if (isset($parts['pass'])) {
-                $redis->auth($parts['pass']);
+                $redis->auth(isset($parts['user']) && $parts['user'] !== '' ? [rawurldecode($parts['user']), rawurldecode($parts['pass'])] : rawurldecode($parts['pass']));
             }
 
             $database = isset($parts['path']) ? (int) ltrim($parts['path'], '/') : 0;
