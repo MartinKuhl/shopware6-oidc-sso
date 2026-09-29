@@ -6,7 +6,7 @@
 
 OpenID Connect (OIDC) and Passkey (WebAuthn) single sign-on for Shopware 6 Storefront customers and Administration users, with just-in-time (JIT) account provisioning and OIDC-group-to-Shopware-role/group mapping.
 
-> **Status**: v0.1.0 — early-stage. This plugin has not yet been exercised against a live Shopware instance in an automated test suite; several settings described below are present in the schema/UI but not yet functional (see [Known Limitations](#known-limitations)). Review that section before relying on this in production.
+> **Status**: v0.1.0 + unreleased changes (see [CHANGELOG.md](CHANGELOG.md)) — early-stage. Unit-tested, but not yet exercised against a live Shopware instance in an automated integration suite. Review [Known Limitations](#known-limitations) before relying on this in production.
 
 ## Why This Plugin?
 
@@ -253,8 +253,7 @@ Client secrets are **encrypted at rest** (libsodium secretbox, key derived from 
 - **"Sync on SSO" is per provider, not per attribute** — all five provider-level toggles (customer profile/address/group, admin profile/role) are applied on repeat logins, but there is no per-attribute sync control.
 - **The "Enable debug logging" toggle does not control log verbosity** — the plugin's log level is set via the `SW6OIDC_LOG_LEVEL` environment variable (default `debug`), not this UI toggle. Logs are written to a plugin-specific log file/channel and can contain claim data — handle with the same care as any log containing PII.
 - **Single-node atomic cache unless Redis is configured** — without `SW6OIDC_REDIS_DSN`, one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. Multi-node/HA deployments must set `SW6OIDC_REDIS_DSN` (e.g. `redis://:password@redis:6379/2`, or `rediss://` for TLS); it is picked up at runtime.
-- **Early-stage test coverage** — unit tests cover a subset of services (HTTP client, discovery/connection tests, token exchange, attribute mapping, passkey helpers); JWT verification, state/PKCE handling, claims normalization and the provisioning services are still untested, and there is no automated integration testing against a live Shopware instance yet.
-- **No CHANGELOG.md is currently committed** — there's no changelog tracking what changed between versions yet (a `LICENSE.txt` is present).
+- **No automated integration tests yet** — the unit suite covers the OIDC core, provisioning, WebAuthn ceremonies and every security component, but nothing runs the full login flows against a live Shopware instance and IdP in CI.
 
 ---
 
@@ -311,10 +310,44 @@ Passkeys are bound to one Relying Party ID (domain). If the RP ID override chang
 
 ---
 
+## Environment Variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SW6OIDC_REDIS_DSN` | *(unset)* | `redis://[[user]:password@]host:port[/db]` or `rediss://…` — truly atomic one-time tokens via Redis; **required for multi-node deployments**. Picked up at runtime. |
+| `SW6OIDC_ALLOW_INSECURE_IDP_URLS` | `0` | `1` allows plain-http IdP URLs and private/loopback addresses (local development IdPs only — disables SSRF protection). |
+| `SW6OIDC_ALLOW_PASSWORD_LOGIN` | `0` | `1` is a break-glass override that re-enables password login even when a provider disables it. |
+| `SW6OIDC_LOG_LEVEL` | `debug` | Log level of the plugin's own log channel (`var/log/sw6oidc-<env>.log`). |
+| `APP_SECRET` | *(Shopware)* | The client-secret encryption key is derived from it — keep it stable. |
+
+## Command-Line Tools
+
+```bash
+# Export providers (incl. attribute/role mappings) as JSON — the client secret is omitted by default
+bin/console sw6oidc:config:export -o providers.json [--provider-id=<id>] [--keep-encrypted|--plaintext]
+
+# Import on another installation — validate first, then apply
+bin/console sw6oidc:config:import -i providers.json --dry-run
+bin/console sw6oidc:config:import -i providers.json [--overwrite] [--skip-unresolved]
+```
+
+`--keep-encrypted` exports the encrypted secret, importable only where `APP_SECRET` is identical; `--plaintext` exports it readable (treat the file as a credential). ACL roles and customer groups are matched by id, then by name. Imports run the same validation as saving in the Administration (SSRF, lockout guard).
+
+## Extension Points (Events)
+
+Subscribe to these (all `ShopwareEvent`s) to customize JIT provisioning:
+
+| Event | When | Can change |
+|---|---|---|
+| `MartinKuhl\Sw6Oidc\Event\AttributeMappingCompletedEvent` | Every OIDC login, after claims were mapped | The mapped profile (`setProfile()`) |
+| `…\CustomerBeforeCreateEvent` / `…\AdminBeforeCreateEvent` | Right before a new account is created | The create payload (`setPayload()`; the admin payload includes `admin`/`aclRoles` — handle with care) |
+| `…\CustomerAfterCreateEvent` / `…\AdminAfterCreateEvent` | After a new account was created and bound | — (read-only) |
+
 ## Documentation
 
 - **Developer Guide**: [CLAUDE.md](CLAUDE.md) — architecture, flow-by-flow internals, directory reference, and known implementation gaps
-- **Migration Notes**: [TODO.md](TODO.md) — remaining roadmap
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
+- **Roadmap**: [TODO.md](TODO.md) — remaining work
 
 ## Version
 

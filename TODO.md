@@ -1,215 +1,53 @@
 # TODO — Feature parity with magento2-oidc-sso
 
-This file tracks the full roadmap to bring `shopware6-oidc-sso` to feature parity
-with its sibling `magento2-oidc-sso` module. Each phase below is intended to be
-one shippable PR. Phases 1–3 have no interdependency and can be done in any
-order; everything from Phase 7 onward is a hard dependency chain (see the
-dependency graph). Check off items as they ship.
+Remaining roadmap to bring `shopware6-oidc-sso` to feature parity with its
+sibling `magento2-oidc-sso` module. Each phase below is intended to be one
+shippable PR. Phase numbers are kept from the original plan so history and
+commit messages stay traceable.
 
-## Dependency graph
+## Already shipped (see CHANGELOG.md)
+
+Phases 0 (webauthn-lib 5.x), 1 (Redis + JWKS circuit breaker), 2 (encrypted
+`client_secret`), 3 (SSRF validation + lockout guard, plus enforcement of the
+`disable_non_oidc_*_login` flags), 4 (attribute transforms; per-attribute
+`sync_on_sso` dropped), 5 (provisioning domain events), 9 (CLI export/import),
+12 (CSP), and the unit-test part of 13. Deviations from the original plan,
+recorded so nobody "fixes" them back:
+
+- **Phase 1:** no `Sw6OidcCachePass` compiler pass. `RedisAtomicCache` is always
+  wired and picks Redis vs. the cache-pool fallback **at runtime** — a
+  compile-time choice would be frozen into Shopware's cached container. Also
+  added: one rate-limited JWKS refetch on signature failure (key rotation).
+- **Phase 2:** the key is derived from `APP_SECRET` only (no dedicated env var),
+  and `client_secret` is write-only over the Admin API (no `ApiAware`).
+- **Phase 3:** SSRF is also enforced at request time (`NoPrivateNetworkHttpClient`),
+  with `SW6OIDC_ALLOW_INSECURE_IDP_URLS=1` as the dev escape hatch; the
+  disable-password-login flags are now actually enforced
+  (`SW6OIDC_ALLOW_PASSWORD_LOGIN=1` break-glass). The subscriber lives in
+  `src/Subscriber/`, matching the existing code layout.
+- **Phase 4:** the per-attribute `sync_on_sso` column was dropped instead of
+  wired (`mapForSync()` not built) — provider-level toggles are the only re-sync
+  gate.
+- **Phase 9:** the export omits the client secret by default
+  (`--keep-encrypted` / `--plaintext` opt in); ACL roles/customer groups are
+  resolved on import by id, then unique name.
+- **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
+  `kernel.response` subscriber that only appends IdP origins to directives an
+  existing policy already declares.
+
+## Dependency graph (remaining)
 
 ```
-Phase 0  Migrate web-auth/webauthn-lib 4.x → 5.x      (no deps, independent of everything else)
-Phase 1  Redis wiring + JWKS circuit breaker          (no deps)
-Phase 2  Encrypt client_secret at rest                (no deps)
-Phase 3  SSRF validation + lockout guard              (no deps)
-Phase 4  Sync-on-SSO toggles + transform functions    (no deps)
-Phase 5  Domain events for JIT provisioning           (needs 4 — same classes)
 Phase 6  Claims-based access-control rules engine     (no deps, own entity)
 Phase 7  Session/subject registry (foundational)      (no deps, but nothing consumes it until 8)
 Phase 8  Rate limiting + Back-Channel Logout          (needs 7)
 Phase 8b Front-Channel Logout                         (needs 7, 8)
 Phase 8c Admin-side RP-initiated logout               (needs 7, 8)
-Phase 9  CLI config export/import                     (needs 2, 3)
 Phase 10 Audit/session-activity log + admin UI         (needs 7, 8, 8b, 8c)
-Phase 11 Health-check/diagnostics + alerting           (needs 2, 3)
-Phase 12 CSP integration                               (no deps; unconfirmed API)
-Phase 13 Test coverage + CI hardening                  (incremental throughout, formalized here)
-Phase 14 Documentation sweep                           (incremental throughout, formalized here)
+Phase 11 Health-check/diagnostics + alerting           (deps 2, 3 shipped — ready)
+Phase 13 Integration test harness (Dex)                (stretch goal)
+Phase 14 Setup guides                                  (optional)
 ```
-
----
-
-## Phase 0 — Migrate `web-auth/webauthn-lib` from `^4.7` to `5.x`
-
-Currently pinned to `^4.7` because the Passkey ceremony code is written
-against the 4.x API. 5.x removed that API entirely:
-
-- `Webauthn\PublicKeyCredentialSourceRepository` (the interface
-  `PasskeyCredentialRepository` implements) no longer exists in 5.x.
-- `AuthenticatorAttestationResponseValidator` / `AuthenticatorAssertionResponseValidator`
-  no longer take a repository in their constructor. Instead, the caller looks
-  up the credential itself and passes it directly into `check()`.
-- The credential model moved from `Webauthn\PublicKeyCredentialSource` to
-  `Webauthn\CredentialRecord`.
-- `check()`'s signature also changed: it now takes a plain `$host` string
-  instead of a PSR-7 `ServerRequestInterface`.
-
-Why bother: 4.x is in maintenance mode; 5.x is where active development and
-security fixes are happening. Magento's sibling module is already on `^5.3`
-with no migration pending — this is a real parity gap, not just tech debt.
-
-- [ ] `src/Service/Passkey/PasskeyCredentialRepository.php` — stop implementing
-      the removed interface; expose plain lookup methods returning
-      `CredentialRecord` instead of `PublicKeyCredentialSource`.
-- [ ] `src/Service/Passkey/WebauthnCeremonyFactory.php` — update the
-      `AuthenticatorAttestationResponseValidator`/`AuthenticatorAssertionResponseValidator`
-      construction to the no-repository-argument constructors.
-- [ ] `src/Service/Passkey/PasskeyRegistrationService.php` and
-      `PasskeyAuthenticationService.php` — do the credential lookup themselves
-      before calling `check()`, and pass a host string instead of the PSR-7
-      request.
-- [ ] `composer.json` — bump `web-auth/webauthn-lib` to `^5.3` once the above
-      compiles and passes tests.
-- [ ] Verify whether the documented webauthn-lib 4.9.3 bug this plugin works
-      around in `PasskeyRegistrationService::buildCreationOptions()` (url-safe
-      vs standard base64 mismatch between `jsonSerialize()`/`createFromArray()`)
-      still exists in 5.x; simplify the workaround if not, keep it if so.
-- [ ] Tests: extend `AdminPasskeyLoginTokenTrackerTest.php`/`PasskeyConfigTest.php`
-      if their fixtures reference removed 4.x types; add coverage for the new
-      lookup-then-`check()` flow in both registration and authentication
-      services (currently untested).
-- [ ] Docs: `CLAUDE.md` Passkey architecture section — update version
-      reference, drop the "why it's deferred" framing; `README.md` — update
-      the dependency version and drop the pin caveat in Known Limitations.
-
----
-
-## Phase 1 — Redis atomic cache wiring + JWKS circuit breaker
-
-**Redis wiring:** `RedisAtomicCache`/`RedisConnectionFactory` already exist in
-`src/Service/Cache/` but aren't wired into `services.xml` — only
-`CachePoolAtomicCache` (single-node) is aliased today. Aliasing must happen at
-container-compile time, not via a runtime `%env()%` default in plain XML.
-
-- [ ] New `src/DependencyInjection/Compiler/Sw6OidcCachePass.php`
-      (`CompilerPassInterface`) — checks whether `SW6OIDC_REDIS_DSN` is set and
-      swaps the `AtomicCacheInterface` alias target from `CachePoolAtomicCache`
-      to `RedisAtomicCache` accordingly. *(verify exact Shopware/Symfony
-      pattern for reading an env var inside a compiler pass at compile time)*
-- [ ] `src/Sw6Oidc.php` — override `build(ContainerBuilder $container)` to
-      register the compiler pass.
-- [ ] `services.xml` — add the missing `RedisAtomicCache` service definition
-      (constructor: `RedisConnectionFactory`, fallback `CachePoolAtomicCache`,
-      logger).
-
-**JWKS circuit breaker:** `JwtVerifier::getJwks()` does a synchronous blocking
-HTTP call on every cache miss with no failure-counting.
-
-- [ ] Modify `src/Service/Jwt/JwtVerifier.php::getJwks()` (or extract
-      `src/Service/Jwt/JwksCircuitBreaker.php`) — store a failure flag in the
-      existing `cache.app` pool (key `sw6oidc_jwks_fail_<sha256(jwksEndpoint)>`,
-      60s TTL) after a failed fetch; short-circuit further fetches while set.
-- [ ] Tests: `RedisAtomicCacheTest.php`, `RedisConnectionFactoryTest.php`,
-      `Sw6OidcCachePassTest.php`, `JwtVerifierCircuitBreakerTest.php`.
-- [ ] Docs: `CLAUDE.md` "Known gaps" — remove the Redis/circuit-breaker
-      bullets; `README.md` — mention `SW6OIDC_REDIS_DSN` auto-wiring.
-
----
-
-## Phase 2 — Encrypt `client_secret` at rest
-
-`client_secret` is currently plaintext on `sw6oidc_provider` (the entity has a
-`// TODO(later phase): encrypt at rest` comment). Magento's sibling module
-encrypts secrets at rest today — this closes that gap.
-
-- [ ] New `src/Service/Security/Sw6OidcEncryptor.php` — wraps
-      `sodium_crypto_secretbox`, key derived from `APP_SECRET` via
-      `sodium_crypto_generichash(...)`. `encrypt()`/`decrypt()` with a
-      `sw6oidc_v1:` envelope prefix; decrypt returns input unchanged + logs a
-      warning on a non-matching/corrupt value. Constructible with just a
-      string (no DI container) so a `Migration` can instantiate it directly.
-- [ ] New `src/Core/Content/Provider/Field/Sw6OidcEncryptedField.php` (marker
-      subclass of `StringField`) + `Sw6OidcEncryptedFieldSerializer.php`
-      (tagged `shopware.field_serializer`) — encrypts on write, decrypts on
-      read, fully transparent to `Sw6OidcProviderEntity::getClientSecret()`.
-- [ ] `Sw6OidcProviderDefinition.php` — change `client_secret` from
-      `StringField` to `Sw6OidcEncryptedField('client_secret', 'clientSecret', 1024)`.
-- [ ] New `src/Migration/Migration<ts>EncryptExistingProviderClientSecrets.php`
-      — data-only migration, idempotent (skips already-`sw6oidc_v1:`-prefixed
-      rows).
-- [ ] `services.xml` — register `Sw6OidcEncryptor` (`%env(APP_SECRET)%`) and
-      the field serializer.
-- [ ] Tests: `Sw6OidcEncryptorTest.php` (round-trip, garbage passthrough),
-      `Sw6OidcEncryptedFieldSerializerTest.php`, migration backfill test.
-- [ ] Docs: `CLAUDE.md` — remove the plaintext-secret gap bullet, add an
-      "Encryption" subsection; `README.md` — drop the plaintext caveat.
-
----
-
-## Phase 3 — SSRF validation + provider save-time lockout guard
-
-- [ ] New `src/Service/Security/SsrfUrlValidator.php` — HTTPS-only, rejects
-      loopback/RFC-1918 hosts (port of Magento's validator).
-- [ ] New `src/EventSubscriber/Provider/Sw6OidcProviderWriteGuardSubscriber.php`
-      — subscribes to `PreWriteValidationEvent` for every DAL write to
-      `sw6oidc_provider`:
-  - [ ] SSRF-validates every endpoint URL field, attaching a field-scoped
-        constraint violation on failure. *(verify exact Shopware 6.7 API for
-        attaching violations to this event)*
-  - [ ] Lockout guard: when a write sets `disable_non_oidc_admin_login`/
-        `disable_non_oidc_customer_login` to true, checks
-        `sw6oidc_user_provider` for at least one bound account; reject the
-        write with a clear violation message if none exist. *(verify whether
-        silent payload mutation is supported here before considering it —
-        default to reject-with-violation)*
-- [ ] `services.xml` — register `SsrfUrlValidator` and the subscriber.
-- [ ] Admin Vue — surface violation messages via existing DAL-error-to-
-      notification plumbing; add a snippet key for the lockout message.
-- [ ] Tests: `SsrfUrlValidatorTest.php`, `Sw6OidcProviderWriteGuardSubscriberTest.php`.
-- [ ] Docs: `CLAUDE.md` — new "Provider save-time validation" subsection; note
-      here that Phases 9/11 must re-validate SSRF immediately before every
-      outbound call, not just rely on save-time checks.
-
----
-
-## Phase 4 — Sync-on-SSO toggles + attribute transform functions
-
-No schema changes — purely wiring up existing dead columns
-(`sync_customer_profile_on_sso`, `sync_customer_address_on_sso`,
-`sync_customer_group_on_sso`, `sync_admin_profile_on_sso`, and per-attribute
-`sync_on_sso`/`transform_function`/`transform_params` on
-`sw6oidc_attribute_mapping`).
-
-- [ ] New `src/Service/Provisioning/AttributeTransformer.php` — `concat`,
-      `split`, `prefix`, `regex_replace` (length-capped at 4096 bytes), never
-      throws (logs + passthrough on error).
-- [ ] Hook into `AttributeMapper::map()`'s claim-read closure to call
-      `apply($mapping->getTransformFunction(), $mapping->getTransformParams() ?? [], $rawValue, $claims)`.
-- [ ] Decide whether per-attribute `sync_on_sso` is still wanted (the UI
-      toggle was removed on purpose in c3f68ad). If yes: add
-      `AttributeMapper::mapForSync()` mapping only rows with `sync_on_sso`
-      true, and use it from the sync paths below. If no: drop the column.
-- [x] `CustomerProvisioningService` — provider-level profile/address/group
-      re-sync, implemented as a single `syncExisting()` gated on
-      `isSyncCustomerProfileOnSso()`/`isSyncCustomerAddressOnSso()`/
-      `isSyncCustomerGroupOnSso()`.
-- [x] `AdminProvisioningService` — `syncProfile()` gated on
-      `isSyncAdminProfileOnSso()` (plus the pre-existing `syncRole()`).
-- [ ] `services.xml` — new `AttributeTransformer` service (dep: `OidcLogger`);
-      `AttributeMapper` gains it as a constructor arg.
-- [ ] Tests: `AttributeTransformerTest.php`, `AttributeMapperTransformTest.php`,
-      `CustomerProvisioningServiceSyncTest.php`, `AdminProvisioningServiceSyncTest.php`
-      (the sync code already shipped without tests).
-- [ ] Docs: `CLAUDE.md` — remove the transform/`sync_on_sso` "known gaps"
-      bullet; add a transform subsection.
-
----
-
-## Phase 5 — Domain events for JIT provisioning
-
-- [ ] New `src/Event/CustomerBeforeCreateEvent.php`, `CustomerAfterCreateEvent.php`,
-      `AdminBeforeCreateEvent.php`, `AdminAfterCreateEvent.php`,
-      `AttributeMappingCompletedEvent.php` (extend
-      `Shopware\Core\Framework\Event\ShopwareEvent`). "Before" events mutable,
-      "after" events read-only snapshots.
-- [ ] `CustomerProvisioningService`/`AdminProvisioningService`/`AttributeMapper`
-      constructors gain `EventDispatcherInterface $eventDispatcher` (Shopware's
-      `event_dispatcher` service); dispatch at the equivalent creation points.
-- [ ] `services.xml` — add `event_dispatcher` argument to the three services.
-- [ ] Tests: dispatch-order tests per service, asserting a before-event
-      listener's mutation is honored.
-- [ ] Docs: `CLAUDE.md` — new "Extension points / events" subsection.
 
 ---
 
@@ -332,26 +170,6 @@ Ships no user-visible behavior by itself — pure plumbing that Phases
 
 ---
 
-## Phase 9 — CLI config export/import
-
-**Depends on Phases 2 and 3.**
-
-- [ ] New `src/Console/ExportOidcConfigCommand.php`
-      (`sw6oidc:config:export [--provider-id=] [--output=]`) — keeps
-      `client_secret` in its encrypted envelope by default; `--plaintext`
-      opt-out for portability testing, documented as insecure.
-- [ ] New `src/Console/ImportOidcConfigCommand.php`
-      (`sw6oidc:config:import --input= [--dry-run] [--overwrite]`) —
-      encrypts plaintext secrets on import; validation is largely free via
-      Phase 3's `PreWriteValidationEvent` subscriber as long as the import
-      goes through the repository.
-- [ ] `services.xml` — register both via `console.command` tag.
-- [ ] Tests: round-trip export→import reproduces original config; secret
-      stays encrypted at every step; `--overwrite`/`--dry-run` semantics.
-- [ ] Docs: `CLAUDE.md` "Development commands" — add the two new commands.
-
----
-
 ## Phase 10 — Audit/session-activity log + admin UI
 
 **Depends on Phases 7, 8, 8b, 8c.** Decision: add a **new** table rather than
@@ -411,92 +229,30 @@ structurally incompatible with "one row per login").
 
 ---
 
-## Phase 12 — CSP integration
+## Phase 13 — Integration test harness (remaining part)
 
-**Built against an unconfirmed API** — whether Shopware 6.7 exposes a clean
-CSP-contribution extension point (like Magento's `PolicyCollectorInterface`)
-or only a fixed core-owned header.
+The unit suite is in place (OIDC core, provisioning, WebAuthn ceremonies,
+every security component). Still open:
 
-Current state: the only CSP handling is ad hoc — `OidcProviderAdminController`
-sets its own `Content-Security-Policy` header on one response when none is
-present. Fold that into whichever path is chosen below.
-
-- [ ] Investigate: does a collector/tagged-service extension point exist?
-  - [ ] If yes — implement against it directly (dedupe HTTPS hosts from all
-        active providers' endpoints, contribute to `form-action`/`connect-src`/
-        `frame-src`/`img-src`).
-  - [ ] If no — a `KernelEvents::RESPONSE` subscriber with lower priority than
-        core's `CoreSubscriber`, string-parsing and re-setting the header.
-- [ ] New `src/Service/Security/Sw6OidcCspHostCollector.php` — host-collection
-      logic, independent of which wiring path is chosen.
-- [ ] Tests: `Sw6OidcCspHostCollectorTest.php` (dedup, HTTPS-only, no-active-
-      providers → empty).
-- [ ] Docs: `CLAUDE.md` — document which path was actually taken and why.
-
----
-
-## Phase 13 — Test coverage + CI hardening
-
-Every phase above already specifies its own unit tests as it ships — continue
-that incremental approach rather than deferring to one big testing phase.
-
-Already covered (11 files in `tests/Unit/`): `OidcHttpClient`,
-`DiscoveryUrlValidator`, `OidcConnectionTestService`, `OidcLiveLoginTestService`,
-`TokenExchangeService`, `AttributeMapper`, `TimeZoneValidator`,
-`AdminPasskeyLoginTokenTracker`, `PasskeyConfig`, `OidcUserProviderAdminController`,
-`UserProviderCleanupSubscriber`.
-
-- [ ] Close remaining gaps on pre-existing, untested code: `OidcSecurityHelper`
-      (state/PKCE/nonce), `JwtVerifier::verify()`, `ClaimsNormalizer`, both
-      provisioning services (creation and sync paths), `GroupMappingResolver`,
-      `UserProviderBindingService`.
 - [ ] Integration test harness against a real IdP (Dex, docker-compose-based,
       matching Magento's approach) — stretch goal, not a hard gate; requires a
-      full Shopware kernel-bootstrap test skeleton that doesn't exist yet. If
-      pursued, priority order: (1) Back-Channel Logout, (2) full Storefront
-      OIDC login E2E, (3) full Admin OIDC login E2E, (4) access-control rules
-      engine against real claims.
+      full Shopware kernel-bootstrap test skeleton that doesn't exist yet.
+      Priority order: (1) Back-Channel Logout (once Phase 8 exists), (2) full
+      Storefront OIDC login E2E, (3) full Admin OIDC login E2E, (4) access-control
+      rules engine against real claims (once Phase 6 exists).
 - [ ] CI: add a 5th job + `phpunit.xml.dist` `integration` testsuite split if
       the Dex harness lands.
-- [ ] Docs: `CLAUDE.md` — remove "test coverage is thin" once genuinely closed.
 
 ---
 
-## Phase 14 — Documentation sweep
+## Phase 14 — Documentation (remaining part)
 
-- [ ] `README.md` — remove/adjust every "Known Limitations" bullet closed by
-      the phases above.
-- [ ] `CLAUDE.md` — final consistency read-through.
-- [ ] `TODO.md` (this file) — remove completed phases, reconcile any deferred
-      items (CSP path decision, integration-harness stretch goal).
-- [ ] New `CHANGELOG.md` (Keep-a-Changelog format, backfilled per phase —
-      `LICENSE.txt` already exists, only the changelog is genuinely missing).
 - [ ] Optional: `Docs/authelia-sw6oidc-setup.md` / `Docs/zitadel-sw6oidc-setup.md`,
       mirroring the Magento sibling's setup guides.
+- [ ] Keep `CHANGELOG.md`, `README.md` "Known Limitations" and `CLAUDE.md`
+      "Known gaps" in sync as each phase above ships.
 
 ---
-
-## Summary table
-
-| Phase | New migration? | New admin UI? | Depends on |
-|---|---|---|---|
-| 0 | No | No | — |
-| 1 | No | No | — |
-| 2 | Yes (data-only) | No | — |
-| 3 | No | No (error surfacing only) | — |
-| 4 | No | No | — |
-| 5 | No | No | 4 |
-| 6 | Yes | Yes (rule editor) | — |
-| 7 | No | No | — |
-| 8 | No | No | 7 |
-| 8b | No | No | 7, 8 |
-| 8c | Yes | Yes (logout override) | 7, 8 |
-| 9 | No | Optional | 2, 3 |
-| 10 | Yes | Yes (sessions module) | 7, 8, 8b, 8c |
-| 11 | Yes | Yes (diagnostics panel) | 2, 3 |
-| 12 | No | No | — |
-| 13 | — | — | incremental throughout |
-| 14 | — | — | incremental throughout |
 
 ## Verification / testing (apply per phase)
 
@@ -505,9 +261,9 @@ Already covered (11 files in `tests/Unit/`): `OidcHttpClient`,
 - Schema-adding phases: run `bin/console database:migrate Sw6Oidc --all`
   against a real Shopware 6.7 install and confirm the new tables/columns,
   then exercise the affected admin UI screen manually.
-- Security-critical phases (2 encryption, 3 SSRF/lockout, 8 back-channel
-  logout) should get a manual end-to-end pass against a real IdP (Authelia or
-  Keycloak) in addition to unit tests.
-- Phase 12 (CSP) and the `ScheduledTask` registration detail in Phase 11 both
-  need their "verify during implementation" flags resolved against the actual
-  installed Shopware version before considering the phase done.
+- Security-critical phases (6 access control, 8 back-channel logout) should
+  get a manual end-to-end pass against a real IdP (Authelia or Keycloak) in
+  addition to unit tests.
+- After deploying to a running shop, reset PHP-FPM opcache in addition to
+  `cache:clear` — stale opcache served the removed webauthn 4.x interface
+  during the 5.x migration.

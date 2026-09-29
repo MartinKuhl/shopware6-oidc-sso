@@ -21,7 +21,7 @@ Shopware ships with password-based auth only. Organizations that already run a c
 
 ### Project status
 
-This is early-stage software: version `0.1.0`, MIT-licensed, two narrow unit tests, no integration tests against a live Shopware instance. Read [Section 5 — Gotchas](#5-gotchas--edge-cases--limitations) before you assume any given feature is fully wired end to end — several config toggles exist in the UI/schema but aren't yet connected to real logic.
+This is early-stage software: version `0.1.0` plus unreleased changes (see `CHANGELOG.md`), MIT-licensed, unit-tested but with no integration tests against a live Shopware instance. Read [Section 5 — Gotchas](#5-gotchas--edge-cases--limitations) before you assume any given feature is fully wired end to end.
 
 ---
 
@@ -182,9 +182,9 @@ Without `SW6OIDC_REDIS_DSN`, `RedisAtomicCache` delegates to a sequential get-th
 
 A passkey is cryptographically bound to a single Relying Party ID (essentially, the domain). Changing the RP ID override, or serving the shop under a new hostname, invalidates every previously registered passkey — there is no migration path other than re-registration.
 
-### Test coverage won't catch regressions in the flows that matter most
+### Unit tests only — no end-to-end safety net yet
 
-Only two unit tests exist (`AdminPasskeyLoginTokenTrackerTest`, `PasskeyConfigTest`), both pure-logic tests with no Shopware bootstrap. Nothing exercises the OIDC callback pipeline, provisioning, controllers, or the WebAuthn ceremony against a real Shopware instance. If you change anything in `Service/Oidc/` or `Service/Provisioning/`, manual end-to-end testing against a real IdP is currently the only safety net — `composer ci` (cs-check → phpstan → psalm → rector → test) will not catch a logic regression in these flows.
+The unit suite (`tests/Unit/`) covers the OIDC core (state/PKCE, JWT verification, claims normalization), both provisioning services, group mapping and bindings, the WebAuthn ceremonies against the real webauthn-lib validators (via an in-process software authenticator), and every security/config component — all without a Shopware kernel. What it can't catch: wiring and DAL behaviour inside a real Shopware instance, admin/storefront JS, and real IdP quirks. After changing controllers, `services.xml`, templates or Vue code, do a manual end-to-end login (Storefront + Admin, OIDC + Passkey) against a real IdP.
 
 ---
 
@@ -195,5 +195,4 @@ Roughly in order of "would most reduce risk right now":
 1. **Wire up or remove the debug-logging toggle.** The "Enable debug logging" config toggle still does nothing (verbosity comes from `SW6OIDC_LOG_LEVEL`) and creates a false impression of functionality.
 2. **Add integration tests against a real (or containerized) Shopware instance.** Right now correctness of the actual login flows rests entirely on manual testing. Even a small integration suite covering the happy path for customer OIDC login, admin OIDC login, and one passkey round-trip would catch the regressions unit tests structurally can't.
 3. **Implement OIDC Back-Channel Logout and admin-side RP-initiated logout**, bringing session termination guarantees in line with the Storefront/customer flow and closing the gap where an IdP-side logout or admin-side logout doesn't propagate.
-4. **Add a CHANGELOG.md** — `LICENSE.txt` is already committed (MIT, matching `composer.json`), but there's still no changelog to track what changed between versions as the plugin matures past 0.1.0.
-5. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.
+4. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Shopware 6 plugin (`MartinKuhl\Sw6Oidc`, composer package `martinkuhl/shopware6-oidc-sso`, currently v0.1.0) that provides OpenID Connect (OIDC) and Passkey (WebAuthn/FIDO2) single sign-on for both Storefront customers and Administration users. It mirrors the architecture of the sibling `magento2-oidc-sso` module: multi-provider OIDC with JIT provisioning and group/role mapping, plus a second, independent passwordless login method (Passkey) that bridges into native authentication the same way OIDC does.
 
-The plugin is early-stage (v0.1.0, MIT license, a partial unit-test suite, no integration tests run against a live Shopware instance yet). See "Known gaps / implementation notes" below before assuming any given feature is fully wired end to end, and see `TODO.md` for the remaining roadmap.
+The plugin is early-stage (v0.1.0, MIT license, a unit-test suite covering the OIDC core, provisioning, WebAuthn and all security components, no integration tests against a live Shopware instance yet). See "Known gaps / implementation notes" below before assuming any given feature is fully wired end to end, and see `TODO.md` for the remaining roadmap.
 
 ## Development commands
 
@@ -139,6 +139,15 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 - `Migration1758000001AddProviderTestStatus` — adds `sw6oidc_provider.last_test_status`/`last_test_at` (live login test result).
 - `Migration1789383427AddSuperadminGroupMapping` — adds `sw6oidc_provider.allow_superadmin_group_mapping`.
 - `Migration1789390512AddLastTestClaims` — adds `sw6oidc_provider.last_test_claims` (JSON; the flattened claims from the last live login test, so the Attribute Mapping picker's discovered-claims list survives a page reload).
+- `Migration1789470000AddUserProviderUpdatedAt` — adds the missing `sw6oidc_user_provider.updated_at`.
+- `Migration1790685361EncryptProviderClientSecrets` — widens `client_secret` to 2048 and encrypts existing plaintext rows (idempotent; needs `APP_SECRET`).
+- `Migration1790686535DropAttributeMappingSyncOnSso` — destructive step drops `sw6oidc_attribute_mapping.sync_on_sso`.
+
+**`Service/Security/`** — `OidcSecurityHelper` (state/PKCE/nonce), `Sw6OidcEncryptor`, `SsrfUrlValidator`, `PasswordLoginPolicy`, `Sw6OidcCspHostCollector`, exceptions (`ClientSecretUnavailableException`, `PasswordLoginDisabledException`, `InvalidStateException`).
+
+**`Service/Cache/`** — `AtomicCacheInterface`, `RedisAtomicCache` (always wired, runtime backend selection), `CachePoolAtomicCache`, `RedisConnectionFactory`. **`Service/Http/`** — `OidcHttpClient`, `Sw6OidcHttpClientFactory` (SSRF-guarded client). **`Service/Config/`** — `OidcConfigTransfer`, `ImportResult`. **`Console/`** — export/import commands. **`Event/`** — see Extension points.
+
+**`Subscriber/`** — `UserProviderCleanupSubscriber`, `Sw6OidcProviderWriteGuardSubscriber`, `AdminPasswordLoginGuardSubscriber`, `Sw6OidcCspSubscriber`. **`Storefront/Service/PasswordLoginGuardLoginRoute`** — decorator of core `LoginRoute`.
 
 **`Twig/`**
 - `AdminEntrypointsExtension` — registers `sw6oidc_admin_scripts()`/`sw6oidc_admin_styles()`, reading the plugin's own Vite `entrypoints.json` directly (Pentatrion's helper only resolves Shopware's own pre-registered bundle name). Forces the plugin's admin JS to load on the pre-auth login screen, which Shopware's normal `loadPlugins()` boot path otherwise skips.
@@ -184,14 +193,13 @@ Do not assume the following are fully wired just because the schema or config UI
 - No OIDC Back-Channel Logout support; no admin-side RP-initiated logout (only the Storefront/customer logout path redirects to the IdP).
 - `AtomicCacheInterface` is always `RedisAtomicCache`, which selects its backend **at runtime**: Redis GETDEL when `SW6OIDC_REDIS_DSN` (`redis://` or `rediss://`) is set and connectable, else `CachePoolAtomicCache` (sequential get-then-delete on `cache.app`, single-node only). Deliberately not a compiler pass — that would freeze the choice into the cached container. Redis errors degrade to the fallback per call, and `getAndDelete()` consults the fallback on a Redis miss.
 - `ClaimsNormalizer::extractEmail()` exists but has no caller in the current codebase. (`UserProviderBindingService::unbind()` is called by the Administration unlink action and `Subscriber/UserProviderCleanupSubscriber`, which removes a binding on `user.deleted` / `customer.deleted` since `user_id` has no FK.)
-- Test coverage is partial: 11 unit test files under `tests/Unit/` (HTTP client, discovery/connection/live-login test services, token exchange, `AttributeMapper`, `TimeZoneValidator`, passkey helpers, the user-provider admin controller, the cleanup subscriber). Still untested: `OidcSecurityHelper`, `JwtVerifier`, `ClaimsNormalizer`, `CustomerProvisioningService`, `AdminProvisioningService`, `GroupMappingResolver`, `UserProviderBindingService`, and the WebAuthn ceremonies. No integration tests against a live Shopware instance.
-- No `CHANGELOG.md` and no Docker/dev Shopware environment committed in this repo. (`LICENSE.txt` — MIT, matching `composer.json` — is present.)
-- `OidcDiscoveryService` is exposed as a service but no controller action calling it was found in the read source — likely invoked from the admin Provider save screen, not confirmed.
+- Tests are unit-only (`tests/Unit/`, ~290 tests): OIDC core (state/PKCE, JWT, claims), provisioning, group mapping, bindings, WebAuthn ceremonies against the real 5.x validators (`SoftwareAuthenticator` test helper), and every security/config component. No integration tests against a live Shopware instance or IdP (Dex harness still a TODO).
+- No Docker/dev Shopware environment committed in this repo. Deploy note for a running shop: PHP-FPM opcache may keep serving stale plugin classes after an update — reset it (e.g. `cachetool opcache:reset`) in addition to `cache:clear`.
 
 ## Tooling
 
 - `phpstan.neon.dist` — level 5, scans `src` (excludes `src/Resources`), `treatPhpDocTypesAsCertain: false` (much of the code validates untrusted third-party data at runtime — IdP responses, WebAuthn JSON — against its own PHPDoc shapes).
-- `psalm.xml` — `errorLevel="4"`, `findUnusedCode="false"`; explicit suppressions for `MissingOverrideAttribute` (PHP 8.2 predates `#[\Override]`), `UndefinedDocblockClass` (Shopware DAL generics stubs), `InternalMethod` (`Context::createDefaultContext()`, needed pre-auth), `UndefinedClass` (`\Redis`, optional ext-redis for the unwired `RedisAtomicCache`).
+- `psalm.xml` — `errorLevel="4"`, `findUnusedCode="false"`; explicit suppressions for `MissingOverrideAttribute` (PHP 8.2 predates `#[\Override]`), `UndefinedDocblockClass` (Shopware DAL generics stubs), `InternalMethod` (`Context::createDefaultContext()`, needed pre-auth; plus file-scoped for the encrypted-field serializer and the provider write guard, which necessarily use DAL write-stack internals), `UndefinedClass` (`\Redis`, optional ext-redis for `RedisAtomicCache`).
 - `phpcs.xml.dist` — PSR12 base, relaxed line length (soft 180 / hard 200) for long route-attribute/constructor-promotion lines.
 - `rector.php` — `withPhpSets()` (auto-detects PHP 8.2 floor from `composer.json`), `deadCode`/`codeQuality`/`typeDeclarations`/`earlyReturn` sets.
 - CI (`.github/workflows/ci.yml`) — 4 parallel jobs on push/PR to `main`: `lint` (PHPCS), `static-analysis` (PHPStan + Psalm), `rector` (dry-run, fails if changes remain), `tests` (PHPUnit matrix across PHP 8.2/8.3/8.4/8.5, coverage uploaded per version).
