@@ -1,0 +1,18 @@
+.sw6oidc-user-provider-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.sw6oidc-user-detail-provider {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: 0.3em;
+
+    &__label {
+        font-weight: 600;
+        font-size: 14px;
+    }
+}

@@ -1,0 +1,14 @@
+{% block sw_settings_user_detail_grid_content_active %}
+{% parent %}
+
+<div
+    v-if="userId && user && !user.isNew()"
+    class="sw6oidc-user-detail-provider"
+>
+    <span class="sw6oidc-user-detail-provider__label">{{ $t('sw6oidc.userProvider.label') }}:</span>
+    <sw6oidc-user-provider-info
+        user-type="admin"
+        :user-id="userId"
+    />
+</div>
+{% endblock %}

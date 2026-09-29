@@ -119,6 +119,11 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
             return !!(this.provider && this.provider.id && this.$route.params.id !== undefined);
         },
 
+        // Same presentation as the "OIDC Provider" bind date (sw6oidc-user-provider-info).
+        formattedLastTestAt() {
+            return this.provider?.lastTestAt ? Shopware.Utils.format.date(this.provider.lastTestAt) : '';
+        },
+
         attributeTypeOptions() {
             return [
                 'email', 'username', 'firstname', 'lastname', 'birthday', 'gender', 'phone',
@@ -203,6 +208,24 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
     },
 
     methods: {
+        /**
+         * Translated message for a connection-test check / live-test step:
+         * fixed outcomes carry a messageKey (+ params), while dynamic ones
+         * (exception messages from the IdP/HTTP layer) only have the
+         * English `detail`, shown as-is.
+         */
+        testResultMessage(entry) {
+            if (entry.messageKey) {
+                return this.$t(`sw6oidc.provider.detail.testMessage.${entry.messageKey}`, entry.messageParams ?? {});
+            }
+
+            return entry.detail;
+        },
+
+        testStatusVariant(status) {
+            return { pass: 'success', warning: 'warning', skipped: 'neutral' }[status] ?? 'danger';
+        },
+
         createdComponent() {
             if (this.$route.params.id) {
                 this.loadEntity(this.$route.params.id);

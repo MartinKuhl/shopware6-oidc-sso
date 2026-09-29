@@ -1,0 +1,19 @@
+{% block sw_profile_index_general_image %}
+<mt-card
+    v-if="user && user.id"
+    class="sw6oidc-profile-provider"
+    position-identifier="sw6oidc-profile-provider"
+    :title="$t('sw6oidc.userProvider.profileCardTitle')"
+>
+    <div class="sw6oidc-user-detail-provider">
+        <span class="sw6oidc-user-detail-provider__label">{{ $t('sw6oidc.userProvider.label') }}:</span>
+        <sw6oidc-user-provider-info
+            user-type="admin"
+            :user-id="user.id"
+            :allow-unlink="false"
+        />
+    </div>
+</mt-card>
+
+{% parent %}
+{% endblock %}

@@ -44,6 +44,30 @@
                         "jwks_reachable": "JWKS-Endpunkt"
                     }
                 },
+                "testStatus": {
+                    "pass": "bestanden",
+                    "fail": "fehlgeschlagen",
+                    "warning": "Warnung",
+                    "skipped": "übersprungen"
+                },
+                "testMessage": {
+                    "tokenExchangePass": "Autorisierungscode erfolgreich gegen ein Access-Token eingetauscht.",
+                    "tokenExchangeNoAccessToken": "Die Antwort des Token-Endpunkts enthielt kein access_token.",
+                    "idTokenVerificationPass": "Signatur und Claims des id_token erfolgreich geprüft.",
+                    "idTokenVerificationSkipped": "Die Token-Antwort enthielt kein id_token.",
+                    "userinfoFetchPass": "Der Userinfo-Endpunkt hat erfolgreich geantwortet.",
+                    "userinfoFetchSkipped": "Kein Userinfo-Endpunkt konfiguriert.",
+                    "wellKnownReachablePass": "Well-Known-Konfigurationsdokument erfolgreich abgerufen und ausgewertet.",
+                    "requiredEndpointsPass": "Authorize-, Token- und JWKS-Endpunkt sind vorhanden.",
+                    "requiredEndpointsMissing": "Fehlende erforderliche Endpunkte: {endpoints}.",
+                    "clientIdMissing": "Die Client-ID ist nicht gesetzt.",
+                    "clientSecretMissing": "Das Client-Secret ist nicht gesetzt (erforderlich, außer bei einem Public Client).",
+                    "clientIdPass": "Die Client-ID ist gesetzt.",
+                    "clientCredentialsPass": "Client-ID und Client-Secret sind gesetzt.",
+                    "jwksNotConfigured": "Kein JWKS-Endpunkt konfiguriert; die Signatur von ID-Tokens kann nicht geprüft werden.",
+                    "jwksNoKeys": "Der JWKS-Endpunkt hat geantwortet, enthielt aber kein nicht-leeres \"keys\"-Array.",
+                    "jwksPass": "Der JWKS-Endpunkt hat {count} Schlüssel geliefert."
+                },
                 "buttonRunLiveTest": "Live-Login-Test ausführen",
                 "liveTestRequiresSaveHint": "Speichern Sie den Anbieter zuerst, um einen Live-Login-Test auszuführen.",
                 "liveTestError": "Der Live-Login-Test konnte nicht gestartet werden.",
@@ -179,6 +203,16 @@
                     "shipping_phone": "Versand: Telefon"
                 }
             }
+        },
+        "userProvider": {
+            "profileCardTitle": "Single Sign-On (OIDC)",
+            "label": "OIDC-Anbieter",
+            "none": "keiner",
+            "unlinkButton": "IdP-Verknüpfung lösen",
+            "unlinkConfirmAdmin": "Soll die Verknüpfung dieses Admin-Benutzers mit seinem OIDC-Anbieter wirklich gelöst werden? Beim nächsten SSO-Login kann er mit einem anderen Anbieter verknüpft werden.",
+            "unlinkConfirmCustomer": "Soll die Verknüpfung dieses Kunden mit seinem OIDC-Anbieter wirklich gelöst werden? Beim nächsten SSO-Login kann er mit einem anderen Anbieter verknüpft werden.",
+            "unlinkSuccess": "Die Verknüpfung mit dem OIDC-Anbieter wurde gelöst.",
+            "unlinkError": "Die Verknüpfung mit dem OIDC-Anbieter konnte nicht gelöst werden."
         },
         "passkeySettings": {
             "moduleTitle": "Passkey-Einstellungen",

@@ -18,3 +18,32 @@
         font-weight: var(--font-weight-bold);
     }
 }
+
+// Connection-test / live-test results and the "Last test" summary:
+// "<bold label>: <message> <status pill>", one line per check. A flex row
+// (not a table) so the fixed-height sw-label pill is vertically centred on
+// the text instead of sitting on its baseline.
+.sw6oidc-test-result-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 12px;
+
+    &__item {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.3em 0.4em;
+
+        // sw-label ships a 6px bottom (+ right) margin meant for tag lists;
+        // inside a centred flex row that margin shifts the pill ~3px up.
+        .sw-label {
+            margin: 0;
+        }
+    }
+}
+
+.sw6oidc-live-test-result {
+    margin-top: 32px;
+}

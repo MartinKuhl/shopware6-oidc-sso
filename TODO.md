@@ -176,21 +176,23 @@ No schema changes — purely wiring up existing dead columns
       throws (logs + passthrough on error).
 - [ ] Hook into `AttributeMapper::map()`'s claim-read closure to call
       `apply($mapping->getTransformFunction(), $mapping->getTransformParams() ?? [], $rawValue, $claims)`.
-- [ ] Add `AttributeMapper::mapForSync()` — maps only rows where per-attribute
-      `sync_on_sso` is true, for use by the new sync methods below (distinct
-      from creation-time `map()`).
-- [ ] `CustomerProvisioningService` — add `syncProfile()`/`syncAddress()`/
-      `syncGroup()`, gated on `isSyncCustomerProfileOnSso()`/
-      `isSyncCustomerAddressOnSso()`/`isSyncCustomerGroupOnSso()`, mirroring
-      `AdminProvisioningService::syncRole()`'s existing pattern.
-- [ ] `AdminProvisioningService` — add `syncProfile()`, gated on
-      `isSyncAdminProfileOnSso()`.
+- [ ] Decide whether per-attribute `sync_on_sso` is still wanted (the UI
+      toggle was removed on purpose in c3f68ad). If yes: add
+      `AttributeMapper::mapForSync()` mapping only rows with `sync_on_sso`
+      true, and use it from the sync paths below. If no: drop the column.
+- [x] `CustomerProvisioningService` — provider-level profile/address/group
+      re-sync, implemented as a single `syncExisting()` gated on
+      `isSyncCustomerProfileOnSso()`/`isSyncCustomerAddressOnSso()`/
+      `isSyncCustomerGroupOnSso()`.
+- [x] `AdminProvisioningService` — `syncProfile()` gated on
+      `isSyncAdminProfileOnSso()` (plus the pre-existing `syncRole()`).
 - [ ] `services.xml` — new `AttributeTransformer` service (dep: `OidcLogger`);
       `AttributeMapper` gains it as a constructor arg.
 - [ ] Tests: `AttributeTransformerTest.php`, `AttributeMapperTransformTest.php`,
-      `CustomerProvisioningServiceSyncTest.php`, `AdminProvisioningServiceSyncTest.php`.
-- [ ] Docs: `CLAUDE.md` — remove both "known gaps" bullets; add sync-on-SSO +
-      transform subsections.
+      `CustomerProvisioningServiceSyncTest.php`, `AdminProvisioningServiceSyncTest.php`
+      (the sync code already shipped without tests).
+- [ ] Docs: `CLAUDE.md` — remove the transform/`sync_on_sso` "known gaps"
+      bullet; add a transform subsection.
 
 ---
 
@@ -415,6 +417,10 @@ structurally incompatible with "one row per login").
 CSP-contribution extension point (like Magento's `PolicyCollectorInterface`)
 or only a fixed core-owned header.
 
+Current state: the only CSP handling is ad hoc — `OidcProviderAdminController`
+sets its own `Content-Security-Policy` header on one response when none is
+present. Fold that into whichever path is chosen below.
+
 - [ ] Investigate: does a collector/tagged-service extension point exist?
   - [ ] If yes — implement against it directly (dedupe HTTPS hosts from all
         active providers' endpoints, contribute to `form-action`/`connect-src`/
@@ -434,9 +440,16 @@ or only a fixed core-owned header.
 Every phase above already specifies its own unit tests as it ships — continue
 that incremental approach rather than deferring to one big testing phase.
 
+Already covered (11 files in `tests/Unit/`): `OidcHttpClient`,
+`DiscoveryUrlValidator`, `OidcConnectionTestService`, `OidcLiveLoginTestService`,
+`TokenExchangeService`, `AttributeMapper`, `TimeZoneValidator`,
+`AdminPasskeyLoginTokenTracker`, `PasskeyConfig`, `OidcUserProviderAdminController`,
+`UserProviderCleanupSubscriber`.
+
 - [ ] Close remaining gaps on pre-existing, untested code: `OidcSecurityHelper`
-      (state/PKCE/nonce), `JwtVerifier::verify()`, `ClaimsNormalizer`, the core
-      (non-sync) creation paths in both provisioning services.
+      (state/PKCE/nonce), `JwtVerifier::verify()`, `ClaimsNormalizer`, both
+      provisioning services (creation and sync paths), `GroupMappingResolver`,
+      `UserProviderBindingService`.
 - [ ] Integration test harness against a real IdP (Dex, docker-compose-based,
       matching Magento's approach) — stretch goal, not a hard gate; requires a
       full Shopware kernel-bootstrap test skeleton that doesn't exist yet. If

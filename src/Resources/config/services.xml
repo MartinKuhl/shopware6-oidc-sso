@@ -315,6 +315,20 @@
             </call>
         </service>
 
+        <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcUserProviderAdminController" public="true">
+            <argument type="service" id="sw6oidc_user_provider.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <call method="setContainer">
+                <argument type="service" id="service_container" />
+            </call>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\UserProviderCleanupSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcProviderAdminController" public="true">
             <argument type="service" id="sw6oidc_provider.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder" />

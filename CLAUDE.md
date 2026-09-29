@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Shopware 6 plugin (`MartinKuhl\Sw6Oidc`, composer package `martinkuhl/shopware6-oidc-sso`, currently v0.1.0) that provides OpenID Connect (OIDC) and Passkey (WebAuthn/FIDO2) single sign-on for both Storefront customers and Administration users. It mirrors the architecture of the sibling `magento2-oidc-sso` module: multi-provider OIDC with JIT provisioning and group/role mapping, plus a second, independent passwordless login method (Passkey) that bridges into native authentication the same way OIDC does.
 
-The plugin is early-stage (v0.1.0, MIT license, two narrow unit tests, no integration tests run against a live Shopware instance yet). See "Known gaps / implementation notes" below before assuming any given feature is fully wired end to end, and see `TODO.md` for the planned `web-auth/webauthn-lib` 4.x→5.x migration (deferred until the OIDC/Passkey flows are proven in production).
+The plugin is early-stage (v0.1.0, MIT license, a partial unit-test suite, no integration tests run against a live Shopware instance yet). See "Known gaps / implementation notes" below before assuming any given feature is fully wired end to end, and see `TODO.md` for the planned `web-auth/webauthn-lib` 4.x→5.x migration (deferred until the OIDC/Passkey flows are proven in production).
 
 ## Development commands
 
@@ -119,6 +119,7 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^4.7** (see `TODO.md` for th
 
 **`Controller/Api/`**
 - `OidcAdminAuthController` — `login-options`, `login`, `callback`, `token` (nonce exchange) under `/api/sw6oidc/admin/*`; `auth_required: false` at the class level (all actions are necessarily pre-auth).
+- `OidcUserProviderAdminController` — `POST /api/_action/sw6oidc/user-provider/info` (batch `{userType, userIds}` → bindings keyed by id) and `.../unlink`, backing the Administration "OIDC Provider" info (users listing column, user detail incl. the native-SSO `user.sso.detail` variant, own profile, customer base info; `extension/sw-users-permissions-user-*`, `extension/sw-sso-users-permission-user-detail`, `extension/sw-profile-index-general`, `extension/sw-customer-base-info`, shared `component/sw6oidc-user-provider-info`). Gated per request by the core `user:read|update` / `customer:read|update` privileges of the given userType (not by any `sw6oidc_user_provider` privilege, which ordinary roles lack); an admin may always read their own binding (profile). Unlink runs in system scope for the same reason.
 - `PasskeyAdminController` — registration/`my-credentials`/delete (auth required) plus `login-options`/`login-verify` (route-level `auth_required: false` override) under `/api/sw6oidc/admin/passkey/*`.
 
 **`Migration/`**
@@ -150,8 +151,8 @@ Do not assume the following are fully wired just because the schema or config UI
 - `client_secret` is stored **in plaintext** on `sw6oidc_provider` (the entity carries a `// TODO(later phase): encrypt at rest` comment) — unlike the Magento sibling module, which encrypts secrets at rest today.
 - No OIDC Back-Channel Logout support; no admin-side RP-initiated logout (only the Storefront/customer logout path redirects to the IdP).
 - `RedisAtomicCache`/`RedisConnectionFactory` exist in the codebase but are **not** wired into `services.xml` — the default `AtomicCacheInterface` alias is `CachePoolAtomicCache` (sequential get-then-delete on `cache.app`, single-node only). A multi-node deployment must override the alias in its own app-level `services.xml`.
-- `ClaimsNormalizer::extractEmail()` and `UserProviderBindingService::unbind()` exist but have no caller in the current codebase.
-- Test coverage is thin: only `tests/Unit/Service/Passkey/AdminPasskeyLoginTokenTrackerTest.php` and `PasskeyConfigTest.php` exist (both pure-logic unit tests). No integration tests, and no tests exercise the OIDC flow, provisioning, controllers, or WebAuthn ceremonies against a live Shopware instance.
+- `ClaimsNormalizer::extractEmail()` exists but has no caller in the current codebase. (`UserProviderBindingService::unbind()` is called by the Administration unlink action and `Subscriber/UserProviderCleanupSubscriber`, which removes a binding on `user.deleted` / `customer.deleted` since `user_id` has no FK.)
+- Test coverage is partial: 11 unit test files under `tests/Unit/` (HTTP client, discovery/connection/live-login test services, token exchange, `AttributeMapper`, `TimeZoneValidator`, passkey helpers, the user-provider admin controller, the cleanup subscriber). Still untested: `OidcSecurityHelper`, `JwtVerifier`, `ClaimsNormalizer`, `CustomerProvisioningService`, `AdminProvisioningService`, `GroupMappingResolver`, `UserProviderBindingService`, and the WebAuthn ceremonies. No integration tests against a live Shopware instance.
 - No `CHANGELOG.md` and no Docker/dev Shopware environment committed in this repo. (`LICENSE.txt` — MIT, matching `composer.json` — is present.)
 - `OidcDiscoveryService` is exposed as a service but no controller action calling it was found in the read source — likely invoked from the admin Provider save screen, not confirmed.
 

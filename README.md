@@ -204,7 +204,7 @@ ID tokens are verified for signature (RS256/384/512 only — HS*/ES* are not sup
 
 ### Per-User IdP Binding
 
-The first IdP to authenticate (or claim) an account is permanently bound to it. A later login attempt for the same email via a **different** provider is rejected — this prevents an account's effective security level from being the weakest of multiple IdPs. An administrator can change a binding directly in the `sw6oidc_user_provider` table if a deliberate IdP migration is needed.
+The first IdP to authenticate (or claim) an account is permanently bound to it. A later login attempt for the same email via a **different** provider is rejected — this prevents an account's effective security level from being the weakest of multiple IdPs. The binding is shown as **OIDC Provider** (provider name and bind date, or "none") in the Administration: as a column in *Settings > Users & permissions*, on each admin user detail page, on the logged-in admin's own profile (*My profile > General*, read-only), and in the customer detail base info next to *Last login*. If a deliberate IdP migration is needed, the **Unlink IdP** button there removes the binding (requires `users_and_permissions.editor` / `customer.editor`), so the next SSO login can bind to a different provider. Deleting a user or customer also removes its binding.
 
 ### RP-Initiated Logout
 
@@ -235,12 +235,12 @@ https://auth.your-domain.example/logout
 - **Client secrets are stored in plaintext** — see above. Treat database access as equivalent to credential access.
 - **No OIDC Back-Channel Logout** — an IdP cannot push a server-side logout notification to this plugin.
 - **No admin-side RP-Initiated Logout** — only the Storefront/customer logout flow redirects to the IdP's end-session endpoint; logging an admin out of Shopware does not currently log them out at the IdP.
-- **Most "sync on SSO" toggles are not yet functional** — of the five sync flags exposed in the provider schema, only "sync admin role on SSO" is actually applied on repeat logins today; customer profile/address/group re-sync and admin profile re-sync are not yet wired up.
+- **"Sync on SSO" is per provider, not per attribute** — all five provider-level toggles (customer profile/address/group, admin profile/role) are applied on repeat logins, but there is no per-attribute sync control.
 - **Attribute value transforms are not implemented** — the per-attribute transform function/params fields exist in the schema but are not applied anywhere.
 - **The "Enable debug logging" toggle does not control log verbosity** — the plugin's log level is set via the `SW6OIDC_LOG_LEVEL` environment variable (default `debug`), not this UI toggle. Logs are written to a plugin-specific log file/channel and can contain claim data — handle with the same care as any log containing PII.
 - **Single-node atomic cache by default** — one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. A Redis-backed atomic implementation exists in the codebase but requires a manual dependency-injection override to enable for multi-node/HA deployments.
 - **webauthn-lib is pinned to `^4.7`** — a 5.x migration is planned (see `TODO.md`) but deferred until the OIDC/Passkey flows are proven in production.
-- **Early-stage test coverage** — only two narrow unit tests exist; there is no automated integration testing against a live Shopware instance yet.
+- **Early-stage test coverage** — unit tests cover a subset of services (HTTP client, discovery/connection tests, token exchange, attribute mapping, passkey helpers); JWT verification, state/PKCE handling, claims normalization and the provisioning services are still untested, and there is no automated integration testing against a live Shopware instance yet.
 - **No CHANGELOG.md is currently committed** — there's no changelog tracking what changed between versions yet (a `LICENSE.txt` is present).
 
 ---
@@ -278,7 +278,7 @@ The OIDC claim names from your IdP likely don't match your attribute mapping. Se
 
 ### "This account was created with a different identity provider" (or similar rejection)
 
-Per-user IdP binding is enforced — the account is already bound to a different provider. Check the `sw6oidc_user_provider` table (columns `user_type`, `user_id`, `provider_id`) to see which provider is bound. If a deliberate migration to a new IdP is intended, update or delete the relevant row(s) so the next login can rebind.
+Per-user IdP binding is enforced — the account is already bound to a different provider. The bound provider is shown as **OIDC Provider** on the admin user / customer detail page in the Administration. If a deliberate migration to a new IdP is intended, click **Unlink IdP** there so the next login can rebind.
 
 ### Admin JIT creation fails with "no suitable role"
 

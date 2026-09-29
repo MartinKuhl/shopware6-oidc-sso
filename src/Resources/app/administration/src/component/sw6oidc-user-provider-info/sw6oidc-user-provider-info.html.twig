@@ -1,0 +1,32 @@
+{% block sw6oidc_user_provider_info %}
+<span class="sw6oidc-user-provider-info">
+    <template v-if="isLoading">
+        <sw-skeleton-bar class="sw6oidc-user-provider-info__skeleton" />
+    </template>
+
+    <template v-else-if="binding">
+        <span class="sw6oidc-user-provider-info__value">
+            {{ binding.providerName || binding.providerId }}<template v-if="formattedCreatedAt"> ({{ formattedCreatedAt }})</template>
+        </span>
+
+        <mt-button
+            v-if="canUnlink"
+            class="sw6oidc-user-provider-info__unlink"
+            variant="secondary"
+            size="x-small"
+            :is-loading="isUnlinking"
+            :disabled="isUnlinking"
+            @click="onUnlink"
+        >
+            {{ $t('sw6oidc.userProvider.unlinkButton') }}
+        </mt-button>
+    </template>
+
+    <span
+        v-else
+        class="sw6oidc-user-provider-info__none"
+    >
+        {{ $t('sw6oidc.userProvider.none') }}
+    </span>
+</span>
+{% endblock %}
