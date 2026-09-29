@@ -74,7 +74,7 @@ class TestResultTranslator
     {
         $files = glob($this->snippetDirectory . '/*.json') ?: [];
 
-        return array_values(array_map(static fn (string $file): string => basename($file, '.json'), $files));
+        return array_map(static fn (string $file): string => basename($file, '.json'), $files);
     }
 
     private function lookup(string $key, string $locale): ?string
