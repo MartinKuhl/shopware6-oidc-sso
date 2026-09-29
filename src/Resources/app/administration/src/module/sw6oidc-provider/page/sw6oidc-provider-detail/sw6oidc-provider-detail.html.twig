@@ -82,19 +82,21 @@
 
                 {% block sw6oidc_provider_detail_connection_test_result %}
                 <sw-card v-if="connectionTestResult" :title="$tc('sw6oidc.provider.detail.testConnectionResultTitle')" style="margin-bottom: 16px;">
-                    <table class="sw6oidc-test-result-table">
-                        <tbody>
-                            <tr v-for="check in connectionTestResult.checks" :key="check.id">
-                                <td>{{ $tc(`sw6oidc.provider.detail.testConnection.check.${check.id}`) }}</td>
-                                <td>
-                                    <sw-label :variant="check.status === 'pass' ? 'success' : (check.status === 'warning' ? 'warning' : 'danger')">
-                                        {{ check.status }}
-                                    </sw-label>
-                                </td>
-                                <td>{{ check.detail }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <ul class="sw6oidc-test-result-list">
+                        <li
+                            v-for="check in connectionTestResult.checks"
+                            :key="check.id"
+                            class="sw6oidc-test-result-list__item"
+                        >
+                            <strong>{{ $tc(`sw6oidc.provider.detail.testConnection.check.${check.id}`) }}:</strong>
+                            <span>{{ testResultMessage(check) }}</span>
+                            <sw-label
+                                size="medium"
+                                appearance="pill"
+                                :variant="testStatusVariant(check.status)"
+                            >{{ $tc(`sw6oidc.provider.detail.testStatus.${check.status}`) }}</sw-label>
+                        </li>
+                    </ul>
                 </sw-card>
                 {% endblock %}
 
@@ -151,7 +153,7 @@
                         :help-text="$tc('sw6oidc.provider.detail.groupAttributeHelp')"
                     />
                 </sw-container>
-                <sw-container columns="1fr 1fr 1fr" gap="0 30px">
+                <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-single-select
                         v-model:value="provider.pkceFlow"
                         :label="$tc('sw6oidc.provider.detail.pkceFlow')"
@@ -164,12 +166,14 @@
                         :help-text="$tc('sw6oidc.provider.detail.claimEncodingHelp')"
                         :options="claimEncodingOptions"
                     />
-                    <sw-switch-field
-                        v-model:value="provider.publicClient"
-                        :label="$tc('sw6oidc.provider.detail.publicClient')"
-                        :help-text="$tc('sw6oidc.provider.detail.publicClientHelp')"
-                    />
                 </sw-container>
+                {# Own row: next to the label-on-top selects, the switch sat
+                   vertically off-centre against their input boxes. #}
+                <sw-switch-field
+                    v-model:value="provider.publicClient"
+                    :label="$tc('sw6oidc.provider.detail.publicClient')"
+                    :help-text="$tc('sw6oidc.provider.detail.publicClientHelp')"
+                />
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-number-field
                         v-model="provider.httpTimeout"
@@ -194,41 +198,40 @@
                     >
                         {{ $tc('sw6oidc.provider.detail.buttonRunLiveTest') }}
                     </sw-button>
-                    {#
-                        inline-flex + align-items:center rather than relying
-                        on plain inline flow: sw-label renders display:
-                        inline-block at a fixed 32px height (no variant="small"
-                        here), so at the default baseline vertical-align it
-                        sits visibly higher than the surrounding text's own,
-                        much shorter line box.
-                    #}
-                    <span v-if="provider.lastTestStatus" style="display: inline-flex; align-items: center; gap: 4px;">
+                    <span
+                        v-if="provider.lastTestStatus"
+                        class="sw6oidc-test-result-list__item"
+                    >
                         <strong>{{ $tc('sw6oidc.provider.detail.lastTestStatusLabel') }}:</strong>
-                        <sw-label :variant="provider.lastTestStatus === 'pass' ? 'success' : 'danger'">
-                            {{ provider.lastTestStatus }}
-                        </sw-label>
-                        <template v-if="provider.lastTestAt">({{ provider.lastTestAt }})</template>
+                        <span v-if="formattedLastTestAt">{{ formattedLastTestAt }}</span>
+                        <sw-label
+                            size="medium"
+                            appearance="pill"
+                            :variant="testStatusVariant(provider.lastTestStatus)"
+                        >{{ $tc(`sw6oidc.provider.detail.testStatus.${provider.lastTestStatus}`) }}</sw-label>
                     </span>
                 </sw-container>
 
                 <sw-card
                     v-if="liveTestReport"
+                    class="sw6oidc-live-test-result"
                     :title="$tc('sw6oidc.provider.detail.liveTestResultTitle')"
-                    style="margin-top: 16px;"
                 >
-                    <table class="sw6oidc-test-result-table">
-                        <tbody>
-                            <tr v-for="step in liveTestReport.steps" :key="step.id">
-                                <td>{{ $tc(`sw6oidc.provider.detail.liveTest.step.${step.id}`) }}</td>
-                                <td>
-                                    <sw-label :variant="step.status === 'pass' ? 'success' : (step.status === 'skipped' ? 'neutral' : 'danger')">
-                                        {{ step.status }}
-                                    </sw-label>
-                                </td>
-                                <td>{{ step.detail }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <ul class="sw6oidc-test-result-list">
+                        <li
+                            v-for="step in liveTestReport.steps"
+                            :key="step.id"
+                            class="sw6oidc-test-result-list__item"
+                        >
+                            <strong>{{ $tc(`sw6oidc.provider.detail.liveTest.step.${step.id}`) }}:</strong>
+                            <span>{{ testResultMessage(step) }}</span>
+                            <sw-label
+                                size="medium"
+                                appearance="pill"
+                                :variant="testStatusVariant(step.status)"
+                            >{{ $tc(`sw6oidc.provider.detail.testStatus.${step.status}`) }}</sw-label>
+                        </li>
+                    </ul>
                 </sw-card>
                 {% endblock %}
             </sw-card>

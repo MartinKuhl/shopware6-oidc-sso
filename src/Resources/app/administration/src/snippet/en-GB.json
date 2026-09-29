@@ -44,6 +44,30 @@
                         "jwks_reachable": "JWKS endpoint"
                     }
                 },
+                "testStatus": {
+                    "pass": "pass",
+                    "fail": "fail",
+                    "warning": "warning",
+                    "skipped": "skipped"
+                },
+                "testMessage": {
+                    "tokenExchangePass": "Authorization code exchanged for an access token successfully.",
+                    "tokenExchangeNoAccessToken": "Token endpoint response did not include an access_token.",
+                    "idTokenVerificationPass": "id_token signature and claims verified successfully.",
+                    "idTokenVerificationSkipped": "Token response did not include an id_token.",
+                    "userinfoFetchPass": "Userinfo endpoint responded successfully.",
+                    "userinfoFetchSkipped": "No userinfo endpoint configured.",
+                    "wellKnownReachablePass": "Well-known configuration document fetched and parsed successfully.",
+                    "requiredEndpointsPass": "Authorize, token, and JWKS endpoints are all present.",
+                    "requiredEndpointsMissing": "Missing required endpoint(s): {endpoints}.",
+                    "clientIdMissing": "Client ID is not set.",
+                    "clientSecretMissing": "Client secret is not set (required unless this is a public client).",
+                    "clientIdPass": "Client ID is set.",
+                    "clientCredentialsPass": "Client ID and client secret are set.",
+                    "jwksNotConfigured": "No JWKS endpoint configured; ID tokens cannot be signature-verified.",
+                    "jwksNoKeys": "JWKS endpoint responded but did not contain a non-empty \"keys\" array.",
+                    "jwksPass": "JWKS endpoint returned {count} key(s)."
+                },
                 "buttonRunLiveTest": "Run live login test",
                 "liveTestRequiresSaveHint": "Save the provider first to run a live login test.",
                 "liveTestError": "The live login test could not be started.",

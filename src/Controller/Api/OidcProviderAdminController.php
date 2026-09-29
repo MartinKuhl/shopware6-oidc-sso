@@ -252,7 +252,7 @@ class OidcProviderAdminController extends AbstractController
     }
 
     /**
-     * @param array<int, array{id: string, status: string, detail: string}> $steps
+     * @param array<int, array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}> $steps
      * @param array<string, mixed> $claims
      */
     private function renderTestResultPage(string $status, array $steps, array $claims, ?string $cspNonce): Response

@@ -31,7 +31,11 @@ class OidcLiveLoginTestService
     }
 
     /**
-     * @return array{status: string, steps: array<int, array{id: string, status: string, detail: string}>, claims: array<string, mixed>}
+     * @return array{
+     *     status: string,
+     *     steps: array<int, array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}>,
+     *     claims: array<string, mixed>
+     * }
      */
     public function run(
         Sw6OidcProviderEntity $provider,
@@ -51,12 +55,22 @@ class OidcLiveLoginTestService
         }
 
         if (!isset($tokens['access_token']) || !\is_string($tokens['access_token'])) {
-            $steps[] = ['id' => 'token_exchange', 'status' => 'fail', 'detail' => 'Token endpoint response did not include an access_token.'];
+            $steps[] = [
+                'id' => 'token_exchange',
+                'status' => 'fail',
+                'detail' => 'Token endpoint response did not include an access_token.',
+                'messageKey' => 'tokenExchangeNoAccessToken',
+            ];
 
             return ['status' => 'fail', 'steps' => $steps, 'claims' => []];
         }
 
-        $steps[] = ['id' => 'token_exchange', 'status' => 'pass', 'detail' => 'Authorization code exchanged for an access token successfully.'];
+        $steps[] = [
+            'id' => 'token_exchange',
+            'status' => 'pass',
+            'detail' => 'Authorization code exchanged for an access token successfully.',
+            'messageKey' => 'tokenExchangePass',
+        ];
 
         $idTokenClaims = [];
 
@@ -71,12 +85,22 @@ class OidcLiveLoginTestService
                     $provider->getJwksCacheTtl(),
                     $provider->getHttpTimeout(),
                 );
-                $steps[] = ['id' => 'id_token_verification', 'status' => 'pass', 'detail' => 'id_token signature and claims verified successfully.'];
+                $steps[] = [
+                    'id' => 'id_token_verification',
+                    'status' => 'pass',
+                    'detail' => 'id_token signature and claims verified successfully.',
+                    'messageKey' => 'idTokenVerificationPass',
+                ];
             } catch (\Throwable $exception) {
                 $steps[] = ['id' => 'id_token_verification', 'status' => 'fail', 'detail' => $exception->getMessage()];
             }
         } else {
-            $steps[] = ['id' => 'id_token_verification', 'status' => 'skipped', 'detail' => 'Token response did not include an id_token.'];
+            $steps[] = [
+                'id' => 'id_token_verification',
+                'status' => 'skipped',
+                'detail' => 'Token response did not include an id_token.',
+                'messageKey' => 'idTokenVerificationSkipped',
+            ];
         }
 
         $userInfoClaims = [];
@@ -84,12 +108,12 @@ class OidcLiveLoginTestService
         if ($provider->getUserInfoEndpoint() !== null) {
             try {
                 $userInfoClaims = $this->userInfoService->fetchClaims($provider, $tokens['access_token']);
-                $steps[] = ['id' => 'userinfo_fetch', 'status' => 'pass', 'detail' => 'Userinfo endpoint responded successfully.'];
+                $steps[] = ['id' => 'userinfo_fetch', 'status' => 'pass', 'detail' => 'Userinfo endpoint responded successfully.', 'messageKey' => 'userinfoFetchPass'];
             } catch (\Throwable $exception) {
                 $steps[] = ['id' => 'userinfo_fetch', 'status' => 'fail', 'detail' => $exception->getMessage()];
             }
         } else {
-            $steps[] = ['id' => 'userinfo_fetch', 'status' => 'skipped', 'detail' => 'No userinfo endpoint configured.'];
+            $steps[] = ['id' => 'userinfo_fetch', 'status' => 'skipped', 'detail' => 'No userinfo endpoint configured.', 'messageKey' => 'userinfoFetchSkipped'];
         }
 
         $merged = array_merge($idTokenClaims, $userInfoClaims);

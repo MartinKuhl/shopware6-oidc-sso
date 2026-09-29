@@ -43,7 +43,7 @@ class OidcConnectionTestService
      *     httpTimeout?: int,
      * } $config
      *
-     * @return array{overallStatus: string, checks: array<int, array{id: string, status: string, detail: string}>}
+     * @return array{overallStatus: string, checks: array<int, array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}>}
      */
     public function test(array $config): array
     {
@@ -77,7 +77,7 @@ class OidcConnectionTestService
     /**
      * @param array<string, string|null> $endpoints
      *
-     * @return array{id: string, status: string, detail: string}
+     * @return array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}
      */
     private function checkWellKnown(string $url, int $timeout, array &$endpoints): array
     {
@@ -103,13 +103,18 @@ class OidcConnectionTestService
             return ['id' => 'well_known_reachable', 'status' => 'warning', 'detail' => implode(' ', $violation['warnings'])];
         }
 
-        return ['id' => 'well_known_reachable', 'status' => 'pass', 'detail' => 'Well-known configuration document fetched and parsed successfully.'];
+        return [
+            'id' => 'well_known_reachable',
+            'status' => 'pass',
+            'detail' => 'Well-known configuration document fetched and parsed successfully.',
+            'messageKey' => 'wellKnownReachablePass',
+        ];
     }
 
     /**
      * @param array<string, string|null> $endpoints
      *
-     * @return array{id: string, status: string, detail: string}
+     * @return array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}
      */
     private function checkRequiredEndpoints(array $endpoints): array
     {
@@ -126,16 +131,23 @@ class OidcConnectionTestService
                 'id' => 'required_endpoints_present',
                 'status' => 'fail',
                 'detail' => 'Missing required endpoint(s): ' . implode(', ', $missing) . '.',
+                'messageKey' => 'requiredEndpointsMissing',
+                'messageParams' => ['endpoints' => implode(', ', $missing)],
             ];
         }
 
-        return ['id' => 'required_endpoints_present', 'status' => 'pass', 'detail' => 'Authorize, token, and JWKS endpoints are all present.'];
+        return [
+            'id' => 'required_endpoints_present',
+            'status' => 'pass',
+            'detail' => 'Authorize, token, and JWKS endpoints are all present.',
+            'messageKey' => 'requiredEndpointsPass',
+        ];
     }
 
     /**
      * @param array<string, mixed> $config
      *
-     * @return array{id: string, status: string, detail: string}
+     * @return array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}
      */
     private function checkClientCredentials(array $config): array
     {
@@ -144,25 +156,36 @@ class OidcConnectionTestService
         $publicClient = (bool) ($config['publicClient'] ?? false);
 
         if ($clientId === '') {
-            return ['id' => 'client_credentials_present', 'status' => 'fail', 'detail' => 'Client ID is not set.'];
+            return ['id' => 'client_credentials_present', 'status' => 'fail', 'detail' => 'Client ID is not set.', 'messageKey' => 'clientIdMissing'];
         }
 
         if (!$publicClient && $clientSecret === '') {
-            return ['id' => 'client_credentials_present', 'status' => 'fail', 'detail' => 'Client secret is not set (required unless this is a public client).'];
+            return [
+                'id' => 'client_credentials_present',
+                'status' => 'fail',
+                'detail' => 'Client secret is not set (required unless this is a public client).',
+                'messageKey' => 'clientSecretMissing',
+            ];
         }
 
         $detail = $publicClient ? 'Client ID is set.' : 'Client ID and client secret are set.';
+        $messageKey = $publicClient ? 'clientIdPass' : 'clientCredentialsPass';
 
-        return ['id' => 'client_credentials_present', 'status' => 'pass', 'detail' => $detail];
+        return ['id' => 'client_credentials_present', 'status' => 'pass', 'detail' => $detail, 'messageKey' => $messageKey];
     }
 
     /**
-     * @return array{id: string, status: string, detail: string}
+     * @return array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}
      */
     private function checkJwks(?string $jwksEndpoint, int $timeout): array
     {
         if ($jwksEndpoint === null) {
-            return ['id' => 'jwks_reachable', 'status' => 'warning', 'detail' => 'No JWKS endpoint configured; ID tokens cannot be signature-verified.'];
+            return [
+                'id' => 'jwks_reachable',
+                'status' => 'warning',
+                'detail' => 'No JWKS endpoint configured; ID tokens cannot be signature-verified.',
+                'messageKey' => 'jwksNotConfigured',
+            ];
         }
 
         $violation = $this->urlValidator->validate($jwksEndpoint);
@@ -180,18 +203,29 @@ class OidcConnectionTestService
         $keys = $document['keys'] ?? null;
 
         if (!\is_array($keys) || $keys === []) {
-            return ['id' => 'jwks_reachable', 'status' => 'fail', 'detail' => 'JWKS endpoint responded but did not contain a non-empty "keys" array.'];
+            return [
+                'id' => 'jwks_reachable',
+                'status' => 'fail',
+                'detail' => 'JWKS endpoint responded but did not contain a non-empty "keys" array.',
+                'messageKey' => 'jwksNoKeys',
+            ];
         }
 
         if ($violation['warnings'] !== []) {
             return ['id' => 'jwks_reachable', 'status' => 'warning', 'detail' => implode(' ', $violation['warnings'])];
         }
 
-        return ['id' => 'jwks_reachable', 'status' => 'pass', 'detail' => sprintf('JWKS endpoint returned %d key(s).', \count($keys))];
+        return [
+            'id' => 'jwks_reachable',
+            'status' => 'pass',
+            'detail' => sprintf('JWKS endpoint returned %d key(s).', \count($keys)),
+            'messageKey' => 'jwksPass',
+            'messageParams' => ['count' => \count($keys)],
+        ];
     }
 
     /**
-     * @param array<int, array{id: string, status: string, detail: string}> $checks
+     * @param array<int, array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}> $checks
      */
     private function overallStatus(array $checks): string
     {
