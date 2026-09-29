@@ -226,13 +226,14 @@ https://auth.your-domain.example/logout
 
 ### Client Secret Storage — Read This
 
-**Client secrets are currently stored in plaintext** in the `sw6oidc_provider` table. Unlike the sibling Magento module (which encrypts secrets at rest), this has not yet been implemented here. Restrict database access accordingly until this is addressed, and treat a database backup/export as containing live credentials.
+Client secrets are **encrypted at rest** (libsodium secretbox, key derived from Shopware's `APP_SECRET`) and are **write-only** in the Administration: after saving, the secret is never shown or returned by the Admin API again — leave the field empty to keep the stored value, or type a new one to replace it. Existing plaintext secrets are encrypted by the plugin's migration on `plugin:update`.
+
+**Keep `APP_SECRET` stable.** Rotating it makes every stored client secret undecryptable; OIDC logins for those providers then fail with a "re-enter the client secret" error until an admin saves each provider with its secret again. A database dump alone no longer exposes the secrets, but a dump *plus* the `APP_SECRET` does.
 
 ---
 
 ## Known Limitations
 
-- **Client secrets are stored in plaintext** — see above. Treat database access as equivalent to credential access.
 - **No OIDC Back-Channel Logout** — an IdP cannot push a server-side logout notification to this plugin.
 - **No admin-side RP-Initiated Logout** — only the Storefront/customer logout flow redirects to the IdP's end-session endpoint; logging an admin out of Shopware does not currently log them out at the IdP.
 - **"Sync on SSO" is per provider, not per attribute** — all five provider-level toggles (customer profile/address/group, admin profile/role) are applied on repeat logins, but there is no per-attribute sync control.

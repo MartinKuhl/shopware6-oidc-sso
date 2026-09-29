@@ -168,9 +168,9 @@ Before you build a feature "on top of" one of these, check that it's actually re
 - The **"Enable debug logging"** toggle in the plugin's config UI does nothing — actual log verbosity is controlled entirely by the `SW6OIDC_LOG_LEVEL` environment variable.
 - `ClaimsNormalizer::extractEmail()` and `UserProviderBindingService::unbind()` have no callers anywhere in the codebase.
 
-### Client secrets are stored in plaintext
+### Client secrets are encrypted with a key derived from APP_SECRET
 
-`sw6oidc_provider.client_secret` is not encrypted at rest (the entity has a `// TODO(later phase): encrypt at rest` comment marking this as known and deferred). Treat database access/backups as equivalent to credential access until this changes.
+`sw6oidc_provider.client_secret` is a `Sw6OidcEncryptedField`: its serializer encrypts on write and decrypts on read, so entity code only ever sees plaintext. Rotating `APP_SECRET` makes the stored envelopes undecryptable — hydration still succeeds (the envelope is passed through), and `TokenExchangeService` then throws `ClientSecretUnavailableException` instead of sending ciphertext to the IdP. The field has no `ApiAware` flag, so Admin API reads never return it.
 
 ### No back-channel logout, no admin-side RP-initiated logout
 
@@ -194,9 +194,8 @@ Only two unit tests exist (`AdminPasskeyLoginTokenTrackerTest`, `PasskeyConfigTe
 
 Roughly in order of "would most reduce risk right now":
 
-1. **Encrypt `client_secret` at rest.** The clearest security gap relative to the sibling Magento module, which already does this. Low effort, high value.
-2. **Wire up or remove the dead schema/config surface.** The unused `sync_*_on_sso` columns (besides admin role), `transform_function`/`transform_params`, and the non-functional debug-logging toggle create a false impression of functionality. Either implement them or remove them so the admin UI doesn't lie about what the plugin does.
-3. **Add integration tests against a real (or containerized) Shopware instance.** Right now correctness of the actual login flows rests entirely on manual testing. Even a small integration suite covering the happy path for customer OIDC login, admin OIDC login, and one passkey round-trip would catch the regressions unit tests structurally can't.
-4. **Implement OIDC Back-Channel Logout and admin-side RP-initiated logout**, bringing session termination guarantees in line with the Storefront/customer flow and closing the gap where an IdP-side logout or admin-side logout doesn't propagate.
-5. **Add a CHANGELOG.md** — `LICENSE.txt` is already committed (MIT, matching `composer.json`), but there's still no changelog to track what changed between versions as the plugin matures past 0.1.0.
-6. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.
+1. **Wire up or remove the dead schema/config surface.** The unused `sync_*_on_sso` columns (besides admin role), `transform_function`/`transform_params`, and the non-functional debug-logging toggle create a false impression of functionality. Either implement them or remove them so the admin UI doesn't lie about what the plugin does.
+2. **Add integration tests against a real (or containerized) Shopware instance.** Right now correctness of the actual login flows rests entirely on manual testing. Even a small integration suite covering the happy path for customer OIDC login, admin OIDC login, and one passkey round-trip would catch the regressions unit tests structurally can't.
+3. **Implement OIDC Back-Channel Logout and admin-side RP-initiated logout**, bringing session termination guarantees in line with the Storefront/customer flow and closing the gap where an IdP-side logout or admin-side logout doesn't propagate.
+4. **Add a CHANGELOG.md** — `LICENSE.txt` is already committed (MIT, matching `composer.json`), but there's still no changelog to track what changed between versions as the plugin matures past 0.1.0.
+5. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.

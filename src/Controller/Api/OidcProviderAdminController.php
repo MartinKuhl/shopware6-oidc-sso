@@ -15,6 +15,7 @@ use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\PlatformRequest;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -93,8 +94,18 @@ class OidcProviderAdminController extends AbstractController
         defaults: ['_acl' => ['sw6oidc_provider.editor']],
         methods: ['POST'],
     )]
-    public function testConnection(Request $request): JsonResponse
+    public function testConnection(Request $request, Context $context): JsonResponse
     {
+        $clientSecret = $request->request->get('clientSecret');
+        $providerId = (string) $request->request->get('providerId', '');
+
+        // client_secret is write-only over the API, so the form of an existing
+        // provider sends nothing unless the admin typed a new one: fall back
+        // to the stored secret.
+        if (($clientSecret === null || $clientSecret === '') && Uuid::isValid($providerId)) {
+            $clientSecret = $this->loadProvider($providerId, $context)?->getClientSecret();
+        }
+
         $config = [
             'wellKnownConfigUrl' => $request->request->get('wellKnownConfigUrl'),
             'authorizeEndpoint' => $request->request->get('authorizeEndpoint'),
@@ -105,7 +116,7 @@ class OidcProviderAdminController extends AbstractController
             'revocationEndpoint' => $request->request->get('revocationEndpoint'),
             'issuer' => $request->request->get('issuer'),
             'clientId' => $request->request->get('clientId'),
-            'clientSecret' => $request->request->get('clientSecret'),
+            'clientSecret' => $clientSecret,
             'publicClient' => $request->request->getBoolean('publicClient'),
             'httpTimeout' => (int) $request->request->get('httpTimeout', 10) ?: 10,
         ];

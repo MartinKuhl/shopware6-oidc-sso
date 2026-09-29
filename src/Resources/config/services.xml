@@ -53,6 +53,19 @@
         </service>
         <service id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" alias="MartinKuhl\Sw6Oidc\Service\Cache\RedisAtomicCache" />
 
+        <!-- Encryption at rest (client_secret). Key derived from APP_SECRET. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor">
+            <argument>%env(APP_SECRET)%</argument>
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <!-- Service id must be the class name: Field::getSerializer() resolves it by class. -->
+        <service id="MartinKuhl\Sw6Oidc\Core\Content\Provider\Field\Sw6OidcEncryptedFieldSerializer">
+            <argument type="service" id="Shopware\Core\Framework\DataAbstractionLayer\FieldSerializer\StringFieldSerializer" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
+            <tag name="shopware.field_serializer" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier">
             <argument type="service" id="Symfony\Contracts\HttpClient\HttpClientInterface" />
             <argument type="service" id="cache.app" />

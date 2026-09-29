@@ -91,6 +91,15 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
     },
 
     computed: {
+        /**
+         * client_secret is write-only over the API (encrypted at rest, never
+         * returned), so an existing provider's form starts with it empty —
+         * only required when creating, and a blank value keeps the stored one.
+         */
+        isNewProvider() {
+            return !this.provider || this.provider.isNew();
+        },
+
         identifier() {
             return this.provider ? (this.provider.displayName || this.provider.appName) : '';
         },
@@ -285,6 +294,12 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
                 }
             }
 
+            // A blank secret on an existing provider means "keep the stored
+            // one" — don't send the empty string (it would fail NotBlank).
+            if (!this.isNewProvider && !this.provider.clientSecret) {
+                this.provider.clientSecret = undefined;
+            }
+
             return this.providerRepository.save(this.provider, Shopware.Context.api).then(() => {
                 this.isSaveSuccessful = true;
                 this.isLoading = false;
@@ -374,6 +389,7 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
                     issuer: this.provider.issuer,
                     clientId: this.provider.clientId,
                     clientSecret: this.provider.clientSecret,
+                    providerId: this.isNewProvider ? null : this.provider.id,
                     publicClient: this.provider.publicClient,
                     httpTimeout: this.provider.httpTimeout,
                 });

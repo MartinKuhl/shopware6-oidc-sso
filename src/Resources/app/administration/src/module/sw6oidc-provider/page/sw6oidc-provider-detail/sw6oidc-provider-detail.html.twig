@@ -51,7 +51,8 @@
                         v-model="provider.clientSecret"
                         :label="$tc('sw6oidc.provider.detail.clientSecret')"
                         :help-text="$tc('sw6oidc.provider.detail.clientSecretHelp')"
-                        required
+                        :placeholder="isNewProvider ? '' : $tc('sw6oidc.provider.detail.clientSecretStoredPlaceholder')"
+                        :required="isNewProvider"
                     />
                 </sw-container>
                 <sw-text-field
