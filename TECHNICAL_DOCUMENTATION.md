@@ -160,13 +160,11 @@ There is no password check, no credential check, inside the grant itself — it 
 
 `AdminPasskeyLoginTokenTracker` lets an admin force-logout a session if they delete the exact passkey that's currently authenticating it — but it's keyed by the access token's `jti`, with a 900s TTL matching the 10-minute access-token lifetime. Once that token silently refreshes (via the refresh token), a new `jti` is minted that the tracker never learns about, and the "kill this session" guarantee silently stops applying. This is a known, accepted scope limit — don't advertise this as "delete a passkey to instantly and permanently kill any session using it."
 
-### Several schema columns and one UI toggle are not wired to any logic
+### One UI toggle is not wired to any logic
 
 Before you build a feature "on top of" one of these, check that it's actually read anywhere:
-- `sync_customer_profile_on_sso`, `sync_customer_address_on_sso`, `sync_customer_group_on_sso`, `sync_admin_profile_on_sso` — exist on `sw6oidc_provider`, read by nothing. Only `sync_admin_role_on_sso` actually does anything (`AdminProvisioningService::syncRole()`).
-- `transform_function`/`transform_params` on `sw6oidc_attribute_mapping` — schema-only, no code applies a transform to a mapped claim value.
 - The **"Enable debug logging"** toggle in the plugin's config UI does nothing — actual log verbosity is controlled entirely by the `SW6OIDC_LOG_LEVEL` environment variable.
-- `ClaimsNormalizer::extractEmail()` and `UserProviderBindingService::unbind()` have no callers anywhere in the codebase.
+- `ClaimsNormalizer::extractEmail()` has no callers anywhere in the codebase.
 
 ### Client secrets are encrypted with a key derived from APP_SECRET
 
@@ -194,7 +192,7 @@ Only two unit tests exist (`AdminPasskeyLoginTokenTrackerTest`, `PasskeyConfigTe
 
 Roughly in order of "would most reduce risk right now":
 
-1. **Wire up or remove the dead schema/config surface.** The unused `sync_*_on_sso` columns (besides admin role), `transform_function`/`transform_params`, and the non-functional debug-logging toggle create a false impression of functionality. Either implement them or remove them so the admin UI doesn't lie about what the plugin does.
+1. **Wire up or remove the debug-logging toggle.** The "Enable debug logging" config toggle still does nothing (verbosity comes from `SW6OIDC_LOG_LEVEL`) and creates a false impression of functionality.
 2. **Add integration tests against a real (or containerized) Shopware instance.** Right now correctness of the actual login flows rests entirely on manual testing. Even a small integration suite covering the happy path for customer OIDC login, admin OIDC login, and one passkey round-trip would catch the regressions unit tests structurally can't.
 3. **Implement OIDC Back-Channel Logout and admin-side RP-initiated logout**, bringing session termination guarantees in line with the Storefront/customer flow and closing the gap where an IdP-side logout or admin-side logout doesn't propagate.
 4. **Add a CHANGELOG.md** — `LICENSE.txt` is already committed (MIT, matching `composer.json`), but there's still no changelog to track what changed between versions as the plugin matures past 0.1.0.

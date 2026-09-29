@@ -13,7 +13,6 @@ class Sw6OidcAttributeMappingEntity extends Entity
     protected string $providerId;
     protected string $attributeType;
     protected string $attributeName;
-    protected bool $syncOnSso = false;
     protected ?string $transformFunction = null;
     protected ?array $transformParams = null;
 
@@ -47,16 +46,6 @@ class Sw6OidcAttributeMappingEntity extends Entity
     public function setAttributeName(string $attributeName): void
     {
         $this->attributeName = $attributeName;
-    }
-
-    public function isSyncOnSso(): bool
-    {
-        return $this->syncOnSso;
-    }
-
-    public function setSyncOnSso(bool $syncOnSso): void
-    {
-        $this->syncOnSso = $syncOnSso;
     }
 
     public function getTransformFunction(): ?string

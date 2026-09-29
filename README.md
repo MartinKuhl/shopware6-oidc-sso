@@ -113,6 +113,17 @@ Per provider, map OIDC claims to Shopware fields. Identity fields have OIDC-stan
 | Phone | `phone_number` | |
 | Billing/Shipping address (city, state, country, street, phone, zip) | *(none)* | Configure per field if you want auto-populated addresses |
 
+Each mapping can optionally **transform** the claim value before it is stored (applied on every login):
+
+| Transform | Parameters | Example |
+|---|---|---|
+| Concatenate claims | claims to append, separator (default space) | street `Main St` + `house_no` → `Main St 5` |
+| Split | separator, part index (`-1` = last) | `name` split on space, index `-1` → last name |
+| Prefix | text | `42` → `OIDC-42` |
+| Regex replace | PCRE pattern, replacement | `/\D+/` → `` strips non-digits from a phone number |
+
+A misconfigured transform never breaks login — the untransformed value is used and a warning is logged.
+
 ### Group / Role Mapping
 
 Per provider, map OIDC group names to Shopware ACL roles (admin) or customer groups (Storefront):
@@ -240,7 +251,6 @@ Client secrets are **encrypted at rest** (libsodium secretbox, key derived from 
 - **No OIDC Back-Channel Logout** — an IdP cannot push a server-side logout notification to this plugin.
 - **No admin-side RP-Initiated Logout** — only the Storefront/customer logout flow redirects to the IdP's end-session endpoint; logging an admin out of Shopware does not currently log them out at the IdP.
 - **"Sync on SSO" is per provider, not per attribute** — all five provider-level toggles (customer profile/address/group, admin profile/role) are applied on repeat logins, but there is no per-attribute sync control.
-- **Attribute value transforms are not implemented** — the per-attribute transform function/params fields exist in the schema but are not applied anywhere.
 - **The "Enable debug logging" toggle does not control log verbosity** — the plugin's log level is set via the `SW6OIDC_LOG_LEVEL` environment variable (default `debug`), not this UI toggle. Logs are written to a plugin-specific log file/channel and can contain claim data — handle with the same care as any log containing PII.
 - **Single-node atomic cache unless Redis is configured** — without `SW6OIDC_REDIS_DSN`, one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. Multi-node/HA deployments must set `SW6OIDC_REDIS_DSN` (e.g. `redis://:password@redis:6379/2`, or `rediss://` for TLS); it is picked up at runtime.
 - **Early-stage test coverage** — unit tests cover a subset of services (HTTP client, discovery/connection tests, token exchange, attribute mapping, passkey helpers); JWT verification, state/PKCE handling, claims normalization and the provisioning services are still untested, and there is no automated integration testing against a live Shopware instance yet.

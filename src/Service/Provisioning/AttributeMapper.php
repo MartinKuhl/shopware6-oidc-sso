@@ -37,6 +37,7 @@ class AttributeMapper
     public function __construct(
         private readonly EntityRepository $attributeMappingRepository,
         private readonly GenderMapper $genderMapper,
+        private readonly AttributeTransformer $transformer,
     ) {
     }
 
@@ -48,18 +49,22 @@ class AttributeMapper
      */
     public function map(Sw6OidcProviderEntity $provider, array $flattenedClaims, array $groups, Context $context): MappedProfile
     {
-        $claimKeys = $this->loadClaimKeys($provider->getId(), $context);
+        $mappings = $this->loadMappings($provider->getId(), $context);
 
-        $read = function (string $attributeType) use ($flattenedClaims, $claimKeys): ?string {
-            $claimKey = $claimKeys[$attributeType] ?? self::DEFAULT_CLAIM_KEYS[$attributeType] ?? null;
+        $read = function (string $attributeType) use ($flattenedClaims, $mappings): ?string {
+            $mapping = $mappings[$attributeType] ?? null;
+            $claimKey = $mapping?->getAttributeName() ?? self::DEFAULT_CLAIM_KEYS[$attributeType] ?? null;
 
-            if ($claimKey === null || !isset($flattenedClaims[$claimKey])) {
-                return null;
+            $raw = $claimKey !== null ? ($flattenedClaims[$claimKey] ?? null) : null;
+            $value = \is_scalar($raw) ? trim((string) $raw) : null;
+
+            if ($mapping === null) {
+                return $value;
             }
 
-            $value = $flattenedClaims[$claimKey];
-
-            return \is_scalar($value) ? trim((string) $value) : null;
+            // Applied even when the claim itself is missing, so e.g. a concat
+            // transform can still build a value from its other claims.
+            return $this->transformer->apply($mapping->getTransformFunction(), $mapping->getTransformParams() ?? [], $value, $flattenedClaims);
         };
 
         $email = $read(Attr::TYPE_EMAIL);
@@ -104,20 +109,20 @@ class AttributeMapper
     }
 
     /**
-     * @return array<string, string> attributeType => claim key
+     * @return array<string, Sw6OidcAttributeMappingEntity> attributeType => mapping row
      */
-    private function loadClaimKeys(string $providerId, Context $context): array
+    private function loadMappings(string $providerId, Context $context): array
     {
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('providerId', $providerId));
 
-        $claimKeys = [];
+        $mappings = [];
 
         foreach ($this->attributeMappingRepository->search($criteria, $context)->getEntities() as $mapping) {
             \assert($mapping instanceof Sw6OidcAttributeMappingEntity);
-            $claimKeys[$mapping->getAttributeType()] = $mapping->getAttributeName();
+            $mappings[$mapping->getAttributeType()] = $mapping;
         }
 
-        return $claimKeys;
+        return $mappings;
     }
 }

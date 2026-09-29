@@ -367,6 +367,8 @@
                     :columns="[
                         { property: 'attributeType', label: $tc('sw6oidc.provider.detail.attributeType.label'), width: attributeTypeColumnWidth },
                         { property: 'attributeName', label: $tc('sw6oidc.provider.detail.attributeClaimName'), width: '294px' },
+                        { property: 'transformFunction', label: $tc('sw6oidc.provider.detail.transform.label'), width: '200px' },
+                        { property: 'transformParams', label: $tc('sw6oidc.provider.detail.transform.params') },
                     ]"
                     :show-selection="false"
                 >
@@ -391,6 +393,66 @@
                             :placeholder="$tc('sw6oidc.provider.detail.pickDiscoveredClaimPlaceholder')"
                             size="small"
                         />
+                    </template>
+                    {# Optional value transform, applied by AttributeTransformer on every login. #}
+                    <template #column-transformFunction="{ item }">
+                        <sw-single-select
+                            :value="item.transformFunction"
+                            :options="transformFunctionOptions"
+                            size="small"
+                            @update:value="onTransformFunctionChange(item, $event)"
+                        />
+                    </template>
+                    <template #column-transformParams="{ item }">
+                        <div
+                            v-if="item.transformFunction && item.transformParams"
+                            class="sw6oidc-transform-params"
+                        >
+                            <template v-if="item.transformFunction === 'concat'">
+                                <sw-multi-select
+                                    v-model:value="item.transformParams.claims"
+                                    :options="claimSelectOptions"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.concatClaims')"
+                                    size="small"
+                                />
+                                <sw-text-field
+                                    v-model="item.transformParams.separator"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.separator')"
+                                    size="small"
+                                />
+                            </template>
+                            <template v-else-if="item.transformFunction === 'split'">
+                                <sw-text-field
+                                    v-model="item.transformParams.separator"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.separator')"
+                                    size="small"
+                                />
+                                <sw-number-field
+                                    v-model="item.transformParams.index"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.index')"
+                                    number-type="int"
+                                    size="small"
+                                />
+                            </template>
+                            <sw-text-field
+                                v-else-if="item.transformFunction === 'prefix'"
+                                v-model="item.transformParams.value"
+                                :placeholder="$tc('sw6oidc.provider.detail.transform.prefix')"
+                                size="small"
+                            />
+                            <template v-else-if="item.transformFunction === 'regex_replace'">
+                                <sw-text-field
+                                    v-model="item.transformParams.pattern"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.pattern')"
+                                    size="small"
+                                />
+                                <sw-text-field
+                                    v-model="item.transformParams.replacement"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.replacement')"
+                                    size="small"
+                                />
+                            </template>
+                        </div>
                     </template>
                     <template #actions="{ item }">
                         <sw-context-menu-item variant="danger" @click="onRemoveAttributeMapping(item)">

@@ -166,9 +166,14 @@
             <argument type="service" id="country_state.repository" />
         </service>
 
+        <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeTransformer">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeMapper">
             <argument type="service" id="sw6oidc_attribute_mapping.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\GenderMapper" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeTransformer" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService">

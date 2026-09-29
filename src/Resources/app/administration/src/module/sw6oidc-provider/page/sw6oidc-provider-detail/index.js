@@ -216,6 +216,19 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
         claimSelectOptions() {
             return this.discoveredClaimKeys.map((key) => ({ value: key, label: key }));
         },
+
+        /**
+         * AttributeTransformer::FUNCTIONS, plus "none" (null).
+         */
+        transformFunctionOptions() {
+            return [
+                { value: null, label: this.$tc('sw6oidc.provider.detail.transform.none') },
+                ...['concat', 'split', 'prefix', 'regex_replace'].map((fn) => ({
+                    value: fn,
+                    label: this.$tc(`sw6oidc.provider.detail.transform.functions.${fn}`),
+                })),
+            ];
+        },
     },
 
     created() {
@@ -489,6 +502,22 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
             mapping.attributeType = 'email';
             mapping.attributeName = '';
             this.provider.attributeMappings.add(mapping);
+        },
+
+        /**
+         * Params are function-specific, so switching the function starts from
+         * that function's defaults instead of carrying stale keys over.
+         */
+        onTransformFunctionChange(item, transformFunction) {
+            const defaults = {
+                concat: { claims: [], separator: ' ' },
+                split: { separator: ' ', index: 0 },
+                prefix: { value: '' },
+                regex_replace: { pattern: '', replacement: '' },
+            };
+
+            item.transformFunction = transformFunction || null;
+            item.transformParams = transformFunction ? { ...defaults[transformFunction] } : null;
         },
 
         onRemoveAttributeMapping(item) {

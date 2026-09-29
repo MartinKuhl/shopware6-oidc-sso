@@ -157,6 +157,23 @@
                 "syncAdminRoleOnSso": "Sync admin role",
                 "syncAdminRoleOnSsoHelp": "Re-evaluates the Group/Role Mapping (including any superadmin grant) on every login and updates the Administration user's ACL role if it resolves to a different one.",
                 "attributeClaimName": "OIDC claim name",
+                "transform": {
+                    "label": "Transform",
+                    "params": "Transform parameters",
+                    "none": "None",
+                    "functions": {
+                        "concat": "Concatenate claims",
+                        "split": "Split",
+                        "prefix": "Prefix",
+                        "regex_replace": "Regex replace"
+                    },
+                    "concatClaims": "Claims to append",
+                    "separator": "Separator",
+                    "index": "Part index (0 = first, -1 = last)",
+                    "prefix": "Prefix text",
+                    "pattern": "Pattern, e.g. /\\s+/",
+                    "replacement": "Replacement"
+                },
                 "addAttributeMapping": "Add attribute mapping",
                 "pickDiscoveredClaimPlaceholder": "Select a claim",
                 "attributeMappingRequiresLiveTestHint": "The claim name field only offers claims seen on a successful live login test. Run “Run live login test” above and save the provider once it succeeds to populate this list.",

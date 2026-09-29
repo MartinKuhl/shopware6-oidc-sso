@@ -12,6 +12,17 @@
 // another, unrelated component (MtFieldLabel) that mt-switch/mt-datepicker
 // use for their own label, and switch labels ("Public Client", "Aktiv", ...)
 // are meant to stay regular weight here.
+// Per-function transform parameter inputs, side by side in one grid cell.
+.sw6oidc-transform-params {
+    display: flex;
+    gap: 8px;
+
+    > * {
+        flex: 1;
+        margin-bottom: 0;
+    }
+}
+
 .sw6oidc-bold-field-labels {
     .mt-field__label,
     .sw-field__label {
