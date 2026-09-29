@@ -141,6 +141,8 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
         </service>
 
+        <service id="MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator" />
+
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\TokenExchangeService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\UserInfoService" />
@@ -402,6 +404,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>

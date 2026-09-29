@@ -25,10 +25,20 @@
         >
             {% block sw6oidc_provider_list_column_last_test_status %}
             <template #column-lastTestStatus="{ item }">
-                <sw-label v-if="item.lastTestStatus === 'pass'" variant="success">
+                <sw-label
+                    v-if="item.lastTestStatus === 'pass'"
+                    size="medium"
+                    appearance="pill"
+                    variant="success"
+                >
                     {{ $tc('sw6oidc.provider.list.lastTestStatus.pass') }}
                 </sw-label>
-                <sw-label v-else-if="item.lastTestStatus" variant="danger">
+                <sw-label
+                    v-else-if="item.lastTestStatus"
+                    size="medium"
+                    appearance="pill"
+                    variant="danger"
+                >
                     {{ $tc('sw6oidc.provider.list.lastTestStatus.fail') }}
                 </sw-label>
                 <span v-else>{{ $tc('sw6oidc.provider.list.lastTestStatus.untested') }}</span>

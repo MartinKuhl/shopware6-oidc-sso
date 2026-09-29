@@ -450,7 +450,10 @@ Component.register('sw6oidc-provider-detail', () => {
                 this.liveTestReport = null;
 
                 try {
-                    const response = await this.sw6oidcApiFetch(`/api/_action/sw6oidc/provider/${this.provider.id}/test`, {});
+                    // The popup is rendered server-side, so it needs the UI locale passed along.
+                    const response = await this.sw6oidcApiFetch(`/api/_action/sw6oidc/provider/${this.provider.id}/test`, {
+                        locale: Shopware.Store.get('session').currentLocale,
+                    });
                     const result = await response.json();
 
                     if (!response.ok) {

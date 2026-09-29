@@ -29,8 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Field-level error messages in the provider form for rejected URLs and the lockout guard.
 - Unit tests for the OIDC core (state/PKCE/nonce, JWT verification, claims normalization), both provisioning services, group mapping, bindings, the WebAuthn ceremonies (real 5.x validators) and every new component.
 
+### Changed
+
+- The live login test popup is translated (German/English, following the Administration UI language) and styled like the provider detail page's result card. It reads the Administration snippet files, so both use the same wording.
+- Test status labels are aligned across the plugin ("Erfolgreich"/"Fehlgeschlagen", "Passed"/"Failed"), and the provider list's "Test status" column uses the same pill style as the detail page.
+
 ### Fixed
 
+- Opening the OIDC provider settings failed with `TypeError: J is not a function`.
 - A group literally named `"0"` was dropped from a groups claim. Integer group ids are now kept.
 - The flattened-claims key limit accepted one key more than intended.
 - A failed Redis save made the one-time token unreachable, because the fallback store was never consulted on read.

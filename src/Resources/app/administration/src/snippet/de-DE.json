@@ -46,10 +46,10 @@
                     }
                 },
                 "testStatus": {
-                    "pass": "bestanden",
-                    "fail": "fehlgeschlagen",
+                    "pass": "Erfolgreich",
+                    "fail": "Fehlgeschlagen",
                     "warning": "Warnung",
-                    "skipped": "übersprungen"
+                    "skipped": "Übersprungen"
                 },
                 "testMessage": {
                     "tokenExchangePass": "Autorisierungscode erfolgreich gegen ein Access-Token eingetauscht.",
@@ -67,7 +67,11 @@
                     "clientCredentialsPass": "Client-ID und Client-Secret sind gesetzt.",
                     "jwksNotConfigured": "Kein JWKS-Endpunkt konfiguriert; die Signatur von ID-Tokens kann nicht geprüft werden.",
                     "jwksNoKeys": "Der JWKS-Endpunkt hat geantwortet, enthielt aber kein nicht-leeres \"keys\"-Array.",
-                    "jwksPass": "Der JWKS-Endpunkt hat {count} Schlüssel geliefert."
+                    "jwksPass": "Der JWKS-Endpunkt hat {count} Schlüssel geliefert.",
+                    "callbackInvalidState": "Unbekannter, abgelaufener oder bereits verwendeter Test-Durchlauf. Bitte starten Sie den Live-Login-Test erneut.",
+                    "callbackNotTestFlow": "Dieser Rückruf akzeptiert nur Durchläufe des Live-Login-Tests.",
+                    "callbackMissingCode": "Autorisierungscode fehlt oder der Anbieter ist unbekannt.",
+                    "authorizationError": "Der Identity Provider hat die Anmeldung abgelehnt: {error}"
                 },
                 "buttonRunLiveTest": "Live-Login-Test ausführen",
                 "liveTestRequiresSaveHint": "Speichern Sie den Anbieter zuerst, um einen Live-Login-Test auszuführen.",
@@ -78,7 +82,9 @@
                     "step": {
                         "token_exchange": "Token-Austausch",
                         "id_token_verification": "ID-Token-Prüfung",
-                        "userinfo_fetch": "Userinfo-Abruf"
+                        "userinfo_fetch": "Userinfo-Abruf",
+                        "callback": "Rückruf",
+                        "authorization": "Autorisierung"
                     }
                 },
                 "cardGeneral": "Allgemein",
@@ -220,6 +226,14 @@
                     "shipping_state": "Versand: Bundesland",
                     "shipping_country": "Versand: Land",
                     "shipping_phone": "Versand: Telefon"
+                },
+                "liveTestPopup": {
+                    "overallLabel": "Ergebnis",
+                    "claimsTitle": "Empfangene Claims",
+                    "columnClaim": "Claim",
+                    "columnValue": "Wert",
+                    "noClaims": "Keine Claims empfangen.",
+                    "closeButton": "Fenster schließen"
                 }
             }
         },

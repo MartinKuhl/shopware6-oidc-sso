@@ -9,6 +9,7 @@ use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService;
+use MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
 use Psr\Log\LoggerInterface;
@@ -52,6 +53,7 @@ class OidcProviderAdminController extends AbstractController
         private readonly OidcConnectionTestService $connectionTestService,
         private readonly OidcLiveLoginTestService $liveLoginTestService,
         private readonly LoggerInterface $logger,
+        private readonly TestResultTranslator $translator,
     ) {
     }
 
@@ -130,7 +132,7 @@ class OidcProviderAdminController extends AbstractController
         defaults: ['_acl' => ['sw6oidc_provider.viewer']],
         methods: ['POST'],
     )]
-    public function startLiveTest(string $id, Context $context): JsonResponse
+    public function startLiveTest(string $id, Request $request, Context $context): JsonResponse
     {
         $provider = $this->loadProvider($id, $context);
 
@@ -146,7 +148,11 @@ class OidcProviderAdminController extends AbstractController
         }
 
         $redirectUri = $this->generateUrl('api.action.sw6oidc.provider.test-callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
-        $authorizeUrl = $this->requestBuilder->build($provider, 'test', '', $redirectUri);
+        // A test flow has no post-login redirect, so its relay-state slot
+        // carries the admin's UI locale through the IdP round trip instead:
+        // the anonymous popup callback has no other way to know it.
+        $locale = $this->translator->normalizeLocale((string) $request->request->get('locale', ''));
+        $authorizeUrl = $this->requestBuilder->build($provider, 'test', $locale, $redirectUri);
 
         return new JsonResponse(['authorizeUrl' => $authorizeUrl]);
     }
@@ -180,9 +186,12 @@ class OidcProviderAdminController extends AbstractController
         try {
             $flow = $this->securityHelper->consumeAuthorizationFlow(\is_string($state) ? $state : null);
         } catch (InvalidStateException $exception) {
+            // No flow, so no stored admin locale: best effort from the browser.
+            $locale = $this->translator->normalizeLocale($request->getPreferredLanguage());
+
             return $this->renderTestResultPage('fail', [
-                ['id' => 'callback', 'status' => 'fail', 'detail' => $exception->getMessage()],
-            ], [], $cspNonce);
+                ['id' => 'callback', 'status' => 'fail', 'detail' => $exception->getMessage(), 'messageKey' => 'callbackInvalidState'],
+            ], [], $cspNonce, $locale);
         }
 
         if ($flow->loginType !== 'test') {
@@ -191,9 +200,16 @@ class OidcProviderAdminController extends AbstractController
             ]);
 
             return $this->renderTestResultPage('fail', [
-                ['id' => 'callback', 'status' => 'fail', 'detail' => 'This callback only accepts test-mode authorization flows.'],
-            ], [], $cspNonce);
+                [
+                    'id' => 'callback',
+                    'status' => 'fail',
+                    'detail' => 'This callback only accepts test-mode authorization flows.',
+                    'messageKey' => 'callbackNotTestFlow',
+                ],
+            ], [], $cspNonce, $this->translator->normalizeLocale($request->getPreferredLanguage()));
         }
+
+        $locale = $this->translator->normalizeLocale($flow->relayState);
 
         $context = Context::createDefaultContext();
 
@@ -208,8 +224,14 @@ class OidcProviderAdminController extends AbstractController
             $description = $request->query->get('error_description') ?? $request->query->get('error');
 
             return $this->renderTestResultPage('fail', [
-                ['id' => 'authorization', 'status' => 'fail', 'detail' => (string) $description],
-            ], [], $cspNonce);
+                [
+                    'id' => 'authorization',
+                    'status' => 'fail',
+                    'detail' => (string) $description,
+                    'messageKey' => 'authorizationError',
+                    'messageParams' => ['error' => (string) $description],
+                ],
+            ], [], $cspNonce, $locale);
         }
 
         $code = $request->query->get('code');
@@ -219,8 +241,13 @@ class OidcProviderAdminController extends AbstractController
             $this->persistTestStatus($flow->providerId, 'fail', $context);
 
             return $this->renderTestResultPage('fail', [
-                ['id' => 'callback', 'status' => 'fail', 'detail' => 'Missing authorization code or unknown provider.'],
-            ], [], $cspNonce);
+                [
+                    'id' => 'callback',
+                    'status' => 'fail',
+                    'detail' => 'Missing authorization code or unknown provider.',
+                    'messageKey' => 'callbackMissingCode',
+                ],
+            ], [], $cspNonce, $locale);
         }
 
         $redirectUri = $this->generateUrl('api.action.sw6oidc.provider.test-callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
@@ -228,7 +255,7 @@ class OidcProviderAdminController extends AbstractController
 
         $this->persistTestStatus($provider->getId(), $result['status'], $context, $result['claims']);
 
-        return $this->renderTestResultPage($result['status'], $result['steps'], $result['claims'], $cspNonce);
+        return $this->renderTestResultPage($result['status'], $result['steps'], $result['claims'], $cspNonce, $locale);
     }
 
     private function loadProvider(string $id, Context $context): ?Sw6OidcProviderEntity
@@ -266,27 +293,31 @@ class OidcProviderAdminController extends AbstractController
      * @param array<int, array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}> $steps
      * @param array<string, mixed> $claims
      */
-    private function renderTestResultPage(string $status, array $steps, array $claims, ?string $cspNonce): Response
+    private function renderTestResultPage(string $status, array $steps, array $claims, ?string $cspNonce, string $locale): Response
     {
-        $statusLabel = ['pass' => 'TEST SUCCESSFUL', 'fail' => 'TEST FAILED'][$status] ?? strtoupper($status);
-        $statusColor = $status === 'pass' ? '#2e7d32' : '#c62828';
+        // Same snippet keys, wording and pill layout as the provider detail
+        // page's "Live login test results" card (sw6oidc-provider-detail).
+        $t = fn (string $key, array $params = []): string => $this->translator->trans('sw6oidc.provider.detail.' . $key, $locale, $params);
 
         $stepsHtml = '';
 
-        // A CSS class (defined in the nonce'd <style> block below), not an
-        // inline style="" attribute: a CSP nonce authorizes the <style>
-        // element itself but never inline style attributes, same restriction
-        // as onclick="" above.
-        $statusClasses = ['pass' => 'pass', 'fail' => 'fail', 'skipped' => 'skipped', 'warning' => 'warning'];
-
         foreach ($steps as $step) {
-            $rowClass = $statusClasses[$step['status']] ?? 'fail';
+            $stepLabelKey = 'liveTest.step.' . $step['id'];
+            $stepLabel = $t($stepLabelKey);
+
+            if ($stepLabel === 'sw6oidc.provider.detail.' . $stepLabelKey) {
+                $stepLabel = $step['id'];
+            }
+
+            $message = isset($step['messageKey'])
+                ? $t('testMessage.' . $step['messageKey'], $step['messageParams'] ?? [])
+                : $step['detail'];
+
             $stepsHtml .= sprintf(
-                '<tr><td>%s</td><td class="status status-%s">%s</td><td>%s</td></tr>',
-                $this->escapeForDisplay($step['id']),
-                $rowClass,
-                $this->escapeForDisplay(strtoupper($step['status'])),
-                $this->escapeForDisplay($step['detail']),
+                '<li class="result-list__item"><strong>%s:</strong> <span>%s</span> %s</li>',
+                $this->escapeForDisplay($stepLabel),
+                $this->escapeForDisplay($message),
+                $this->renderStatusPill($step['status'], $t),
             );
         }
 
@@ -301,9 +332,21 @@ class OidcProviderAdminController extends AbstractController
             );
         }
 
-        if ($claimsHtml === '') {
-            $claimsHtml = '<tr><td colspan="2">No claims received.</td></tr>';
-        }
+        $claimsSection = $claimsHtml === ''
+            ? sprintf('<p class="muted">%s</p>', $this->escapeForDisplay($t('liveTestPopup.noClaims')))
+            : sprintf(
+                '<table><thead><tr><th>%s</th><th>%s</th></tr></thead><tbody>%s</tbody></table>',
+                $this->escapeForDisplay($t('liveTestPopup.columnClaim')),
+                $this->escapeForDisplay($t('liveTestPopup.columnValue')),
+                $claimsHtml,
+            );
+
+        $pageTitle = $this->escapeForDisplay($t('liveTestResultTitle'));
+        $overallLabel = $this->escapeForDisplay($t('liveTestPopup.overallLabel'));
+        $overallPill = $this->renderStatusPill($status, $t);
+        $claimsTitle = $this->escapeForDisplay($t('liveTestPopup.claimsTitle'));
+        $closeLabel = $this->escapeForDisplay($t('liveTestPopup.closeButton'));
+        $htmlLang = htmlspecialchars($locale, \ENT_QUOTES);
 
         // JSON_HEX_* (not htmlspecialchars) is the correct escaping here: this
         // is embedded directly as a JS object literal inside <script>, whose
@@ -338,37 +381,71 @@ class OidcProviderAdminController extends AbstractController
         $scriptTag = '<script' . $nonceAttr . '>';
         $styleTag = '<style' . $nonceAttr . '>';
 
+        // Colours, radii and sizes are the Meteor design tokens the
+        // Administration's sw-card / sw-label (size medium, appearance pill)
+        // resolve to, hard-coded because this page loads no admin CSS.
         $html = <<<HTML
             <!doctype html>
-            <html>
+            <html lang="{$htmlLang}">
             <head>
                 <meta charset="utf-8">
-                <title>OIDC Test Result</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>{$pageTitle}</title>
                 {$styleTag}
-                    body { font-family: -apple-system, Arial, sans-serif; margin: 24px; color: #222; }
-                    h1 { color: {$statusColor}; font-size: 20px; }
-                    table { border-collapse: collapse; width: 100%; margin-bottom: 24px; }
-                    td, th { border: 1px solid #ddd; padding: 6px 10px; text-align: left; font-size: 13px; vertical-align: top; }
-                    button { padding: 8px 16px; cursor: pointer; }
-                    .status { font-weight: bold; }
-                    .status-pass { color: #2e7d32; }
-                    .status-fail { color: #c62828; }
-                    .status-skipped { color: #757575; }
-                    .status-warning { color: #b26a00; }
+                    * { box-sizing: border-box; }
+                    body {
+                        margin: 0; padding: 24px; background: #f9fafb; color: #1e1e24;
+                        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                        font-size: 14px; line-height: 1.5;
+                    }
+                    .card { background: #fff; border: 1px solid #e0e0e5; border-radius: 8px; margin-bottom: 24px; }
+                    .card__header {
+                        display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px;
+                        padding: 20px 24px; border-bottom: 1px solid #e0e0e5;
+                    }
+                    .card__title { margin: 0; font-size: 18px; font-weight: 600; }
+                    .card__content { padding: 24px; }
+                    .overall { display: inline-flex; align-items: center; gap: 8px; }
+                    .result-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+                    .result-list__item { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3em 0.4em; }
+                    .pill {
+                        display: inline-flex; align-items: center; height: 24px; padding: 4px 12px;
+                        border: 1px solid; border-radius: 50px; font-size: 12px; line-height: 14px; white-space: nowrap;
+                    }
+                    .pill--success { background: #e1ffe0; border-color: #36d046; color: #1e1e24; }
+                    .pill--danger { background: #fff2f0; border-color: #e2262a; color: #e2262a; }
+                    .pill--warning { background: #fff3e3; border-color: #fbaf18; color: #1e1e24; }
+                    .pill--neutral { background: #f2f3f8; border-color: #cdced4; color: #696a6e; }
+                    table { border-collapse: collapse; width: 100%; }
+                    th, td { padding: 8px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid #e0e0e5; word-break: break-word; }
+                    th { font-weight: 600; background: #f9fafb; }
+                    tbody tr:last-child td { border-bottom: 0; }
+                    .muted { margin: 0; color: #696a6e; }
+                    .actions { display: flex; justify-content: flex-end; }
+                    .button {
+                        height: 36px; padding: 0 16px; border: 1px solid #cdced4; border-radius: 4px; background: #fff;
+                        color: #1e1e24; font: inherit; font-weight: 600; cursor: pointer;
+                    }
+                    .button:hover { background: #f2f3f8; }
                 </style>
             </head>
             <body>
-                <h1>{$statusLabel}</h1>
-                <table>
-                    <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
-                    <tbody>{$stepsHtml}</tbody>
-                </table>
-                <h2>Claims received</h2>
-                <table>
-                    <thead><tr><th>Claim</th><th>Value</th></tr></thead>
-                    <tbody>{$claimsHtml}</tbody>
-                </table>
-                <button id="sw6oidc-close-button" type="button">Close window</button>
+                <section class="card">
+                    <header class="card__header">
+                        <h1 class="card__title">{$pageTitle}</h1>
+                        <span class="overall"><strong>{$overallLabel}:</strong> {$overallPill}</span>
+                    </header>
+                    <div class="card__content">
+                        <ul class="result-list">{$stepsHtml}</ul>
+                    </div>
+                </section>
+                <section class="card">
+                    <header class="card__header"><h2 class="card__title">{$claimsTitle}</h2></header>
+                    <div class="card__content">{$claimsSection}</div>
+                </section>
+                <div class="actions">
+                    <button id="sw6oidc-close-button" class="button" type="button">{$closeLabel}</button>
+                </div>
                 {$scriptTag}
                     (function () {
                         var payload = {$payloadJson};
@@ -404,6 +481,23 @@ class OidcProviderAdminController extends AbstractController
         }
 
         return $response;
+    }
+
+    /**
+     * Mirrors sw6oidc-provider-detail's testStatusVariant() + testStatus.* snippets.
+     *
+     * @param callable(string): string $t
+     */
+    private function renderStatusPill(string $status, callable $t): string
+    {
+        $variant = ['pass' => 'success', 'warning' => 'warning', 'skipped' => 'neutral'][$status] ?? 'danger';
+        $knownStatus = \in_array($status, ['pass', 'fail', 'warning', 'skipped'], true) ? $status : 'fail';
+
+        return sprintf(
+            '<span class="pill pill--%s">%s</span>',
+            $variant,
+            $this->escapeForDisplay($t('testStatus.' . $knownStatus)),
+        );
     }
 
     /**

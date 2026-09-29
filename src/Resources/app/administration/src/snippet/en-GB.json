@@ -46,10 +46,10 @@
                     }
                 },
                 "testStatus": {
-                    "pass": "pass",
-                    "fail": "fail",
-                    "warning": "warning",
-                    "skipped": "skipped"
+                    "pass": "Passed",
+                    "fail": "Failed",
+                    "warning": "Warning",
+                    "skipped": "Skipped"
                 },
                 "testMessage": {
                     "tokenExchangePass": "Authorization code exchanged for an access token successfully.",
@@ -67,7 +67,11 @@
                     "clientCredentialsPass": "Client ID and client secret are set.",
                     "jwksNotConfigured": "No JWKS endpoint configured; ID tokens cannot be signature-verified.",
                     "jwksNoKeys": "JWKS endpoint responded but did not contain a non-empty \"keys\" array.",
-                    "jwksPass": "JWKS endpoint returned {count} key(s)."
+                    "jwksPass": "JWKS endpoint returned {count} key(s).",
+                    "callbackInvalidState": "Unknown, expired, or already-used test run. Please start the live login test again.",
+                    "callbackNotTestFlow": "This callback only accepts live login test runs.",
+                    "callbackMissingCode": "Missing authorization code or unknown provider.",
+                    "authorizationError": "The identity provider rejected the login: {error}"
                 },
                 "buttonRunLiveTest": "Run live login test",
                 "liveTestRequiresSaveHint": "Save the provider first to run a live login test.",
@@ -78,7 +82,9 @@
                     "step": {
                         "token_exchange": "Token exchange",
                         "id_token_verification": "ID token verification",
-                        "userinfo_fetch": "Userinfo fetch"
+                        "userinfo_fetch": "Userinfo fetch",
+                        "callback": "Callback",
+                        "authorization": "Authorization"
                     }
                 },
                 "cardGeneral": "General",
@@ -220,6 +226,14 @@
                     "shipping_state": "Shipping: state",
                     "shipping_country": "Shipping: country",
                     "shipping_phone": "Shipping: phone"
+                },
+                "liveTestPopup": {
+                    "overallLabel": "Result",
+                    "claimsTitle": "Claims received",
+                    "columnClaim": "Claim",
+                    "columnValue": "Value",
+                    "noClaims": "No claims received.",
+                    "closeButton": "Close window"
                 }
             }
         },
