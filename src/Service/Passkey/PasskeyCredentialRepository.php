@@ -10,82 +10,78 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
-use Webauthn\PublicKeyCredentialSource;
-use Webauthn\PublicKeyCredentialSourceRepository;
-use Webauthn\PublicKeyCredentialUserEntity;
+use Webauthn\CredentialRecord;
 
 /**
- * Persists WebAuthn credentials to sw6oidc_passkey_credential — implements
- * web-auth/webauthn-lib's own repository contract directly (independent code,
- * not reused from any third-party plugin), the sole seam between the
- * library's PublicKeyCredentialSource objects and our DAL storage. Mirrors
- * the Magento module's ResourceModel/PasskeyCredentialRepository.php.
+ * Persists WebAuthn credentials to sw6oidc_passkey_credential — the sole seam
+ * between web-auth/webauthn-lib's CredentialRecord objects and our DAL
+ * storage. Mirrors the Magento module's ResourceModel/PasskeyCredentialRepository.php.
  *
- * Two save paths, matching how the library itself is designed to be used:
- *  - saveCredentialSource() satisfies the interface contract the library
- *    calls internally to bump the signature counter after a successful
- *    assertion (login) — a no-op if the credential row doesn't exist yet.
- *  - saveNewCredentialSource() is our own method, called explicitly by
- *    PasskeyRegistrationService right after attestation (registration)
- *    validation succeeds, since the library does not persist new credentials
- *    on our behalf — only the application knows which user_type/user_id/
- *    nickname a brand-new credential belongs to.
+ * webauthn-lib 5.x has no repository contract of its own: the ceremony
+ * services look a record up here, hand it to the validator's check(), and
+ * persist the returned (counter-bumped) record back via updateAfterAssertion().
  *
- * web-auth/webauthn-lib is pinned to ^4.7 in composer.json: this interface
- * (and the repository-based validator constructors in
- * WebauthnCeremonyFactory) was removed entirely in 5.x in favor of a
- * CredentialRecord-based design, so this class only works against 4.x.
+ * public_key holds the library's own normalized CredentialRecord JSON. Rows
+ * written by the former 4.x PublicKeyCredentialSource::jsonSerialize() have
+ * the same shape (base64url ids, {"type": EmptyTrustPath} trust path) and
+ * deserialize unchanged.
  */
-class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
+class PasskeyCredentialRepository
 {
-    private Context $context;
+    private readonly Context $context;
 
     public function __construct(
         private readonly EntityRepository $passkeyCredentialRepository,
+        private readonly WebauthnCeremonyFactory $ceremonyFactory,
         private readonly LoggerInterface $logger,
     ) {
         $this->context = Context::createDefaultContext();
     }
 
-    public function setContext(Context $context): void
-    {
-        $this->context = $context;
-    }
-
-    public function findOneByCredentialId(string $publicKeyCredentialId): ?PublicKeyCredentialSource
+    /**
+     * @param string $publicKeyCredentialId raw credential id bytes
+     */
+    public function findOneByCredentialId(string $publicKeyCredentialId): ?CredentialRecord
     {
         $entity = $this->findEntityByCredentialId(base64_encode($publicKeyCredentialId));
 
-        return $entity instanceof \MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity ? $this->toSource($entity) : null;
+        return $entity instanceof Sw6OidcPasskeyCredentialEntity ? $this->toRecord($entity) : null;
     }
 
     /**
-     * @return PublicKeyCredentialSource[]
+     * @param string $userHandle raw WebAuthn user handle bytes
+     *
+     * @return CredentialRecord[]
      */
-    public function findAllForUserEntity(PublicKeyCredentialUserEntity $publicKeyCredentialUserEntity): array
+    public function findAllForUserHandle(string $userHandle): array
     {
-        // The library's user.id is raw bytes; stored/compared as hex since a
-        // varchar column can't safely round-trip arbitrary binary data.
+        // The library's user handle is raw bytes; stored/compared as hex since
+        // a varchar column can't safely round-trip arbitrary binary data.
         $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('userHandle', bin2hex($publicKeyCredentialUserEntity->getId())));
+        $criteria->addFilter(new EqualsFilter('userHandle', bin2hex($userHandle)));
 
-        $sources = [];
+        $records = [];
 
         foreach ($this->passkeyCredentialRepository->search($criteria, $this->context)->getEntities() as $entity) {
             \assert($entity instanceof Sw6OidcPasskeyCredentialEntity);
-            $sources[] = $this->toSource($entity);
+            $records[] = $this->toRecord($entity);
         }
 
-        return $sources;
+        return $records;
     }
 
-    public function saveCredentialSource(PublicKeyCredentialSource $publicKeyCredentialSource): void
+    /**
+     * Persists the record returned by a successful assertion check() — the
+     * library bumps the signature counter / backup flags on it but, unlike
+     * 4.x, no longer saves it itself.
+     */
+    public function updateAfterAssertion(CredentialRecord $record): void
     {
-        $credentialId = base64_encode($publicKeyCredentialSource->getPublicKeyCredentialId());
+        $credentialId = base64_encode($record->publicKeyCredentialId);
         $existing = $this->findEntityByCredentialId($credentialId);
 
-        if (!$existing instanceof \MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity) {
-            $this->logger->warning('sw6oidc: saveCredentialSource() called for an unknown credential; ignoring.', [
+        if (!$existing instanceof Sw6OidcPasskeyCredentialEntity) {
+            $this->logger->warning('sw6oidc: updateAfterAssertion() called for an unknown credential; ignoring.', [
                 'credentialId' => $credentialId,
             ]);
 
@@ -94,13 +90,13 @@ class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
 
         $this->passkeyCredentialRepository->update([[
             'id' => $existing->getId(),
-            'publicKey' => json_encode($publicKeyCredentialSource->jsonSerialize(), JSON_THROW_ON_ERROR),
-            'signCount' => $publicKeyCredentialSource->getCounter(),
+            'publicKey' => $this->toJson($record),
+            'signCount' => $record->counter,
         ]], $this->context);
     }
 
-    public function saveNewCredentialSource(
-        PublicKeyCredentialSource $publicKeyCredentialSource,
+    public function saveNewCredentialRecord(
+        CredentialRecord $record,
         string $userType,
         string $userId,
         ?string $nickname,
@@ -109,17 +105,17 @@ class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
             'id' => Uuid::randomHex(),
             'userType' => $userType,
             'userId' => $userId,
-            'credentialId' => base64_encode($publicKeyCredentialSource->getPublicKeyCredentialId()),
-            'publicKey' => json_encode($publicKeyCredentialSource->jsonSerialize(), JSON_THROW_ON_ERROR),
-            'signCount' => $publicKeyCredentialSource->getCounter(),
-            'userHandle' => bin2hex($publicKeyCredentialSource->getUserHandle()),
+            'credentialId' => base64_encode($record->publicKeyCredentialId),
+            'publicKey' => $this->toJson($record),
+            'signCount' => $record->counter,
+            'userHandle' => bin2hex($record->userHandle),
             'nickname' => $nickname,
         ]], $this->context);
     }
 
     /**
      * Self-service listing for the "My passkeys" section on a user's own
-     * profile page — deliberately separate from findAllForUserEntity(),
+     * profile page — deliberately separate from findAllForUserHandle(),
      * which takes the library's opaque WebAuthn user handle; this one is
      * keyed by our own userType/userId so callers never need to recompute
      * that handle just to list what a user already owns.
@@ -190,10 +186,13 @@ class PasskeyCredentialRepository implements PublicKeyCredentialSourceRepository
         return $entity instanceof Sw6OidcPasskeyCredentialEntity ? $entity : null;
     }
 
-    private function toSource(Sw6OidcPasskeyCredentialEntity $entity): PublicKeyCredentialSource
+    public function toRecord(Sw6OidcPasskeyCredentialEntity $entity): CredentialRecord
     {
-        return PublicKeyCredentialSource::createFromArray(
-            json_decode($entity->getPublicKey(), true, 512, JSON_THROW_ON_ERROR),
-        );
+        return $this->ceremonyFactory->serializer()->deserialize($entity->getPublicKey(), CredentialRecord::class, 'json');
+    }
+
+    public function toJson(CredentialRecord $record): string
+    {
+        return $this->ceremonyFactory->serializer()->serialize($record, 'json');
     }
 }

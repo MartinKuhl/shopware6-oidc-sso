@@ -17,7 +17,6 @@ use Shopware\Core\System\SalesChannel\Context\SalesChannelContextService;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextServiceParameters;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Controller\StorefrontController;
-use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Annotation\Route;
@@ -43,7 +42,6 @@ class PasskeyController extends StorefrontController
         private readonly EntityRepository $customerRepository,
         private readonly OidcCustomerLoginRoute $loginRoute,
         private readonly SalesChannelContextService $salesChannelContextService,
-        private readonly PsrHttpFactory $psrHttpFactory,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -80,7 +78,7 @@ class PasskeyController extends StorefrontController
             $this->registrationService->verifyAndPersist(
                 (string) $request->request->get('sessionId'),
                 (string) $request->request->get('credential'),
-                $this->psrHttpFactory->createRequest($request),
+                $request->getHost(),
                 $request->request->get('nickname') !== null ? (string) $request->request->get('nickname') : null,
             );
 
@@ -119,7 +117,7 @@ class PasskeyController extends StorefrontController
             $resolved = $this->authenticationService->verifyAssertion(
                 (string) $request->request->get('sessionId'),
                 (string) $request->request->get('credential'),
-                $this->psrHttpFactory->createRequest($request),
+                $request->getHost(),
             );
 
             if ($resolved['userType'] !== 'customer' || !Uuid::isValid($resolved['userId'])) {

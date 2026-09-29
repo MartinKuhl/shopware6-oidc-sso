@@ -150,14 +150,11 @@ The Administration SPA has to be manually kicked (a router push plus, in some ca
 
 There is no password check, no credential check, inside the grant itself — it reads a pre-verified user id off a PSR-7 request attribute and issues a token for that user, full stop. This is safe *only* because every caller sets that attribute strictly after independently verifying the user via OIDC (JWT-verified claims) or Passkey (a verified WebAuthn assertion). If you ever add a new caller of this grant, you are personally responsible for verifying the user *before* calling it — the grant will not save you.
 
-### webauthn-lib 4.x quirks (deliberate workarounds, not bugs)
+### webauthn-lib 5.x: the caller owns credential lookup and persistence
 
-- **Registration caches raw inputs, not serialized options.** There's a documented webauthn-lib 4.9.3 bug where `PublicKeyCredentialUserEntity::jsonSerialize()` encodes the user handle as URL-safe base64, but `createFromArray()` decodes it as *standard* base64 — which throws whenever the sha256-derived handle happens to contain a URL-safe-only character. This is deterministic per user (always fails or never fails for a given account), which makes it nasty to reproduce in ad hoc testing. The registration service works around it by rebuilding the options object from raw inputs via the constructor on verify, rather than round-tripping through serialization. Don't "simplify" this by switching to `createFromArray()`.
-- **Assertion verification wants raw bytes, not the base64-encoded credential id.** Passing the already-encoded id into `check()` causes the repository to double-encode it, producing a confusing "The credential ID is invalid" error that has nothing to do with the actual credential.
-
-### webauthn-lib is pinned to `^4.7`, and 5.x is a breaking rewrite
-
-See `TODO.md` for the full list, but in short: the repository interface the plugin implements (`PublicKeyCredentialSourceRepository`) is gone in 5.x, the credential model changes class, and validator constructors drop the repository argument entirely in favor of the caller doing the lookup itself. This is deferred deliberately, not overlooked — don't attempt a "quick" version bump without budgeting for a real migration.
+- **Both ceremony caches hold raw inputs, not serialized options.** Registration and login rebuild the options object from the cached challenge/rpId/user/allow-list via the constructor on verify. This originally worked around a webauthn-lib 4.9.3 base64 round-trip bug (url-safe encode vs standard decode of the user handle); it is kept because it is simpler and doesn't depend on the library's (de)serialization being symmetric.
+- **There is no repository contract anymore.** `PasskeyAuthenticationService` looks the `CredentialRecord` up itself, passes it into `check()`, and must persist the returned record (`PasskeyCredentialRepository::updateAfterAssertion()`) — skipping that silently disables signature-counter replay detection.
+- **Stored credentials are the library's normalized `CredentialRecord` JSON.** Rows written by 4.x have the same shape and deserialize unchanged (covered by `PasskeyCredentialRepositoryTest`).
 
 ### The passkey session-kill feature has a real time-boxed gap
 
@@ -202,6 +199,5 @@ Roughly in order of "would most reduce risk right now":
 3. **Add integration tests against a real (or containerized) Shopware instance.** Right now correctness of the actual login flows rests entirely on manual testing. Even a small integration suite covering the happy path for customer OIDC login, admin OIDC login, and one passkey round-trip would catch the regressions unit tests structurally can't.
 4. **Implement OIDC Back-Channel Logout and admin-side RP-initiated logout**, bringing session termination guarantees in line with the Storefront/customer flow and closing the gap where an IdP-side logout or admin-side logout doesn't propagate.
 5. **Wire `RedisAtomicCache` into `services.xml` behind an environment-driven toggle** (or document the manual override step prominently) so multi-node deployments don't discover the single-node caveat the hard way, under production load.
-6. **Complete the webauthn-lib 5.x migration** once the current flows are proven in production (per `TODO.md`) — 4.x is in maintenance mode, and security fixes are landing in 5.x, not 4.x.
-7. **Add a CHANGELOG.md** — `LICENSE.txt` is already committed (MIT, matching `composer.json`), but there's still no changelog to track what changed between versions as the plugin matures past 0.1.0.
-8. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.
+6. **Add a CHANGELOG.md** — `LICENSE.txt` is already committed (MIT, matching `composer.json`), but there's still no changelog to track what changed between versions as the plugin matures past 0.1.0.
+7. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.

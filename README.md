@@ -37,7 +37,7 @@ Shopware's built-in authentication is password-based. This plugin bridges Shopwa
 - **Identity Provider**: any OIDC-compliant IdP (Authelia, Keycloak, Auth0, Okta, Azure AD, Google Workspace, Zitadel, etc.)
 - **HTTPS**: required in production — WebAuthn requires a secure context, and IdP redirects should always use HTTPS
 
-Composer dependencies (installed automatically): `web-token/jwt-framework`, `web-auth/webauthn-lib` (`^4.7` — see [Known Limitations](#known-limitations)), `league/oauth2-server`, `symfony/psr-http-message-bridge`, `nyholm/psr7`.
+Composer dependencies (installed automatically): `web-token/jwt-framework`, `web-auth/webauthn-lib` (`^5.3`), `league/oauth2-server`, `symfony/psr-http-message-bridge`, `nyholm/psr7`.
 
 ---
 
@@ -239,7 +239,6 @@ https://auth.your-domain.example/logout
 - **Attribute value transforms are not implemented** — the per-attribute transform function/params fields exist in the schema but are not applied anywhere.
 - **The "Enable debug logging" toggle does not control log verbosity** — the plugin's log level is set via the `SW6OIDC_LOG_LEVEL` environment variable (default `debug`), not this UI toggle. Logs are written to a plugin-specific log file/channel and can contain claim data — handle with the same care as any log containing PII.
 - **Single-node atomic cache by default** — one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. A Redis-backed atomic implementation exists in the codebase but requires a manual dependency-injection override to enable for multi-node/HA deployments.
-- **webauthn-lib is pinned to `^4.7`** — a 5.x migration is planned (see `TODO.md`) but deferred until the OIDC/Passkey flows are proven in production.
 - **Early-stage test coverage** — unit tests cover a subset of services (HTTP client, discovery/connection tests, token exchange, attribute mapping, passkey helpers); JWT verification, state/PKCE handling, claims normalization and the provisioning services are still untested, and there is no automated integration testing against a live Shopware instance yet.
 - **No CHANGELOG.md is currently committed** — there's no changelog tracking what changed between versions yet (a `LICENSE.txt` is present).
 
@@ -301,7 +300,7 @@ Passkeys are bound to one Relying Party ID (domain). If the RP ID override chang
 ## Documentation
 
 - **Developer Guide**: [CLAUDE.md](CLAUDE.md) — architecture, flow-by-flow internals, directory reference, and known implementation gaps
-- **Migration Notes**: [TODO.md](TODO.md) — planned `web-auth/webauthn-lib` 5.x migration
+- **Migration Notes**: [TODO.md](TODO.md) — remaining roadmap
 
 ## Version
 

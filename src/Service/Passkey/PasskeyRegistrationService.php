@@ -4,9 +4,10 @@ namespace MartinKuhl\Sw6Oidc\Service\Passkey;
 
 use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
 use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyCeremonyException;
-use Psr\Http\Message\ServerRequestInterface;
 use Webauthn\AuthenticatorAttestationResponse;
+use Webauthn\CredentialRecord;
 use Webauthn\PublicKeyCredentialCreationOptions;
+use Webauthn\PublicKeyCredentialDescriptor;
 use Webauthn\PublicKeyCredentialUserEntity;
 
 /**
@@ -39,16 +40,11 @@ class PasskeyRegistrationService
         $nonce = bin2hex(random_bytes(16));
 
         // We cache the raw inputs and rebuild the options object directly via
-        // its constructor in verifyAndPersist(), rather than caching
-        // $options->jsonSerialize() and reloading it via
-        // PublicKeyCredentialCreationOptions::createFromArray(). That
-        // round-trip is broken in web-auth/webauthn-lib 4.9.3:
-        // PublicKeyCredentialUserEntity::jsonSerialize() encodes the user id
-        // as url-safe base64, but ::createFromArray() decodes it as
-        // *standard* base64 - which throws a raw sodium_base642bin() error
-        // whenever the id (a sha256 hash here) happens to contain a
-        // url-safe-only character. Deterministic per user, so it either
-        // always fails or never does for a given account.
+        // its constructor in verifyAndPersist() rather than round-tripping the
+        // serialized options. Simpler, and it sidesteps the url-safe vs
+        // standard base64 user-id mismatch that broke that round-trip in
+        // webauthn-lib 4.9.3 (5.x decodes both alphabets, but there is no
+        // reason to depend on that).
         $this->cache->save(
             self::CACHE_PREFIX . $nonce,
             json_encode([
@@ -63,13 +59,15 @@ class PasskeyRegistrationService
             self::TTL_SECONDS,
         );
 
-        return ['optionsJson' => json_encode($options->jsonSerialize(), JSON_THROW_ON_ERROR), 'nonce' => $nonce];
+        return ['optionsJson' => $this->ceremonyFactory->serializeOptions($options), 'nonce' => $nonce];
     }
 
     /**
+     * @param string $host the request host the ceremony ran on (origin/rpId check)
+     *
      * @throws PasskeyCeremonyException
      */
-    public function verifyAndPersist(string $nonce, string $credentialResponseJson, ServerRequestInterface $request, ?string $nickname): void
+    public function verifyAndPersist(string $nonce, string $credentialResponseJson, string $host, ?string $nickname): void
     {
         $raw = $this->cache->getAndDelete(self::CACHE_PREFIX . $nonce);
 
@@ -86,19 +84,22 @@ class PasskeyRegistrationService
             $stored['displayName'],
             $stored['rpId'],
             $stored['rpName'],
-            hex2bin($stored['challenge']),
+            (string) hex2bin($stored['challenge']),
         );
 
-        $publicKeyCredential = $this->ceremonyFactory->credentialLoader()->load($credentialResponseJson);
-        $response = $publicKeyCredential->getResponse();
+        $response = $this->ceremonyFactory->loadCredential($credentialResponseJson)->response;
 
         if (!$response instanceof AuthenticatorAttestationResponse) {
             throw new PasskeyCeremonyException('Expected a WebAuthn attestation (registration) response.');
         }
 
-        $source = $this->ceremonyFactory->attestationResponseValidator()->check($response, $options, $request);
+        try {
+            $record = $this->ceremonyFactory->attestationResponseValidator()->check($response, $options, $host);
+        } catch (\Throwable $exception) {
+            throw new PasskeyCeremonyException($exception->getMessage(), 0, $exception);
+        }
 
-        $this->credentialRepository->saveNewCredentialSource($source, $stored['userType'], $stored['userId'], $nickname);
+        $this->credentialRepository->saveNewCredentialRecord($record, $stored['userType'], $stored['userId'], $nickname);
     }
 
     private function buildOptions(
@@ -114,8 +115,8 @@ class PasskeyRegistrationService
         $userEntity = new PublicKeyCredentialUserEntity($username, $userHandle, $displayName);
 
         $excludeCredentials = array_map(
-            static fn (\Webauthn\PublicKeyCredentialSource $source): \Webauthn\PublicKeyCredentialDescriptor => $source->getPublicKeyCredentialDescriptor(),
-            $this->credentialRepository->findAllForUserEntity($userEntity),
+            static fn (CredentialRecord $record): PublicKeyCredentialDescriptor => $record->getPublicKeyCredentialDescriptor(),
+            $this->credentialRepository->findAllForUserHandle($userHandle),
         );
 
         return new PublicKeyCredentialCreationOptions(
