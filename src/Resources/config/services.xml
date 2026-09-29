@@ -461,6 +461,17 @@
             <tag name="twig.extension" />
         </service>
 
+        <!-- CSP: append IdP origins to directives an existing policy already declares -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcCspHostCollector">
+            <argument type="service" id="sw6oidc_provider.repository" />
+            <argument type="service" id="cache.app" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcCspSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcCspHostCollector" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
         <!-- CLI config export/import -->
         <service id="MartinKuhl\Sw6Oidc\Service\Config\OidcConfigTransfer">
             <argument type="service" id="sw6oidc_provider.repository" />

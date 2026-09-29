@@ -171,6 +171,10 @@ All implement `ShopwareEvent` (have `getContext()`), dispatched via `event_dispa
   - Admin: `Subscriber/AdminPasswordLoginGuardSubscriber` (`kernel.request`, priority 8) answers `grant_type=password` on route `api.oauth.token` with a 403; refresh_token/client_credentials untouched. `login-options` returns `passwordLoginDisabled` so the `sw-login` override hides the native form.
   - Break-glass: `SW6OIDC_ALLOW_PASSWORD_LOGIN=1`.
 
+## Architecture — CSP
+
+Shopware 6.7 has **no CSP contribution API**: `CoreSubscriber::setSecurityHeaders()` sets the header from the fixed `shopware.security.csp_templates` (storefront default: none at all; administration: `object-src`/`script-src`/`base-uri`/`frame-ancestors`), and only if the response has none yet. So the plugin takes the response-subscriber path: `Subscriber/Sw6OidcCspSubscriber` (`kernel.response`, priority -10, storefront/administration route scopes only) appends the origins from `Service/Security/Sw6OidcCspHostCollector` (deduplicated https origins of all active providers' endpoints, cached in `cache.app`, invalidated on `sw6oidc_provider.written`/`.deleted`) to `form-action`/`connect-src`/`frame-src`/`img-src` — **only if the directive is already present and isn't `'none'`**; it never adds a directive (that would tighten the policy). With the stock templates it's a no-op, because every IdP interaction is a top-level navigation or server-side call; it exists for shops with their own stricter policy. The live-test popup's own CSP in `OidcProviderAdminController` is unrelated (api scope, nonce'd inline script) and stays as is.
+
 ## Known gaps / implementation notes
 
 Do not assume the following are fully wired just because the schema or config UI suggests they are:
