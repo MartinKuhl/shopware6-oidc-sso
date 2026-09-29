@@ -37,6 +37,7 @@ const FALLBACK_LOCALE_DICTIONARY = {
         'sw6oidc.login.error': 'Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.',
         'sw6oidc.login.errorRoleMissing': 'Ihr Konto konnte nicht automatisch angelegt werden, da keine Administratorrolle zugewiesen werden konnte. Bitte wenden Sie sich an Ihren Administrator.',
         'sw6oidc.login.errorAutoCreateDisabled': 'Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.',
+        'sw6oidc.login.passwordLoginDisabled': 'Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.',
     },
 };
 
@@ -53,6 +54,8 @@ Component.override('sw-login-login', {
             /** @type {Array<{id: string, label: string|null}>} one entry per visible admin-scoped provider */
             sw6oidcSsoProviders: [],
             sw6oidcPasskeyAvailable: false,
+            /** disable_non_oidc_admin_login is on: hide the native username/password form (the server rejects the password grant regardless). */
+            sw6oidcPasswordLoginDisabled: false,
         };
     },
 
@@ -152,10 +155,11 @@ Component.override('sw-login-login', {
                     return;
                 }
 
-                const { ssoProviders, passkeyAvailable } = await response.json();
+                const { ssoProviders, passkeyAvailable, passwordLoginDisabled } = await response.json();
 
                 this.sw6oidcSsoProviders = Array.isArray(ssoProviders) ? ssoProviders : [];
                 this.sw6oidcPasskeyAvailable = Boolean(passkeyAvailable);
+                this.sw6oidcPasswordLoginDisabled = Boolean(passwordLoginDisabled);
             } catch (exception) {
                 // eslint-disable-next-line no-console
                 console.error('sw6oidc: failed to load admin login options', exception);

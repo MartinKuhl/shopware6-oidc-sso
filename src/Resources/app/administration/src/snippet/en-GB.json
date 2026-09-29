@@ -7,7 +7,8 @@
             "errorRoleMissing": "Your account could not be created automatically because no administrator role could be assigned. Please contact your administrator.",
             "errorAutoCreateDisabled": "Automatic account creation is disabled for this login method. Please contact your administrator.",
             "passkeyButton": "Login with Passkey",
-            "passkeyError": "Passkey login failed. Please try again or log in with your username and password."
+            "passkeyError": "Passkey login failed. Please try again or log in with your username and password.",
+            "passwordLoginDisabled": "Password login is disabled. Please sign in with single sign-on or a passkey."
         },
         "provider": {
             "moduleTitle": "OIDC Providers",

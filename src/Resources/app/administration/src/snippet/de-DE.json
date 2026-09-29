@@ -7,7 +7,8 @@
             "errorRoleMissing": "Ihr Konto konnte nicht automatisch angelegt werden, da keine Administratorrolle zugewiesen werden konnte. Bitte wenden Sie sich an Ihren Administrator.",
             "errorAutoCreateDisabled": "Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.",
             "passkeyButton": "Login mit Passkey",
-            "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an."
+            "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
+            "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an."
         },
         "provider": {
             "moduleTitle": "OIDC-Anbieter",

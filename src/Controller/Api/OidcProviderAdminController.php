@@ -5,7 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Controller\Api;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Http\Exception\OidcHttpException;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
-use MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator;
+use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService;
@@ -48,7 +48,7 @@ class OidcProviderAdminController extends AbstractController
         private readonly AuthorizationRequestBuilder $requestBuilder,
         private readonly OidcSecurityHelper $securityHelper,
         private readonly OidcDiscoveryService $discoveryService,
-        private readonly DiscoveryUrlValidator $urlValidator,
+        private readonly SsrfUrlValidator $urlValidator,
         private readonly OidcConnectionTestService $connectionTestService,
         private readonly OidcLiveLoginTestService $liveLoginTestService,
         private readonly LoggerInterface $logger,

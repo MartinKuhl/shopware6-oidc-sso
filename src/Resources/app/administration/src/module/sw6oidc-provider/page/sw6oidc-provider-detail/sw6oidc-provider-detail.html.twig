@@ -57,6 +57,7 @@
                 </sw-container>
                 <sw-text-field
                     v-model="provider.wellKnownConfigUrl"
+                    :error="providerWellKnownConfigUrlError"
                     :label="$tc('sw6oidc.provider.detail.wellKnownConfigUrl')"
                     :help-text="$tc('sw6oidc.provider.detail.wellKnownConfigUrlHelp')"
                 />
@@ -104,11 +105,13 @@
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-text-field
                         v-model="provider.authorizeEndpoint"
+                        :error="providerAuthorizeEndpointError"
                         :label="$tc('sw6oidc.provider.detail.authorizeEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.authorizeEndpointHelp')"
                     />
                     <sw-text-field
                         v-model="provider.accessTokenEndpoint"
+                        :error="providerAccessTokenEndpointError"
                         :label="$tc('sw6oidc.provider.detail.accessTokenEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.accessTokenEndpointHelp')"
                     />
@@ -116,11 +119,13 @@
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-text-field
                         v-model="provider.userInfoEndpoint"
+                        :error="providerUserInfoEndpointError"
                         :label="$tc('sw6oidc.provider.detail.userInfoEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.userInfoEndpointHelp')"
                     />
                     <sw-text-field
                         v-model="provider.jwksEndpoint"
+                        :error="providerJwksEndpointError"
                         :label="$tc('sw6oidc.provider.detail.jwksEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.jwksEndpointHelp')"
                     />
@@ -128,11 +133,13 @@
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-text-field
                         v-model="provider.endSessionEndpoint"
+                        :error="providerEndSessionEndpointError"
                         :label="$tc('sw6oidc.provider.detail.endSessionEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.endSessionEndpointHelp')"
                     />
                     <sw-text-field
                         v-model="provider.revocationEndpoint"
+                        :error="providerRevocationEndpointError"
                         :label="$tc('sw6oidc.provider.detail.revocationEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.revocationEndpointHelp')"
                     />
@@ -290,11 +297,13 @@
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-switch-field
                         v-model:value="provider.disableNonOidcCustomerLogin"
+                        :error="providerDisableNonOidcCustomerLoginError"
                         :label="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLogin')"
                         :help-text="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLoginHelp')"
                     />
                     <sw-switch-field
                         v-model:value="provider.disableNonOidcAdminLogin"
+                        :error="providerDisableNonOidcAdminLoginError"
                         :label="$tc('sw6oidc.provider.detail.disableNonOidcAdminLogin')"
                         :help-text="$tc('sw6oidc.provider.detail.disableNonOidcAdminLoginHelp')"
                     />

@@ -143,6 +143,16 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 - **`sw6oidc_user_provider`** — permanent IdP binding, polymorphic (`user_type`, `user_id`) → `provider_id`, unique per account.
 - **`sw6oidc_passkey_credential`** — one WebAuthn credential per user (polymorphic `user_type`/`user_id`, `credential_id`, `public_key`, `sign_count`, `user_handle`, `nickname`).
 
+## Architecture — Provider save-time validation & password-login enforcement
+
+- **SSRF** — `Service/Security/SsrfUrlValidator` (replaces the former `DiscoveryUrlValidator`): https only, host must resolve and every resolved IP must be public (Symfony `IpUtils::PRIVATE_SUBNETS` + multicast). `SW6OIDC_ALLOW_INSECURE_IDP_URLS=1` allows http/private hosts with a warning (dev only); unresolvable hosts are always blocked. Used by discovery, the connection test, and `Subscriber/Sw6OidcProviderWriteGuardSubscriber` (`PreWriteValidationEvent`), which validates `well_known_config_url` + the six fetched endpoint columns on every insert/update of `sw6oidc_provider` (`issuer` is never fetched, so not checked). Violations carry the camelCase property path + code `SW6OIDC_URL_BLOCKED`, surfaced per field in the admin form via `mapPropertyErrors`.
+- **Runtime SSRF guard** — `sw6oidc.http_client` (built by `Service/Http/Sw6OidcHttpClientFactory`) wraps the core HTTP client in `NoPrivateNetworkHttpClient` (resolved-IP check per connection *and* redirect) unless the insecure flag is set; `OidcHttpClient` and `JwtVerifier` use it.
+- **Lockout guard** — the same subscriber rejects setting `disable_non_oidc_{admin,customer}_login` to true unless `sw6oidc_user_provider` has at least one binding of that user type **for this provider** (code `SW6OIDC_LOCKOUT_GUARD`).
+- **Enforcement** — `Service/Security/PasswordLoginPolicy::isPasswordLoginDisabled($loginType)` is true when any *active* provider serving that login type has the flag (shop-wide; providers aren't sales-channel scoped). Password path only:
+  - Storefront/Store API: `Storefront/Service/PasswordLoginGuardLoginRoute` decorates core `LoginRoute` and throws `PasswordLoginDisabledException` (403, `SW6OIDC_PASSWORD_LOGIN_DISABLED`; subclasses `CustomerOptinNotCompletedException` only so the Storefront `AuthController` renders its snippet instead of "bad credentials"). `OidcCustomerLoginRoute` is standalone, so OIDC/Passkey are unaffected. The login template hides the password form (`sw6oidc_storefront_password_login_disabled()`).
+  - Admin: `Subscriber/AdminPasswordLoginGuardSubscriber` (`kernel.request`, priority 8) answers `grant_type=password` on route `api.oauth.token` with a 403; refresh_token/client_credentials untouched. `login-options` returns `passwordLoginDisabled` so the `sw-login` override hides the native form.
+  - Break-glass: `SW6OIDC_ALLOW_PASSWORD_LOGIN=1`.
+
 ## Known gaps / implementation notes
 
 Do not assume the following are fully wired just because the schema or config UI suggests they are:

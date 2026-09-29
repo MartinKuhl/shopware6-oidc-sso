@@ -3,7 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Oidc;
 
 use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
-use MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator;
+use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -17,7 +17,7 @@ final class OidcConnectionTestServiceTest extends TestCase
         $httpClient = $this->createMock(OidcHttpClient::class);
         $httpClient->method('getJson')->willReturn(['keys' => [['kty' => 'RSA']]]);
 
-        $service = new OidcConnectionTestService($httpClient, $this->createMock(OidcDiscoveryService::class), new DiscoveryUrlValidator());
+        $service = new OidcConnectionTestService($httpClient, $this->createMock(OidcDiscoveryService::class), new SsrfUrlValidator());
 
         $result = $service->test([
             'clientId' => '',
@@ -39,7 +39,7 @@ final class OidcConnectionTestServiceTest extends TestCase
         $discoveryService = $this->createMock(OidcDiscoveryService::class);
         $discoveryService->expects(self::never())->method('discover');
 
-        $service = new OidcConnectionTestService($httpClient, $discoveryService, new DiscoveryUrlValidator());
+        $service = new OidcConnectionTestService($httpClient, $discoveryService, new SsrfUrlValidator());
 
         $result = $service->test([
             'clientId' => 'my-client',
@@ -57,7 +57,7 @@ final class OidcConnectionTestServiceTest extends TestCase
     {
         $httpClient = $this->createMock(OidcHttpClient::class);
 
-        $service = new OidcConnectionTestService($httpClient, $this->createMock(OidcDiscoveryService::class), new DiscoveryUrlValidator());
+        $service = new OidcConnectionTestService($httpClient, $this->createMock(OidcDiscoveryService::class), new SsrfUrlValidator());
 
         $result = $service->test([
             'clientId' => 'my-client',
@@ -77,7 +77,7 @@ final class OidcConnectionTestServiceTest extends TestCase
         $httpClient = $this->createMock(OidcHttpClient::class);
         $httpClient->method('getJson')->willReturn(['keys' => [['kty' => 'RSA']]]);
 
-        $service = new OidcConnectionTestService($httpClient, $this->createMock(OidcDiscoveryService::class), new DiscoveryUrlValidator());
+        $service = new OidcConnectionTestService($httpClient, $this->createMock(OidcDiscoveryService::class), new SsrfUrlValidator());
 
         $result = $service->test([
             'clientId' => 'my-client',

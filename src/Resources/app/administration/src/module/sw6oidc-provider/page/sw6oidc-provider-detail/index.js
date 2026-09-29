@@ -3,6 +3,7 @@ import './sw6oidc-provider-detail.scss';
 
 const { Component, Mixin } = Shopware;
 const { Criteria } = Shopware.Data;
+const { mapPropertyErrors } = Component.getComponentHelper();
 
 /**
  * Protocol/token-metadata claims — never useful as an attribute-mapping
@@ -91,6 +92,19 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
     },
 
     computed: {
+        // Field-level violations from Sw6OidcProviderWriteGuardSubscriber (SSRF, lockout guard).
+        ...mapPropertyErrors('provider', [
+            'wellKnownConfigUrl',
+            'authorizeEndpoint',
+            'accessTokenEndpoint',
+            'userInfoEndpoint',
+            'jwksEndpoint',
+            'endSessionEndpoint',
+            'revocationEndpoint',
+            'disableNonOidcCustomerLogin',
+            'disableNonOidcAdminLogin',
+        ]),
+
         /**
          * client_secret is write-only over the API (encrypted at rest, never
          * returned), so an existing provider's form starts with it empty —
@@ -311,10 +325,19 @@ Component.register('sw6oidc-provider-detail', () => Promise.resolve({
                 }
 
                 this.loadEntity(this.provider.id);
-            }).catch(() => {
+            }).catch((error) => {
                 this.isLoading = false;
+
+                // Surface the server's own violation messages (SSRF block,
+                // lockout guard, ...) instead of only a generic failure.
+                const details = (error?.response?.data?.errors ?? [])
+                    .map((entry) => entry.detail)
+                    .filter(Boolean);
+
                 this.createNotificationError({
-                    message: this.$tc('sw6oidc.provider.detail.saveError'),
+                    message: details.length
+                        ? `${this.$tc('sw6oidc.provider.detail.saveError')} ${details.join(' ')}`
+                        : this.$tc('sw6oidc.provider.detail.saveError'),
                 });
             });
         },

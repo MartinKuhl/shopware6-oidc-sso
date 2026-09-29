@@ -92,6 +92,7 @@ Unlike a typical Shopware plugin, providers are **not** configured in `Settings 
    - **Login Type**: `customer`, `admin`, or `both`
    - **Auto Create Customer** / **Auto Create Admin**: enable JIT provisioning per user type
    - **Show Customer Link** / **Show Admin Link**: whether the SSO button appears on the respective login page
+   - **Disable non-OIDC Customer Login** / **Disable non-OIDC Admin Login**: turn off native *password* login for that user type shop-wide (Storefront form, Store API and Admin `/api/oauth/token` password grant). OIDC and Passkey logins keep working. Can only be switched on once at least one account of that type has signed in through this provider, so enabling it can't lock everyone out. Emergency override: set `SW6OIDC_ALLOW_PASSWORD_LOGIN=1`.
    - **Is Active**: whether this provider is usable at all
    - **Default Customer Group** / **Default ACL Role** *(Account creation card)*: fallback assignment when no group mapping matches
    - **HTTP Timeout**, **JWKS Cache TTL**: per-provider tuning (defaults: 30s, 86400s)
@@ -193,6 +194,8 @@ Passkeys are configured independently of OIDC — no external IdP involved. Foun
 ### HTTPS is Required
 
 Production deployments must use HTTPS for both the IdP redirect and WebAuthn ceremonies. `localhost` is exempt for local development only.
+
+Every IdP URL the plugin fetches server-side (discovery, token, userinfo, JWKS, revocation, end-session) must be **HTTPS on a public address** — this is enforced when a provider is saved (SSRF protection: private, loopback, link-local, CGNAT and similar ranges are rejected) and again on every outbound request, including redirects (so DNS changes after saving can't be abused). For a local development IdP on plain HTTP or a private/docker network address, set `SW6OIDC_ALLOW_INSECURE_IDP_URLS=1` — never in production.
 
 ### PKCE, State, and Nonce
 

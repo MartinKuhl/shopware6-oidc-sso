@@ -6,6 +6,9 @@
 
     <parameters>
         <parameter key="sw6oidc.default_log_level">debug</parameter>
+        <!-- Dev-only escape hatches, both off unless the env var is set to 1. -->
+        <parameter key="env(SW6OIDC_ALLOW_INSECURE_IDP_URLS)">0</parameter>
+        <parameter key="env(SW6OIDC_ALLOW_PASSWORD_LOGIN)">0</parameter>
     </parameters>
 
     <services>
@@ -66,8 +69,19 @@
             <tag name="shopware.field_serializer" />
         </service>
 
-        <service id="MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier">
+        <!--
+            HTTP client for every outbound IdP call: NoPrivateNetworkHttpClient-wrapped
+            (resolved-IP check on each connection/redirect) unless
+            SW6OIDC_ALLOW_INSECURE_IDP_URLS=1.
+        -->
+        <service id="sw6oidc.http_client" class="Symfony\Contracts\HttpClient\HttpClientInterface">
+            <factory class="MartinKuhl\Sw6Oidc\Service\Http\Sw6OidcHttpClientFactory" method="create" />
             <argument type="service" id="Symfony\Contracts\HttpClient\HttpClientInterface" />
+            <argument>%env(bool:SW6OIDC_ALLOW_INSECURE_IDP_URLS)%</argument>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier">
+            <argument type="service" id="sw6oidc.http_client" />
             <argument type="service" id="cache.app" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
@@ -99,7 +113,7 @@
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient">
-            <argument type="service" id="Symfony\Contracts\HttpClient\HttpClientInterface" />
+            <argument type="service" id="sw6oidc.http_client" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
 
@@ -117,12 +131,14 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient" />
         </service>
 
-        <service id="MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator" />
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator">
+            <argument>%env(bool:SW6OIDC_ALLOW_INSECURE_IDP_URLS)%</argument>
+        </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService">
@@ -326,6 +342,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -345,12 +362,35 @@
             <tag name="kernel.event_subscriber" />
         </service>
 
+        <!-- disable_non_oidc_*_login enforcement (password login only). -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
+            <argument>%env(bool:SW6OIDC_ALLOW_PASSWORD_LOGIN)%</argument>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Storefront\Service\PasswordLoginGuardLoginRoute"
+                 decorates="Shopware\Core\Checkout\Customer\SalesChannel\LoginRoute">
+            <argument type="service" id=".inner" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\AdminPasswordLoginGuardSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcProviderWriteGuardSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcProviderAdminController" public="true">
             <argument type="service" id="sw6oidc_provider.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
@@ -409,6 +449,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="Symfony\Contracts\Translation\TranslatorInterface" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
             <tag name="twig.extension" />
         </service>
     </services>

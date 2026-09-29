@@ -4,7 +4,8 @@
             "button": "Mit SSO anmelden",
             "buttonWithProvider": "Login mit %name%",
             "providerUnavailable": "Single Sign-on ist derzeit nicht verfuegbar. Bitte melden Sie sich mit E-Mail und Passwort an.",
-            "failed": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit E-Mail und Passwort an."
+            "failed": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit E-Mail und Passwort an.",
+            "passwordLoginDisabled": "Die Anmeldung mit Passwort ist für diesen Shop deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an."
         },
         "passkey": {
             "button": "Login mit Passkey",
