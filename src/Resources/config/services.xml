@@ -174,6 +174,7 @@
             <argument type="service" id="sw6oidc_attribute_mapping.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\GenderMapper" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeTransformer" />
+            <argument type="service" id="event_dispatcher" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService">
@@ -184,6 +185,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="event_dispatcher" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService">
@@ -196,6 +198,7 @@
             <argument type="service" id="Shopware\Core\Content\Media\File\FileFetcher" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\TimeZoneValidator" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="event_dispatcher" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver">

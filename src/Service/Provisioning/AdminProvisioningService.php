@@ -4,6 +4,8 @@ namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
+use MartinKuhl\Sw6Oidc\Event\AdminAfterCreateEvent;
+use MartinKuhl\Sw6Oidc\Event\AdminBeforeCreateEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Content\Media\File\FileFetcher;
@@ -14,6 +16,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\User\UserEntity;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Finds-or-JIT-creates a Shopware Administration `user` from a MappedProfile,
@@ -35,6 +38,7 @@ class AdminProvisioningService
         private readonly FileFetcher $fileFetcher,
         private readonly TimeZoneValidator $timeZoneValidator,
         private readonly LoggerInterface $logger,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -93,6 +97,8 @@ class AdminProvisioningService
         $created = $this->userRepository->search(new Criteria([$userId]), $context)->first();
         \assert($created instanceof UserEntity);
 
+        $this->eventDispatcher->dispatch(new AdminAfterCreateEvent($provider, $profile, $created, $context));
+
         return $created;
     }
 
@@ -131,6 +137,10 @@ class AdminProvisioningService
             $payload['timeZone'] = $timeZone;
         }
 
+        $event = new AdminBeforeCreateEvent($provider, $profile, $payload, $context);
+        $this->eventDispatcher->dispatch($event);
+        $payload = [...$event->getPayload(), 'id' => $userId];
+
         $this->userRepository->create([$payload], $context);
 
         if ($profile->picture !== null) {
@@ -144,7 +154,7 @@ class AdminProvisioningService
         $this->logger->info('sw6oidc: JIT-created Administration user via OIDC.', [
             'providerId' => $provider->getId(),
             'userId' => $userId,
-            'superadmin' => $isSuperadmin,
+            'superadmin' => (bool) ($payload['admin'] ?? false),
         ]);
 
         return $userId;

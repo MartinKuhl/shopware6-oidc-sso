@@ -144,6 +144,13 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 - **`sw6oidc_user_provider`** — permanent IdP binding, polymorphic (`user_type`, `user_id`) → `provider_id`, unique per account.
 - **`sw6oidc_passkey_credential`** — one WebAuthn credential per user (polymorphic `user_type`/`user_id`, `credential_id`, `public_key`, `sign_count`, `user_handle`, `nickname`).
 
+## Extension points / events (`src/Event/`)
+
+All implement `ShopwareEvent` (have `getContext()`), dispatched via `event_dispatcher`:
+- `AttributeMappingCompletedEvent` — end of `AttributeMapper::map()`, every OIDC login, before lookup/create/sync. Carries provider, flattened claims and the `MappedProfile`; `MappedProfile` is readonly, so listeners replace it via `setProfile()`. The email is re-validated afterwards (`MissingEmailClaimException`).
+- `CustomerBeforeCreateEvent` / `AdminBeforeCreateEvent` — right before `repository->create()` in the JIT-create path; `getPayload()`/`setPayload()` let listeners change the create payload. `id` is re-forced afterwards. The admin payload contains `admin` and `aclRoles`, so a listener can bypass the two-gate superadmin rule — deliberate power, document it for integrators.
+- `CustomerAfterCreateEvent` / `AdminAfterCreateEvent` — read-only, after create + provider binding, with the reloaded entity. Not dispatched for existing (synced) accounts.
+
 ## Architecture — Provider save-time validation & password-login enforcement
 
 - **SSRF** — `Service/Security/SsrfUrlValidator` (replaces the former `DiscoveryUrlValidator`): https only, host must resolve and every resolved IP must be public (Symfony `IpUtils::PRIVATE_SUBNETS` + multicast). `SW6OIDC_ALLOW_INSECURE_IDP_URLS=1` allows http/private hosts with a warning (dev only); unresolvable hosts are always blocked. Used by discovery, the connection test, and `Subscriber/Sw6OidcProviderWriteGuardSubscriber` (`PreWriteValidationEvent`), which validates `well_known_config_url` + the six fetched endpoint columns on every insert/update of `sw6oidc_provider` (`issuer` is never fetched, so not checked). Violations carry the camelCase property path + code `SW6OIDC_URL_BLOCKED`, surfaced per field in the admin form via `mapPropertyErrors`.

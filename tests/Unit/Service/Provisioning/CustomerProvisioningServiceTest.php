@@ -16,7 +16,10 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\MappedProfile;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
+use MartinKuhl\Sw6Oidc\Event\CustomerAfterCreateEvent;
+use MartinKuhl\Sw6Oidc\Event\CustomerBeforeCreateEvent;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Psr\Log\NullLogger;
 use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupEntity;
 use Shopware\Core\Checkout\Customer\CustomerCollection;
@@ -38,6 +41,8 @@ use Shopware\Core\System\SalesChannel\SalesChannelEntity;
 #[CoversClass(CustomerProvisioningService::class)]
 final class CustomerProvisioningServiceTest extends TestCase
 {
+    private ?EventDispatcher $eventDispatcher = null;
+
     private const CUSTOMER_NUMBER = '10042';
 
     private EntityRepository&MockObject $customerRepository;
@@ -537,6 +542,27 @@ final class CustomerProvisioningServiceTest extends TestCase
         self::assertSame(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $this->bindingPayloads[0]['userType']);
     }
 
+    public function testCreateDispatchesBeforeAndAfterEventsAndHonorsPayloadChanges(): void
+    {
+        $dispatched = [];
+        $this->eventDispatcher = new EventDispatcher();
+        $this->eventDispatcher->addListener(CustomerBeforeCreateEvent::class, static function (CustomerBeforeCreateEvent $event) use (&$dispatched): void {
+            $dispatched[] = 'before';
+            $event->setPayload([...$event->getPayload(), 'customFields' => ['source' => 'oidc'], 'id' => 'ignored']);
+        });
+        $this->eventDispatcher->addListener(CustomerAfterCreateEvent::class, static function (CustomerAfterCreateEvent $event) use (&$dispatched): void {
+            $dispatched[] = 'after:' . $event->getCustomer()->getId();
+        });
+        $payload = $this->captureCreatePayload();
+
+        $result = $this->createService()->findOrCreateCustomer($this->provider(), new MappedProfile('new@example.com'), $this->salesChannelContext());
+
+        self::assertNotNull($payload->value);
+        self::assertSame(['source' => 'oidc'], $payload->value['customFields']);
+        self::assertSame($result->getId(), $payload->value['id'], 'the id cannot be changed by a listener');
+        self::assertSame(['before', 'after:' . $result->getId()], $dispatched);
+    }
+
     public function testAutoCreateGeneratesRandomPassword(): void
     {
         $passwords = [];
@@ -689,6 +715,7 @@ final class CustomerProvisioningServiceTest extends TestCase
             new UserProviderBindingService($this->userProviderRepository),
             $this->numberRangeValueGenerator(),
             new NullLogger(),
+            $this->eventDispatcher ??= new EventDispatcher(),
         );
     }
 

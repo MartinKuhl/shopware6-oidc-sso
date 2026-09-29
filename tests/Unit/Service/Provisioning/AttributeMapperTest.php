@@ -6,9 +6,12 @@ use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingColl
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingDefinition as Attr;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Event\AttributeMappingCompletedEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeMapper;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeTransformer;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\MissingEmailClaimException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\GenderMapper;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\MappedProfile;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -17,13 +20,14 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
 use Shopware\Core\Framework\Uuid\Uuid;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 
 #[CoversClass(AttributeMapper::class)]
 final class AttributeMapperTest extends TestCase
 {
     public function testMapsLocaleZoneinfoAndPictureUsingDefaultClaimKeys(): void
     {
-        $mapper = new AttributeMapper($this->repositoryReturning([]), new GenderMapper(), new AttributeTransformer(new NullLogger()));
+        $mapper = new AttributeMapper($this->repositoryReturning([]), new GenderMapper(), new AttributeTransformer(new NullLogger()), new EventDispatcher());
 
         $profile = $mapper->map($this->provider(), [
             'email' => 'user@example.com',
@@ -49,6 +53,7 @@ final class AttributeMapperTest extends TestCase
             ]),
             new GenderMapper(),
             new AttributeTransformer(new NullLogger()),
+            new EventDispatcher(),
         );
 
         $profile = $mapper->map($this->provider($providerId), [
@@ -65,7 +70,7 @@ final class AttributeMapperTest extends TestCase
 
     public function testLeavesLocaleZoneinfoAndPictureNullWhenClaimIsMissing(): void
     {
-        $mapper = new AttributeMapper($this->repositoryReturning([]), new GenderMapper(), new AttributeTransformer(new NullLogger()));
+        $mapper = new AttributeMapper($this->repositoryReturning([]), new GenderMapper(), new AttributeTransformer(new NullLogger()), new EventDispatcher());
 
         $profile = $mapper->map($this->provider(), [
             'email' => 'user@example.com',
@@ -84,6 +89,32 @@ final class AttributeMapperTest extends TestCase
         return $provider;
     }
 
+    public function testMappingCompletedListenerCanReplaceTheProfile(): void
+    {
+        $dispatcher = new EventDispatcher();
+        $dispatcher->addListener(AttributeMappingCompletedEvent::class, static function (AttributeMappingCompletedEvent $event): void {
+            self::assertSame('corp-42', $event->getFlattenedClaims()['employee_id']);
+            $event->setProfile(new MappedProfile($event->getProfile()->email, firstName: 'From listener'));
+        });
+        $mapper = new AttributeMapper($this->repositoryReturning([]), new GenderMapper(), new AttributeTransformer(new NullLogger()), $dispatcher);
+
+        $profile = $mapper->map($this->provider(), ['email' => 'user@example.com', 'employee_id' => 'corp-42'], [], Context::createDefaultContext());
+
+        self::assertSame('From listener', $profile->firstName);
+    }
+
+    public function testListenerCannotRemoveTheEmail(): void
+    {
+        $dispatcher = new EventDispatcher();
+        $dispatcher->addListener(AttributeMappingCompletedEvent::class, static function (AttributeMappingCompletedEvent $event): void {
+            $event->setProfile(new MappedProfile('not-an-email'));
+        });
+        $mapper = new AttributeMapper($this->repositoryReturning([]), new GenderMapper(), new AttributeTransformer(new NullLogger()), $dispatcher);
+
+        $this->expectException(MissingEmailClaimException::class);
+        $mapper->map($this->provider(), ['email' => 'user@example.com'], [], Context::createDefaultContext());
+    }
+
     public function testAppliesConfiguredTransforms(): void
     {
         $providerId = Uuid::randomHex();
@@ -97,6 +128,7 @@ final class AttributeMapperTest extends TestCase
             ]),
             new GenderMapper(),
             new AttributeTransformer(new NullLogger()),
+            new EventDispatcher(),
         );
 
         $profile = $mapper->map($this->provider($providerId), [

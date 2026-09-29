@@ -15,7 +15,10 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\TimeZoneValidator;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
+use MartinKuhl\Sw6Oidc\Event\AdminAfterCreateEvent;
+use MartinKuhl\Sw6Oidc\Event\AdminBeforeCreateEvent;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Content\Media\File\FileFetcher;
 use Shopware\Core\Content\Media\File\MediaFile;
@@ -36,6 +39,8 @@ use Shopware\Core\System\User\UserEntity;
 #[CoversClass(AdminProvisioningService::class)]
 final class AdminProvisioningServiceTest extends TestCase
 {
+    private ?EventDispatcher $eventDispatcher = null;
+
     private Context $context;
 
     private ?UserEntity $existingUser = null;
@@ -368,6 +373,41 @@ final class AdminProvisioningServiceTest extends TestCase
         self::assertSame([['id' => $roleId]], $this->userCreates[0]['aclRoles']);
     }
 
+    public function testCreateDispatchesBeforeAndAfterEventsAndHonorsPayloadChanges(): void
+    {
+        $provider = $this->provider();
+        $provider->setAutoCreateAdmin(true);
+        $this->resolvedAclRoleId = Uuid::randomHex();
+        $dispatched = [];
+        $this->eventDispatcher = new EventDispatcher();
+        $this->eventDispatcher->addListener(AdminBeforeCreateEvent::class, static function (AdminBeforeCreateEvent $event) use (&$dispatched): void {
+            $dispatched[] = 'before';
+            $event->setPayload([...$event->getPayload(), 'title' => 'SSO user', 'id' => 'ignored']);
+        });
+        $this->eventDispatcher->addListener(AdminAfterCreateEvent::class, static function (AdminAfterCreateEvent $event) use (&$dispatched): void {
+            $dispatched[] = 'after:' . $event->getUser()->getId();
+        });
+
+        $result = $this->createService()->findOrCreateAdmin($provider, new MappedProfile('new@example.com'), $this->context);
+
+        self::assertCount(1, $this->userCreates);
+        self::assertSame('SSO user', $this->userCreates[0]['title']);
+        self::assertSame($result->getId(), $this->userCreates[0]['id'], 'the id cannot be changed by a listener');
+        self::assertSame(['before', 'after:' . $result->getId()], $dispatched);
+    }
+
+    public function testExistingAdminDispatchesNoCreateEvents(): void
+    {
+        $this->eventDispatcher = new EventDispatcher();
+        $this->eventDispatcher->addListener(AdminBeforeCreateEvent::class, static fn () => self::fail('unexpected before-create event'));
+        $this->eventDispatcher->addListener(AdminAfterCreateEvent::class, static fn () => self::fail('unexpected after-create event'));
+        $this->existingUser = $this->user('existing');
+
+        $this->createService()->findOrCreateAdmin($this->provider(), new MappedProfile('existing@example.com'), $this->context);
+
+        self::assertSame([], $this->userCreates);
+    }
+
     public function testCreatesSuperadminWhenToggleOnAndGroupMatches(): void
     {
         $provider = $this->provider();
@@ -545,6 +585,7 @@ final class AdminProvisioningServiceTest extends TestCase
             $this->fileFetcher,
             new TimeZoneValidator(),
             $this->createStub(LoggerInterface::class),
+            $this->eventDispatcher ??= new EventDispatcher(),
         );
     }
 
