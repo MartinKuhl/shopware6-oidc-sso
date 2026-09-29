@@ -1,0 +1,15 @@
+{% block sw_customer_base_metadata_last_login %}
+{% parent %}
+
+<sw-description-list v-if="customer && customer.id && !customer.isNew()">
+    <dt class="sw-customer-base-info__label">
+        {{ $t('sw6oidc.userProvider.label') }}
+    </dt>
+    <dd class="sw6oidc-customer-base-info__provider">
+        <sw6oidc-user-provider-info
+            user-type="customer"
+            :user-id="customer.id"
+        />
+    </dd>
+</sw-description-list>
+{% endblock %}

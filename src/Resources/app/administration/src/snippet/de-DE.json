@@ -180,6 +180,16 @@
                 }
             }
         },
+        "userProvider": {
+            "profileCardTitle": "Single Sign-On (OIDC)",
+            "label": "OIDC-Anbieter",
+            "none": "keiner",
+            "unlinkButton": "IdP-Verknüpfung lösen",
+            "unlinkConfirmAdmin": "Soll die Verknüpfung dieses Admin-Benutzers mit seinem OIDC-Anbieter wirklich gelöst werden? Beim nächsten SSO-Login kann er mit einem anderen Anbieter verknüpft werden.",
+            "unlinkConfirmCustomer": "Soll die Verknüpfung dieses Kunden mit seinem OIDC-Anbieter wirklich gelöst werden? Beim nächsten SSO-Login kann er mit einem anderen Anbieter verknüpft werden.",
+            "unlinkSuccess": "Die Verknüpfung mit dem OIDC-Anbieter wurde gelöst.",
+            "unlinkError": "Die Verknüpfung mit dem OIDC-Anbieter konnte nicht gelöst werden."
+        },
         "passkeySettings": {
             "moduleTitle": "Passkey-Einstellungen",
             "rpIdPlaceholderWithHost": "Standardmäßig: {host}",

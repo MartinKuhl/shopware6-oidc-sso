@@ -15,8 +15,14 @@
  * render before their dynamic imports had resolved.)
  */
 import './component/sw6oidc-rp-id-field';
+import './component/sw6oidc-user-provider-info';
 import './extension/sw-login';
 import './extension/sw-inactivity-login';
 import './extension/sw-profile';
+import './extension/sw-users-permissions-user-listing';
+import './extension/sw-users-permissions-user-detail';
+import './extension/sw-sso-users-permission-user-detail';
+import './extension/sw-profile-index-general';
+import './extension/sw-customer-base-info';
 import './module/sw6oidc-provider';
 import './module/sw6oidc-passkey';

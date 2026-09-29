@@ -180,6 +180,16 @@
                 }
             }
         },
+        "userProvider": {
+            "profileCardTitle": "Single Sign-On (OIDC)",
+            "label": "OIDC Provider",
+            "none": "none",
+            "unlinkButton": "Unlink IdP",
+            "unlinkConfirmAdmin": "Are you sure you want to unlink this admin user from their OIDC provider? They will be able to link to a different provider on next SSO login.",
+            "unlinkConfirmCustomer": "Are you sure you want to unlink this customer from their OIDC provider? They will be able to link to a different provider on next SSO login.",
+            "unlinkSuccess": "The account has been unlinked from its OIDC provider.",
+            "unlinkError": "The account could not be unlinked from its OIDC provider."
+        },
         "passkeySettings": {
             "moduleTitle": "Passkey Settings",
             "rpIdPlaceholderWithHost": "Defaults to: {host}",

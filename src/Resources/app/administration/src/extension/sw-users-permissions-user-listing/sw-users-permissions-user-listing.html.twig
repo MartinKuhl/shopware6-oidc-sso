@@ -1,0 +1,12 @@
+{% block sw_settings_user_list_column_username_acl_roles %}
+{% parent %}
+
+<template #column-sw6oidcProvider="{ item }">
+    <template v-if="sw6oidcBindings[item.id]">
+        {{ sw6oidcBindings[item.id].providerName || sw6oidcBindings[item.id].providerId }}
+    </template>
+    <template v-else>
+        {{ $t('sw6oidc.userProvider.none') }}
+    </template>
+</template>
+{% endblock %}
