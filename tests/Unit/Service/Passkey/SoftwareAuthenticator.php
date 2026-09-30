@@ -36,7 +36,12 @@ final class SoftwareAuthenticator
         $details = openssl_pkey_get_details($this->key);
         \assert(\is_array($details));
 
-        $coseKey = self::cbor([1 => 2, 3 => -7, -1 => 1, -2 => new CborBytes($details['ec']['x']), -3 => new CborBytes($details['ec']['y'])]);
+        // OpenSSL returns the coordinates as minimal big-endian integers; COSE
+        // requires the full 32 bytes (a leading zero byte made ~1 in 128 runs fail).
+        $x = str_pad($details['ec']['x'], 32, "\0", STR_PAD_LEFT);
+        $y = str_pad($details['ec']['y'], 32, "\0", STR_PAD_LEFT);
+
+        $coseKey = self::cbor([1 => 2, 3 => -7, -1 => 1, -2 => new CborBytes($x), -3 => new CborBytes($y)]);
         $authData = hash('sha256', $this->rpId(), true)
             . \chr(0x45) // UP | UV | AT
             . pack('N', $this->counter)
