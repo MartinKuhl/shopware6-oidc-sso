@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Administration's inactivity re-login modal ("Um sicherzugehen, haben wir dich abgemeldet") only offered password and passkey. It now shows one **Login with <provider>** button per admin SSO provider, and after the OIDC round trip the admin returns to the page they were on. With password login disabled for admins, the modal's password field and button are hidden.
 - The passkey ceremony unit test failed in ~1 of 128 runs (EC public-key coordinates with a leading zero byte were not padded to 32 bytes by the test authenticator).
 - Opening the OIDC provider settings failed with `TypeError: J is not a function`.
 - A group literally named `"0"` was dropped from a groups claim. Integer group ids are now kept.

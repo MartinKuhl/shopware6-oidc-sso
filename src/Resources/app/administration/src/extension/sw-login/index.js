@@ -17,6 +17,7 @@ import {
     preparePublicKeyRequestOptions,
     serializeAssertionCredential,
 } from '../../service/webauthn-codec';
+import { consumeSsoReturnRoute } from '../../service/sso-return-route';
 
 const { Component } = Shopware;
 
@@ -122,7 +123,23 @@ Component.override('sw-login-login', {
          * here instead of just navigating.
          */
         async sw6oidcFinishLogin() {
-            await this.$router.push({ name: 'core' });
+            // Set when the SSO login was started from the inactivity re-login modal:
+            // go back to the page the admin was on, like core's own re-login does.
+            const returnPath = consumeSsoReturnRoute();
+
+            if (returnPath) {
+                sessionStorage.removeItem('lastKnownUser');
+                // Other tabs still showing the inactivity modal forward themselves on this.
+                try {
+                    const channel = new BroadcastChannel('session_channel');
+                    channel.postMessage({ inactive: false });
+                    channel.close();
+                } catch {
+                    // BroadcastChannel unsupported: other tabs just stay on their modal.
+                }
+            }
+
+            await this.$router.push(returnPath ?? { name: 'core' });
 
             const shouldReload = sessionStorage.getItem('sw-login-should-reload');
 

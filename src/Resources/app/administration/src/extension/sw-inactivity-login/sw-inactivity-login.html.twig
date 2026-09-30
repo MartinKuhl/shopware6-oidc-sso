@@ -17,19 +17,35 @@
         :title="$t('global.sw-inactivity-login.modal.title')"
         :closable="false"
     >
-        <mt-password-field
-            v-model="password"
-            v-autofocus
-            :label="$t('sw-login.index.labelPassword')"
-            :disabled="isLoading"
-            :error="passwordError"
-            @keydown.enter="loginUserWithPassword"
-        />
+        <template v-if="!sw6oidcPasswordLoginDisabled">
+            <mt-password-field
+                v-model="password"
+                v-autofocus
+                :label="$t('sw-login.index.labelPassword')"
+                :disabled="isLoading"
+                :error="passwordError"
+                @keydown.enter="loginUserWithPassword"
+            />
 
-        <mt-checkbox
-            v-model:checked="rememberMe"
-            :label="$t('sw-login.index.labelKeepLoggedIn')"
-        />
+            <mt-checkbox
+                v-model:checked="rememberMe"
+                :label="$t('sw-login.index.labelKeepLoggedIn')"
+            />
+        </template>
+
+        {# One button per visible admin-scoped provider, as on the main login screen. #}
+        <mt-button
+            v-for="provider in sw6oidcSsoProviders"
+            :key="provider.id"
+            class="sw6oidc-inactivity-login__sso-button"
+            variant="secondary"
+            size="default"
+            :block="true"
+            type="button"
+            @click="sw6oidcStartSsoLogin(provider.id)"
+        >
+            {{ sw6oidcSsoButtonLabel(provider) }}
+        </mt-button>
 
         <mt-button
             v-if="sw6oidcPasskeyAvailable"
@@ -63,6 +79,7 @@
             </a>
 
             <mt-button
+                v-if="!sw6oidcPasswordLoginDisabled"
                 variant="primary"
                 :is-loading="isLoading"
                 @click="loginUserWithPassword"
