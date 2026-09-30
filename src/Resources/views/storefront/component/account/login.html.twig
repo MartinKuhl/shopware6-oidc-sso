@@ -17,12 +17,16 @@
 {% sw_extends '@Storefront/storefront/component/account/login.html.twig' %}
 
 {% block component_account_login_form %}
+    {% set sw6oidcSsoProviders = sw6oidc_storefront_sso_providers(context) %}
+    {% set sw6oidcPasskeyAvailable = sw6oidc_storefront_passkey_available(context) %}
+
     {#
         disable_non_oidc_customer_login: don't render the email/password
-        form at all. Cosmetic only — PasswordLoginGuardLoginRoute rejects
-        password logins (Storefront and Store API) server-side either way.
+        form — but only when this page actually offers another way in.
+        Cosmetic only — PasswordLoginGuardLoginRoute rejects password logins
+        (Storefront and Store API) server-side either way.
     #}
-    {% if sw6oidc_storefront_password_login_disabled(context) %}
+    {% if sw6oidc_storefront_password_login_disabled(context) and (sw6oidcSsoProviders is not empty or sw6oidcPasskeyAvailable) %}
         {% sw_include '@Storefront/storefront/utilities/alert.html.twig' with {
             type: 'info',
             content: 'sw6oidc.login.passwordLoginDisabled'|trans|sw_sanitize
@@ -30,9 +34,6 @@
     {% else %}
         {{ parent() }}
     {% endif %}
-
-    {% set sw6oidcSsoProviders = sw6oidc_storefront_sso_providers(context) %}
-    {% set sw6oidcPasskeyAvailable = sw6oidc_storefront_passkey_available(context) %}
 
     {% if sw6oidcSsoProviders is not empty or sw6oidcPasskeyAvailable %}
         {#
@@ -54,7 +55,7 @@
             {% for sw6oidcSsoProvider in sw6oidcSsoProviders %}
                 <a href="{{ path('frontend.sw6oidc.login', { redirectTo: app.request.get('redirectTo'), providerId: sw6oidcSsoProvider.id }) }}"
                    class="btn btn-secondary">
-                    {{ sw6oidcSsoProvider.label|sw_sanitize }}
+                    {{ sw6oidcSsoProvider.label }}
                 </a>
             {% endfor %}
 

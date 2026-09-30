@@ -748,6 +748,30 @@
                 </ul>
             </sw-card>
             {% endblock %}
+
+            <sw-modal
+                v-if="lockoutConfirmation"
+                :title="$tc('sw6oidc.provider.detail.lockoutConfirmTitle')"
+                variant="small"
+                @modal-close="lockoutConfirmation = null"
+            >
+                <p>{{ lockoutConfirmation }}</p>
+
+                <template #modal-footer>
+                    <mt-button
+                        variant="secondary"
+                        @click="lockoutConfirmation = null"
+                    >
+                        {{ $tc('global.default.cancel') }}
+                    </mt-button>
+                    <mt-button
+                        variant="critical"
+                        @click="onConfirmLockout"
+                    >
+                        {{ $tc('sw6oidc.provider.detail.lockoutConfirmButton') }}
+                    </mt-button>
+                </template>
+            </sw-modal>
         </sw-card-view>
     </template>
     {% endblock %}

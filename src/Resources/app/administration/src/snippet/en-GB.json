@@ -293,7 +293,9 @@
                 "requireEmailVerifiedHelp": "Refuse logins unless the IdP sends email_verified: true for the mapped email claim. Turn off only for IdPs that never send the claim and fully control every user's email address.",
                 "linkExistingAccounts": "Link existing accounts by verified email",
                 "linkExistingAccountsHelp": "On a first SSO login, connect an existing Shopware account with the same, verified email address. Off: existing accounts must be connected explicitly from their profile (\"Connect SSO\"). Superadmins are never linked automatically.",
-                "linkExistingAccountsUnverifiedWarning": "Existing accounts are never linked with an unverified email, even with email verification not required — such users have to connect SSO from their profile."
+                "linkExistingAccountsUnverifiedWarning": "Existing accounts are never linked with an unverified email, even with email verification not required — such users have to connect SSO from their profile.",
+                "lockoutConfirmTitle": "Lock out admins without single sign-on?",
+                "lockoutConfirmButton": "Disable password login anyway"
             }
         },
         "userProvider": {

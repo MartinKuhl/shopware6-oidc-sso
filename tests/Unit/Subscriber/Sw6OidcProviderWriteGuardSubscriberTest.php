@@ -4,11 +4,19 @@ namespace MartinKuhl\Sw6Oidc\Tests\Unit\Subscriber;
 
 use Doctrine\DBAL\Connection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
+use MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore;
+use MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard;
+use MartinKuhl\Sw6Oidc\Service\Security\PasswordSessionRevoker;
 use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 use MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcProviderWriteGuardSubscriber;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\DeleteCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\InsertCommand;
@@ -23,6 +31,34 @@ use Shopware\Core\Framework\Validation\WriteConstraintViolationException;
 final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
 {
     private const APP_SECRET = 'test-app-secret';
+
+    /** @var array<string, mixed> */
+    private array $currentRow = [
+        'is_active' => 1,
+        'login_type' => 'both',
+        'disable_non_oidc_admin_login' => 0,
+        'disable_non_oidc_customer_login' => 0,
+        'show_admin_link' => 1,
+        'show_customer_link' => 1,
+    ];
+
+    /** @var list<string> */
+    private array $unboundAdmins = [];
+
+    private bool $otherVisibleProvider = true;
+
+    private bool $adminLoginRemainsPossible = true;
+
+    private bool $confirmed = false;
+
+    private PasswordSessionRevoker&MockObject $revoker;
+
+    private Sw6OidcProviderWriteGuardSubscriber $subscriber;
+
+    protected function setUp(): void
+    {
+        $this->revoker = $this->createMock(PasswordSessionRevoker::class);
+    }
 
     public function testEncryptedWebhookUrlIsDecryptedAndSsrfChecked(): void
     {
@@ -115,6 +151,77 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
         self::assertCount(0, $event->getExceptions()->getExceptions());
     }
 
+    public function testUnboundAdminsNeedAnExplicitConfirmation(): void
+    {
+        $this->unboundAdmins = ['a', 'b'];
+
+        $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, ['disable_non_oidc_admin_login' => 1])], boundAccount: true));
+
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_UNBOUND_USERS, $violation->getCode());
+        self::assertStringContainsString('2 active admin', (string) $violation->getMessage());
+    }
+
+    public function testConfirmedLockoutPassesAndSchedulesSessionRevocation(): void
+    {
+        $this->unboundAdmins = ['a'];
+        $this->confirmed = true;
+        $this->revoker->expects(self::once())->method('revokeUnboundAdminSessions');
+
+        $command = $this->command(UpdateCommand::class, ['disable_non_oidc_admin_login' => 1]);
+        $event = $this->validateCommands([$command], boundAccount: true);
+
+        self::assertCount(0, $event->getExceptions()->getExceptions());
+
+        $providerId = $command->getPrimaryKey()['id'];
+        \assert(\is_string($providerId));
+        $this->subscriber->onProviderWritten(new EntityWrittenEvent(
+            Sw6OidcProviderDefinition::ENTITY_NAME,
+            [new EntityWriteResult(Uuid::fromBytesToHex($providerId), [], Sw6OidcProviderDefinition::ENTITY_NAME, EntityWriteResult::OPERATION_UPDATE)],
+            Context::createDefaultContext(),
+        ));
+    }
+
+    public function testFlagThatIsAlreadyOnIsNotRevalidated(): void
+    {
+        $this->currentRow['disable_non_oidc_admin_login'] = 1;
+        $this->unboundAdmins = ['a'];
+
+        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['disable_non_oidc_admin_login' => 1])], boundAccount: false);
+
+        self::assertCount(0, $event->getExceptions()->getExceptions());
+    }
+
+    public function testFlagNeedsAVisibleSsoButton(): void
+    {
+        $this->otherVisibleProvider = false;
+
+        $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, [
+            'disable_non_oidc_customer_login' => 1,
+            'show_customer_link' => 0,
+        ])], boundAccount: true));
+
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_NO_VISIBLE_LOGIN, $violation->getCode());
+    }
+
+    public function testDeactivatingTheLastAdminProviderUnderSsoOnlyModeIsRejected(): void
+    {
+        // boundAccount: fetchOne() also answers "another provider keeps the admin policy on".
+        $this->adminLoginRemainsPossible = false;
+
+        $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, ['is_active' => 0])], boundAccount: true));
+
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD, $violation->getCode());
+    }
+
+    public function testDeletingTheLastAdminProviderUnderSsoOnlyModeIsRejected(): void
+    {
+        $this->adminLoginRemainsPossible = false;
+
+        $violation = $this->singleViolation($this->validateCommands([$this->command(DeleteCommand::class, [])], boundAccount: true));
+
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD, $violation->getCode());
+    }
+
     /**
      * @param list<WriteCommand> $commands
      */
@@ -122,11 +229,32 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
     {
         $connection = $this->createMock(Connection::class);
         $connection->method('fetchOne')->willReturn($boundAccount ? '1' : false);
+        $connection->method('fetchAssociative')->willReturn($this->currentRow);
+
+        $lockoutGuard = $this->createStub(LockoutGuard::class);
+        $lockoutGuard->method('unboundActiveAdminIds')->willReturn($this->unboundAdmins);
+        $lockoutGuard->method('otherVisibleProviderExists')->willReturn($this->otherVisibleProvider);
+        $lockoutGuard->method('adminLoginRemainsPossible')->willReturn($this->adminLoginRemainsPossible);
+
+        $confirmations = $this->createStub(LockoutConfirmationStore::class);
+        $confirmations->method('consume')->willReturn($this->confirmed);
+
+        $requestStack = new RequestStack();
+        $requestStack->push(new Request());
 
         $validator = new SsrfUrlValidator(false, static fn (): array => [$privateIps ? '10.0.0.1' : '93.184.215.14']);
         $event = new PreWriteValidationEvent(WriteContext::createFromContext(Context::createDefaultContext()), $commands);
 
-        (new Sw6OidcProviderWriteGuardSubscriber($validator, $connection, new Sw6OidcEncryptor(self::APP_SECRET)))->validate($event);
+        $this->subscriber = new Sw6OidcProviderWriteGuardSubscriber(
+            $validator,
+            $connection,
+            new Sw6OidcEncryptor(self::APP_SECRET),
+            $lockoutGuard,
+            $this->revoker,
+            $requestStack,
+            $confirmations,
+        );
+        $this->subscriber->validate($event);
 
         return $event;
     }

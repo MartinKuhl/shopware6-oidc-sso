@@ -293,7 +293,9 @@
                 "requireEmailVerifiedHelp": "Anmeldungen ablehnen, wenn der IdP für die zugeordnete E-Mail nicht email_verified: true sendet. Nur für IdPs deaktivieren, die den Claim nie senden und die E-Mail-Adressen aller Benutzer vollständig kontrollieren.",
                 "linkExistingAccounts": "Bestehende Konten per bestätigter E-Mail verknüpfen",
                 "linkExistingAccountsHelp": "Beim ersten SSO-Login ein bestehendes Shopware-Konto mit derselben, bestätigten E-Mail-Adresse verknüpfen. Aus: Bestehende Konten müssen im Profil ausdrücklich verbunden werden („SSO verbinden“). Superadmins werden nie automatisch verknüpft.",
-                "linkExistingAccountsUnverifiedWarning": "Bestehende Konten werden nie mit einer unbestätigten E-Mail-Adresse verknüpft, auch wenn keine Bestätigung verlangt wird — diese Benutzer müssen SSO in ihrem Profil verbinden."
+                "linkExistingAccountsUnverifiedWarning": "Bestehende Konten werden nie mit einer unbestätigten E-Mail-Adresse verknüpft, auch wenn keine Bestätigung verlangt wird — diese Benutzer müssen SSO in ihrem Profil verbinden.",
+                "lockoutConfirmTitle": "Admins ohne Single Sign-on aussperren?",
+                "lockoutConfirmButton": "Passwort-Anmeldung trotzdem deaktivieren"
             }
         },
         "userProvider": {

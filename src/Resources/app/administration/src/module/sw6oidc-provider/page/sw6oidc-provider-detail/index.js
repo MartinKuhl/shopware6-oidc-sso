@@ -74,6 +74,8 @@ Component.register('sw6oidc-provider-detail', () => {
                 isRunningLiveTest: false,
                 liveTestReport: null,
                 isRunningDiagnostics: false,
+                /** Server message when disabling admin password login would lock out unbound admins */
+                lockoutConfirmation: null,
                 /** OidcDiagnosticsController response for this provider */
                 diagnostics: null,
                 /** @type {Record<string, unknown>} claims received on the last live login test, keyed by claim name */
@@ -386,9 +388,19 @@ Component.register('sw6oidc-provider-detail', () => {
                 }).catch((error) => {
                     this.isLoading = false;
 
+                    const errors = error?.response?.data?.errors ?? [];
+                    const unboundLockout = errors.find((entry) => entry.code === 'SW6OIDC_LOCKOUT_UNBOUND_USERS');
+
+                    // Needs an explicit decision, not just an error toast.
+                    if (unboundLockout && !this.isNewProvider) {
+                        this.lockoutConfirmation = unboundLockout.detail;
+
+                        return;
+                    }
+
                     // Surface the server's own violation messages (SSRF block,
                     // lockout guard, ...) instead of only a generic failure.
-                    const details = (error?.response?.data?.errors ?? [])
+                    const details = errors
                         .map((entry) => entry.detail)
                         .filter(Boolean);
 
@@ -398,6 +410,20 @@ Component.register('sw6oidc-provider-detail', () => {
                             : this.$tc('sw6oidc.provider.detail.saveError'),
                     });
                 });
+            },
+
+            async onConfirmLockout() {
+                this.lockoutConfirmation = null;
+
+                const response = await this.sw6oidcApiFetch(`/api/_action/sw6oidc/provider/${this.provider.id}/confirm-lockout`, {});
+
+                if (!response.ok) {
+                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.saveError') });
+
+                    return;
+                }
+
+                await this.onClickSave();
             },
 
             async onClickLoadConfiguration() {

@@ -64,7 +64,9 @@ Component.override('sw-inactivity-login', {
                 const { ssoProviders, passkeyAvailable, passwordLoginDisabled } = await response.json();
                 this.sw6oidcSsoProviders = Array.isArray(ssoProviders) ? ssoProviders : [];
                 this.sw6oidcPasskeyAvailable = Boolean(passkeyAvailable);
-                this.sw6oidcPasswordLoginDisabled = Boolean(passwordLoginDisabled);
+                // Only hide the password form when this screen offers another way in (F-N4).
+                this.sw6oidcPasswordLoginDisabled = Boolean(passwordLoginDisabled)
+                    && (this.sw6oidcSsoProviders.length > 0 || this.sw6oidcPasskeyAvailable);
             } catch (exception) {
                 // eslint-disable-next-line no-console
                 console.error('sw6oidc: failed to load admin login options', exception);

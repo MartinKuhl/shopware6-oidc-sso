@@ -9,6 +9,7 @@
         <!-- Dev-only escape hatches, both off unless the env var is set to 1. -->
         <parameter key="env(SW6OIDC_ALLOW_INSECURE_IDP_URLS)">0</parameter>
         <parameter key="env(SW6OIDC_ALLOW_PASSWORD_LOGIN)">0</parameter>
+        <parameter key="env(SW6OIDC_ALLOW_USER_ACCESS_KEYS)">0</parameter>
         <parameter key="env(SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS)">90</parameter>
     </parameters>
 
@@ -538,7 +539,51 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
         </service>
 
+        <service id="MartinKuhl\Sw6Oidc\Storefront\Service\PasswordLoginGuardRegisterRoute"
+                 decorates="Shopware\Core\Checkout\Customer\SalesChannel\RegisterRoute">
+            <argument type="service" id=".inner" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Storefront\Service\PasswordLoginGuardRegisterConfirmRoute"
+                 decorates="Shopware\Core\Checkout\Customer\SalesChannel\RegisterConfirmRoute">
+            <argument type="service" id=".inner" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Storefront\EventSubscriber\PasswordLoginDisabledExceptionSubscriber">
+            <argument type="service" id="router" />
+            <argument type="service" id="translator" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
+        <!-- The actual admin password-login enforcement: League's password grant asks this repository. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\PasswordLoginGuardUserRepository"
+                 decorates="Shopware\Core\Framework\Api\OAuth\UserRepository">
+            <argument type="service" id=".inner" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Subscriber\AdminPasswordLoginGuardSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+            <argument>%env(bool:SW6OIDC_ALLOW_USER_ACCESS_KEYS)%</argument>
+            <tag name="kernel.event_subscriber" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\PasswordSessionRevoker">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\AdminLockoutGuardSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
             <tag name="kernel.event_subscriber" />
         </service>
@@ -547,7 +592,25 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordSessionRevoker" />
+            <argument type="service" id="request_stack" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore" />
+            <argument>%env(bool:SW6OIDC_ALLOW_PASSWORD_LOGIN)%</argument>
             <tag name="kernel.event_subscriber" />
+            <tag name="kernel.reset" method="reset" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore">
+            <argument type="service" id="cache.app" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Controller\Api\ProviderLockoutConfirmationController" public="true">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <call method="setContainer">
+                <argument type="service" id="service_container" />
+            </call>
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcProviderAdminController" public="true">
