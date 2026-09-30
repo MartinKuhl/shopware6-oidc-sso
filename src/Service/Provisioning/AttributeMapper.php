@@ -5,11 +5,13 @@ namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingDefinition as Attr;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Event\AttributeMappingCompletedEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\MissingEmailClaimException;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Maps a provider's sw6oidc_attribute_mapping rows against a flattened claims
@@ -37,6 +39,8 @@ class AttributeMapper
     public function __construct(
         private readonly EntityRepository $attributeMappingRepository,
         private readonly GenderMapper $genderMapper,
+        private readonly AttributeTransformer $transformer,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -48,18 +52,22 @@ class AttributeMapper
      */
     public function map(Sw6OidcProviderEntity $provider, array $flattenedClaims, array $groups, Context $context): MappedProfile
     {
-        $claimKeys = $this->loadClaimKeys($provider->getId(), $context);
+        $mappings = $this->loadMappings($provider->getId(), $context);
 
-        $read = function (string $attributeType) use ($flattenedClaims, $claimKeys): ?string {
-            $claimKey = $claimKeys[$attributeType] ?? self::DEFAULT_CLAIM_KEYS[$attributeType] ?? null;
+        $read = function (string $attributeType) use ($flattenedClaims, $mappings): ?string {
+            $mapping = $mappings[$attributeType] ?? null;
+            $claimKey = $mapping?->getAttributeName() ?? self::DEFAULT_CLAIM_KEYS[$attributeType] ?? null;
 
-            if ($claimKey === null || !isset($flattenedClaims[$claimKey])) {
-                return null;
+            $raw = $claimKey !== null ? ($flattenedClaims[$claimKey] ?? null) : null;
+            $value = \is_scalar($raw) ? trim((string) $raw) : null;
+
+            if ($mapping === null) {
+                return $value;
             }
 
-            $value = $flattenedClaims[$claimKey];
-
-            return \is_scalar($value) ? trim((string) $value) : null;
+            // Applied even when the claim itself is missing, so e.g. a concat
+            // transform can still build a value from its other claims.
+            return $this->transformer->apply($mapping->getTransformFunction(), $mapping->getTransformParams() ?? [], $value, $flattenedClaims);
         };
 
         $email = $read(Attr::TYPE_EMAIL);
@@ -86,7 +94,7 @@ class AttributeMapper
             phone: $read(Attr::TYPE_SHIPPING_PHONE),
         );
 
-        return new MappedProfile(
+        $profile = new MappedProfile(
             email: $email,
             username: $read(Attr::TYPE_USERNAME),
             firstName: $read(Attr::TYPE_FIRSTNAME),
@@ -101,23 +109,34 @@ class AttributeMapper
             shippingAddress: $shippingAddress->isEmpty() ? null : $shippingAddress,
             groups: $groups,
         );
+
+        $event = new AttributeMappingCompletedEvent($provider, $flattenedClaims, $profile, $context);
+        $this->eventDispatcher->dispatch($event);
+        $profile = $event->getProfile();
+
+        // A listener may have replaced the profile — keep the email invariant.
+        if (!filter_var($profile->email, FILTER_VALIDATE_EMAIL)) {
+            throw new MissingEmailClaimException('The mapped profile does not contain a valid email address.');
+        }
+
+        return $profile;
     }
 
     /**
-     * @return array<string, string> attributeType => claim key
+     * @return array<string, Sw6OidcAttributeMappingEntity> attributeType => mapping row
      */
-    private function loadClaimKeys(string $providerId, Context $context): array
+    private function loadMappings(string $providerId, Context $context): array
     {
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('providerId', $providerId));
 
-        $claimKeys = [];
+        $mappings = [];
 
         foreach ($this->attributeMappingRepository->search($criteria, $context)->getEntities() as $mapping) {
             \assert($mapping instanceof Sw6OidcAttributeMappingEntity);
-            $claimKeys[$mapping->getAttributeType()] = $mapping->getAttributeName();
+            $mappings[$mapping->getAttributeType()] = $mapping;
         }
 
-        return $claimKeys;
+        return $mappings;
     }
 }

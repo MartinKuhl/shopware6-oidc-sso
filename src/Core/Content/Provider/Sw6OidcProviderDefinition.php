@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Core\Content\Provider;
 
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingDefinition;
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Field\Sw6OidcEncryptedField;
 use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingDefinition;
 use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupDefinition;
 use Shopware\Core\Framework\Api\Acl\Role\AclRoleDefinition;
@@ -11,6 +12,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Field\BoolField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\CreatedAtField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\DateTimeField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\FkField;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\AllowHtml;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ApiAware;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\CascadeDelete;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\PrimaryKey;
@@ -50,9 +52,9 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new StringField('app_name', 'appName'))->addFlags(new ApiAware(), new Required()),
             (new StringField('display_name', 'displayName'))->addFlags(new ApiAware()),
             (new StringField('client_id', 'clientId'))->addFlags(new ApiAware(), new Required()),
-            // TODO(later phase): encrypt at rest via a custom FieldSerializer, mirroring the Magento module's
-            // EncryptorInterface-backed client_secret column, instead of storing plaintext.
-            (new StringField('client_secret', 'clientSecret', 1024))->addFlags(new ApiAware(), new Required()),
+            // Encrypted at rest and write-only over the API: no ApiAware flag, so
+            // Admin API reads never return it (writes still accept it).
+            (new Sw6OidcEncryptedField('client_secret', 'clientSecret', 1024))->addFlags(new Required(), new AllowHtml(false)),
             (new StringField('authorize_endpoint', 'authorizeEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('access_token_endpoint', 'accessTokenEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('user_info_endpoint', 'userInfoEndpoint', 1024))->addFlags(new ApiAware()),

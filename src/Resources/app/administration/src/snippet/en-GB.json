@@ -7,7 +7,8 @@
             "errorRoleMissing": "Your account could not be created automatically because no administrator role could be assigned. Please contact your administrator.",
             "errorAutoCreateDisabled": "Automatic account creation is disabled for this login method. Please contact your administrator.",
             "passkeyButton": "Login with Passkey",
-            "passkeyError": "Passkey login failed. Please try again or log in with your username and password."
+            "passkeyError": "Passkey login failed. Please try again or log in with your username and password.",
+            "passwordLoginDisabled": "Password login is disabled. Please sign in with single sign-on or a passkey."
         },
         "provider": {
             "moduleTitle": "OIDC Providers",
@@ -45,10 +46,10 @@
                     }
                 },
                 "testStatus": {
-                    "pass": "pass",
-                    "fail": "fail",
-                    "warning": "warning",
-                    "skipped": "skipped"
+                    "pass": "Passed",
+                    "fail": "Failed",
+                    "warning": "Warning",
+                    "skipped": "Skipped"
                 },
                 "testMessage": {
                     "tokenExchangePass": "Authorization code exchanged for an access token successfully.",
@@ -66,7 +67,11 @@
                     "clientCredentialsPass": "Client ID and client secret are set.",
                     "jwksNotConfigured": "No JWKS endpoint configured; ID tokens cannot be signature-verified.",
                     "jwksNoKeys": "JWKS endpoint responded but did not contain a non-empty \"keys\" array.",
-                    "jwksPass": "JWKS endpoint returned {count} key(s)."
+                    "jwksPass": "JWKS endpoint returned {count} key(s).",
+                    "callbackInvalidState": "Unknown, expired, or already-used test run. Please start the live login test again.",
+                    "callbackNotTestFlow": "This callback only accepts live login test runs.",
+                    "callbackMissingCode": "Missing authorization code or unknown provider.",
+                    "authorizationError": "The identity provider rejected the login: {error}"
                 },
                 "buttonRunLiveTest": "Run live login test",
                 "liveTestRequiresSaveHint": "Save the provider first to run a live login test.",
@@ -77,7 +82,9 @@
                     "step": {
                         "token_exchange": "Token exchange",
                         "id_token_verification": "ID token verification",
-                        "userinfo_fetch": "Userinfo fetch"
+                        "userinfo_fetch": "Userinfo fetch",
+                        "callback": "Callback",
+                        "authorization": "Authorization"
                     }
                 },
                 "cardGeneral": "General",
@@ -97,7 +104,8 @@
                 "clientId": "Client ID",
                 "clientIdHelp": "The OAuth2 client ID registered with your identity provider for this application.",
                 "clientSecret": "Client secret",
-                "clientSecretHelp": "The OAuth2 client secret for this client. Stored in plaintext — restrict database access accordingly. Leave blank for a public client.",
+                "clientSecretHelp": "The OAuth2 client secret for this client. Stored encrypted and never shown again after saving — leave empty to keep the stored secret.",
+                "clientSecretStoredPlaceholder": "Stored — leave empty to keep",
                 "wellKnownConfigUrl": "Well-known configuration URL (auto-discovery)",
                 "wellKnownConfigUrlHelp": "Your IdP's OpenID Connect discovery document (…/.well-known/openid-configuration). Use \"Load configuration\" below to fill in the endpoint fields automatically.",
                 "authorizeEndpoint": "Authorize endpoint",
@@ -155,6 +163,23 @@
                 "syncAdminRoleOnSso": "Sync admin role",
                 "syncAdminRoleOnSsoHelp": "Re-evaluates the Group/Role Mapping (including any superadmin grant) on every login and updates the Administration user's ACL role if it resolves to a different one.",
                 "attributeClaimName": "OIDC claim name",
+                "transform": {
+                    "label": "Transform",
+                    "params": "Transform parameters",
+                    "none": "None",
+                    "functions": {
+                        "concat": "Concatenate claims",
+                        "split": "Split",
+                        "prefix": "Prefix",
+                        "regex_replace": "Regex replace"
+                    },
+                    "concatClaims": "Claims to append",
+                    "separator": "Separator",
+                    "index": "Part index (0 = first, -1 = last)",
+                    "prefix": "Prefix text",
+                    "pattern": "Pattern, e.g. /\\s+/",
+                    "replacement": "Replacement"
+                },
                 "addAttributeMapping": "Add attribute mapping",
                 "pickDiscoveredClaimPlaceholder": "Select a claim",
                 "attributeMappingRequiresLiveTestHint": "The claim name field only offers claims seen on a successful live login test. Run “Run live login test” above and save the provider once it succeeds to populate this list.",
@@ -201,6 +226,14 @@
                     "shipping_state": "Shipping: state",
                     "shipping_country": "Shipping: country",
                     "shipping_phone": "Shipping: phone"
+                },
+                "liveTestPopup": {
+                    "overallLabel": "Result",
+                    "claimsTitle": "Claims received",
+                    "columnClaim": "Claim",
+                    "columnValue": "Value",
+                    "noClaims": "No claims received.",
+                    "closeButton": "Close window"
                 }
             }
         },

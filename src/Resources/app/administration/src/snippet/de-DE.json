@@ -7,7 +7,8 @@
             "errorRoleMissing": "Ihr Konto konnte nicht automatisch angelegt werden, da keine Administratorrolle zugewiesen werden konnte. Bitte wenden Sie sich an Ihren Administrator.",
             "errorAutoCreateDisabled": "Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.",
             "passkeyButton": "Login mit Passkey",
-            "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an."
+            "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
+            "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an."
         },
         "provider": {
             "moduleTitle": "OIDC-Anbieter",
@@ -45,10 +46,10 @@
                     }
                 },
                 "testStatus": {
-                    "pass": "bestanden",
-                    "fail": "fehlgeschlagen",
+                    "pass": "Erfolgreich",
+                    "fail": "Fehlgeschlagen",
                     "warning": "Warnung",
-                    "skipped": "übersprungen"
+                    "skipped": "Übersprungen"
                 },
                 "testMessage": {
                     "tokenExchangePass": "Autorisierungscode erfolgreich gegen ein Access-Token eingetauscht.",
@@ -66,7 +67,11 @@
                     "clientCredentialsPass": "Client-ID und Client-Secret sind gesetzt.",
                     "jwksNotConfigured": "Kein JWKS-Endpunkt konfiguriert; die Signatur von ID-Tokens kann nicht geprüft werden.",
                     "jwksNoKeys": "Der JWKS-Endpunkt hat geantwortet, enthielt aber kein nicht-leeres \"keys\"-Array.",
-                    "jwksPass": "Der JWKS-Endpunkt hat {count} Schlüssel geliefert."
+                    "jwksPass": "Der JWKS-Endpunkt hat {count} Schlüssel geliefert.",
+                    "callbackInvalidState": "Unbekannter, abgelaufener oder bereits verwendeter Test-Durchlauf. Bitte starten Sie den Live-Login-Test erneut.",
+                    "callbackNotTestFlow": "Dieser Rückruf akzeptiert nur Durchläufe des Live-Login-Tests.",
+                    "callbackMissingCode": "Autorisierungscode fehlt oder der Anbieter ist unbekannt.",
+                    "authorizationError": "Der Identity Provider hat die Anmeldung abgelehnt: {error}"
                 },
                 "buttonRunLiveTest": "Live-Login-Test ausführen",
                 "liveTestRequiresSaveHint": "Speichern Sie den Anbieter zuerst, um einen Live-Login-Test auszuführen.",
@@ -77,7 +82,9 @@
                     "step": {
                         "token_exchange": "Token-Austausch",
                         "id_token_verification": "ID-Token-Prüfung",
-                        "userinfo_fetch": "Userinfo-Abruf"
+                        "userinfo_fetch": "Userinfo-Abruf",
+                        "callback": "Rückruf",
+                        "authorization": "Autorisierung"
                     }
                 },
                 "cardGeneral": "Allgemein",
@@ -97,7 +104,8 @@
                 "clientId": "Client-ID",
                 "clientIdHelp": "Die beim Identity Provider für diese Anwendung registrierte OAuth2-Client-ID.",
                 "clientSecret": "Client-Secret",
-                "clientSecretHelp": "Das OAuth2-Client-Secret für diesen Client. Wird im Klartext gespeichert – Datenbankzugriff entsprechend einschränken. Bei einem Public Client leer lassen.",
+                "clientSecretHelp": "Das OAuth2-Client-Secret für diesen Client. Wird verschlüsselt gespeichert und nach dem Speichern nicht mehr angezeigt – leer lassen, um das gespeicherte Secret zu behalten.",
+                "clientSecretStoredPlaceholder": "Gespeichert – leer lassen zum Beibehalten",
                 "wellKnownConfigUrl": "Well-Known-Konfigurations-URL (Auto-Discovery)",
                 "wellKnownConfigUrlHelp": "Das OpenID-Connect-Discovery-Dokument Ihres IdP (…/.well-known/openid-configuration). Über „Konfiguration laden“ unten werden die Endpunkt-Felder automatisch befüllt.",
                 "authorizeEndpoint": "Authorize-Endpunkt",
@@ -155,6 +163,23 @@
                 "syncAdminRoleOnSso": "Admin-Rolle synchronisieren",
                 "syncAdminRoleOnSsoHelp": "Wertet die Rollen-/Gruppenzuordnung (einschließlich einer eventuellen Superadmin-Vergabe) bei jeder Anmeldung neu aus und aktualisiert die ACL-Rolle des Administration-Benutzers, falls sich eine andere Rolle ergibt.",
                 "attributeClaimName": "OIDC-Claim-Name",
+                "transform": {
+                    "label": "Transformation",
+                    "params": "Transformationsparameter",
+                    "none": "Keine",
+                    "functions": {
+                        "concat": "Claims verketten",
+                        "split": "Aufteilen",
+                        "prefix": "Präfix",
+                        "regex_replace": "Regex-Ersetzung"
+                    },
+                    "concatClaims": "Anzuhängende Claims",
+                    "separator": "Trennzeichen",
+                    "index": "Teil-Index (0 = erster, -1 = letzter)",
+                    "prefix": "Präfix-Text",
+                    "pattern": "Muster, z. B. /\\s+/",
+                    "replacement": "Ersetzung"
+                },
                 "addAttributeMapping": "Attributzuordnung hinzufügen",
                 "pickDiscoveredClaimPlaceholder": "Claim auswählen",
                 "attributeMappingRequiresLiveTestHint": "Das Feld für den Claim-Namen bietet nur Claims an, die bei einem erfolgreichen Live-Login-Test beobachtet wurden. Führen Sie oben „Live-Login-Test ausführen“ aus und speichern Sie den Anbieter nach einem erfolgreichen Test, um diese Liste zu befüllen.",
@@ -201,6 +226,14 @@
                     "shipping_state": "Versand: Bundesland",
                     "shipping_country": "Versand: Land",
                     "shipping_phone": "Versand: Telefon"
+                },
+                "liveTestPopup": {
+                    "overallLabel": "Ergebnis",
+                    "claimsTitle": "Empfangene Claims",
+                    "columnClaim": "Claim",
+                    "columnValue": "Wert",
+                    "noClaims": "Keine Claims empfangen.",
+                    "closeButton": "Fenster schließen"
                 }
             }
         },

@@ -49,10 +49,22 @@
             login flows need (no authenticated request context exists yet)
             - the same widely-used pattern countless other Shopware plugins
             rely on for exactly this reason.
+
+            Sw6OidcEncryptedFieldSerializer implements the DAL's
+            FieldSerializerInterface and necessarily calls the write-stack
+            methods (KeyValuePair, WriteParameterBag, the wrapped
+            StringFieldSerializer) that core marks @internal - a custom field
+            serializer is still the documented way to add a custom DAL field
+            type. Likewise Sw6OidcProviderWriteGuardSubscriber reads
+            WriteCommand payloads/primary keys inside PreWriteValidationEvent,
+            the documented write-validation hook core's own validators use.
+            Scoped to those files.
         -->
         <InternalMethod>
             <errorLevel type="suppress">
                 <referencedMethod name="Shopware\Core\Framework\Context::createDefaultContext" />
+                <file name="src/Core/Content/Provider/Field/Sw6OidcEncryptedFieldSerializer.php" />
+                <file name="src/Subscriber/Sw6OidcProviderWriteGuardSubscriber.php" />
             </errorLevel>
         </InternalMethod>
 

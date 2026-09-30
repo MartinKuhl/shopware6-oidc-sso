@@ -3,11 +3,12 @@
 namespace MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeTransformer;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityDefinition;
-use Shopware\Core\Framework\DataAbstractionLayer\Field\BoolField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\CreatedAtField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\FkField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ApiAware;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Choice;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\PrimaryKey;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Required;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IdField;
@@ -67,8 +68,7 @@ class Sw6OidcAttributeMappingDefinition extends EntityDefinition
             (new FkField('provider_id', 'providerId', Sw6OidcProviderDefinition::class))->addFlags(new ApiAware(), new Required()),
             (new StringField('attribute_type', 'attributeType', 64))->addFlags(new ApiAware(), new Required()),
             (new StringField('attribute_name', 'attributeName'))->addFlags(new ApiAware(), new Required()),
-            (new BoolField('sync_on_sso', 'syncOnSso'))->addFlags(new ApiAware()),
-            (new StringField('transform_function', 'transformFunction', 32))->addFlags(new ApiAware()),
+            (new StringField('transform_function', 'transformFunction', 32))->addFlags(new ApiAware(), new Choice(AttributeTransformer::FUNCTIONS, true)),
             (new JsonField('transform_params', 'transformParams'))->addFlags(new ApiAware()),
             new CreatedAtField(),
             new UpdatedAtField(),

@@ -77,7 +77,7 @@ class PasskeyAdminController extends AbstractController
             $this->registrationService->verifyAndPersist(
                 (string) $request->request->get('sessionId'),
                 (string) $request->request->get('credential'),
-                $this->psrHttpFactory->createRequest($request),
+                $request->getHost(),
                 $request->request->get('nickname') !== null ? (string) $request->request->get('nickname') : null,
             );
 
@@ -164,7 +164,7 @@ class PasskeyAdminController extends AbstractController
             $resolved = $this->authenticationService->verifyAssertion(
                 (string) $request->request->get('sessionId'),
                 (string) $request->request->get('credential'),
-                $this->psrHttpFactory->createRequest($request),
+                $request->getHost(),
             );
 
             if ($resolved['userType'] !== 'admin') {
@@ -281,14 +281,13 @@ class PasskeyAdminController extends AbstractController
 
         // hash('admin:' . userId) is only the *opaque* WebAuthn user handle
         // used at registration time (see PasskeyRegistrationService) — it's
-        // one-way by design, but findAllForUserEntity() only needs it to
+        // one-way by design, but findAllForUserHandle() only needs it to
         // look up already-registered credentials, never to reverse it.
         $userHandle = hash('sha256', 'admin:' . $user->getId(), true);
-        $userEntity = new \Webauthn\PublicKeyCredentialUserEntity('', $userHandle, '');
 
         return array_map(
-            static fn (\Webauthn\PublicKeyCredentialSource $source): \Webauthn\PublicKeyCredentialDescriptor => $source->getPublicKeyCredentialDescriptor(),
-            $this->passkeyCredentialRepository->findAllForUserEntity($userEntity),
+            static fn (\Webauthn\CredentialRecord $record): \Webauthn\PublicKeyCredentialDescriptor => $record->getPublicKeyCredentialDescriptor(),
+            $this->passkeyCredentialRepository->findAllForUserHandle($userHandle),
         );
     }
 }

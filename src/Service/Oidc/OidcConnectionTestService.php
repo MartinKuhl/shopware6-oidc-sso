@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Oidc;
 
 use MartinKuhl\Sw6Oidc\Service\Http\Exception\OidcHttpException;
 use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
+use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 
 /**
  * The fast, synchronous "Test Connection" check: no real login round trip,
@@ -23,7 +24,7 @@ class OidcConnectionTestService
     public function __construct(
         private readonly OidcHttpClient $httpClient,
         private readonly OidcDiscoveryService $discoveryService,
-        private readonly DiscoveryUrlValidator $urlValidator,
+        private readonly SsrfUrlValidator $urlValidator,
     ) {
     }
 

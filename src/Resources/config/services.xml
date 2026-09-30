@@ -6,6 +6,9 @@
 
     <parameters>
         <parameter key="sw6oidc.default_log_level">debug</parameter>
+        <!-- Dev-only escape hatches, both off unless the env var is set to 1. -->
+        <parameter key="env(SW6OIDC_ALLOW_INSECURE_IDP_URLS)">0</parameter>
+        <parameter key="env(SW6OIDC_ALLOW_PASSWORD_LOGIN)">0</parameter>
     </parameters>
 
     <services>
@@ -32,25 +35,53 @@
 
         <!--
             Atomic one-time-token cache (PKCE verifiers, state tokens, OIDC/Passkey
-            nonces). Default: sequential get+delete against Shopware's own cache.app
-            pool, safe for single-node installs. Multi-node HA deployments should
-            override this alias in their own app-level services.xml to
-            MartinKuhl\Sw6Oidc\Service\Cache\RedisAtomicCache (constructed from a
-            dedicated \Redis connection + this service as its fallback) — see
-            Service/Cache/RedisAtomicCache.php and Service/Cache/RedisConnectionFactory.php.
+            nonces). RedisAtomicCache picks its backend at runtime: Redis GETDEL
+            when SW6OIDC_REDIS_DSN is set (required for multi-node HA), otherwise
+            sequential get+delete against Shopware's own cache.app pool
+            (CachePoolAtomicCache, single-node safe).
         -->
         <service id="MartinKuhl\Sw6Oidc\Service\Cache\CachePoolAtomicCache">
             <argument type="service" id="cache.app" />
         </service>
-        <service id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" alias="MartinKuhl\Sw6Oidc\Service\Cache\CachePoolAtomicCache" />
 
         <service id="MartinKuhl\Sw6Oidc\Service\Cache\RedisConnectionFactory">
             <argument>%env(default::SW6OIDC_REDIS_DSN)%</argument>
-            <argument type="service" id="logger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Cache\RedisAtomicCache">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\RedisConnectionFactory" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\CachePoolAtomicCache" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+        <service id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" alias="MartinKuhl\Sw6Oidc\Service\Cache\RedisAtomicCache" />
+
+        <!-- Encryption at rest (client_secret). Key derived from APP_SECRET. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor">
+            <argument>%env(APP_SECRET)%</argument>
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <!-- Service id must be the class name: Field::getSerializer() resolves it by class. -->
+        <service id="MartinKuhl\Sw6Oidc\Core\Content\Provider\Field\Sw6OidcEncryptedFieldSerializer">
+            <argument type="service" id="Shopware\Core\Framework\DataAbstractionLayer\FieldSerializer\StringFieldSerializer" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
+            <tag name="shopware.field_serializer" />
+        </service>
+
+        <!--
+            HTTP client for every outbound IdP call: NoPrivateNetworkHttpClient-wrapped
+            (resolved-IP check on each connection/redirect) unless
+            SW6OIDC_ALLOW_INSECURE_IDP_URLS=1.
+        -->
+        <service id="sw6oidc.http_client" class="Symfony\Contracts\HttpClient\HttpClientInterface">
+            <factory class="MartinKuhl\Sw6Oidc\Service\Http\Sw6OidcHttpClientFactory" method="create" />
+            <argument type="service" id="Symfony\Contracts\HttpClient\HttpClientInterface" />
+            <argument>%env(bool:SW6OIDC_ALLOW_INSECURE_IDP_URLS)%</argument>
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier">
-            <argument type="service" id="Symfony\Contracts\HttpClient\HttpClientInterface" />
+            <argument type="service" id="sw6oidc.http_client" />
             <argument type="service" id="cache.app" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
@@ -82,7 +113,7 @@
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient">
-            <argument type="service" id="Symfony\Contracts\HttpClient\HttpClientInterface" />
+            <argument type="service" id="sw6oidc.http_client" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
 
@@ -100,13 +131,17 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient" />
         </service>
 
-        <service id="MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator" />
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator">
+            <argument>%env(bool:SW6OIDC_ALLOW_INSECURE_IDP_URLS)%</argument>
+        </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
         </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator" />
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\TokenExchangeService" />
@@ -133,9 +168,15 @@
             <argument type="service" id="country_state.repository" />
         </service>
 
+        <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeTransformer">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeMapper">
             <argument type="service" id="sw6oidc_attribute_mapping.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\GenderMapper" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeTransformer" />
+            <argument type="service" id="event_dispatcher" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService">
@@ -146,6 +187,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="event_dispatcher" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService">
@@ -158,6 +200,7 @@
             <argument type="service" id="Shopware\Core\Content\Media\File\FileFetcher" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\TimeZoneValidator" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="event_dispatcher" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver">
@@ -274,12 +317,11 @@
         <!-- Passkey (WebAuthn) -->
         <service id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository">
             <argument type="service" id="sw6oidc_passkey_credential.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
 
-        <service id="MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory">
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
-        </service>
+        <service id="MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory" />
 
         <service id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig">
             <argument type="service" id="Shopware\Core\System\SystemConfig\SystemConfigService" />
@@ -310,6 +352,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -329,15 +372,39 @@
             <tag name="kernel.event_subscriber" />
         </service>
 
+        <!-- disable_non_oidc_*_login enforcement (password login only). -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
+            <argument>%env(bool:SW6OIDC_ALLOW_PASSWORD_LOGIN)%</argument>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Storefront\Service\PasswordLoginGuardLoginRoute"
+                 decorates="Shopware\Core\Checkout\Customer\SalesChannel\LoginRoute">
+            <argument type="service" id=".inner" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\AdminPasswordLoginGuardSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcProviderWriteGuardSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcProviderAdminController" public="true">
             <argument type="service" id="sw6oidc_provider.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\DiscoveryUrlValidator" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -350,7 +417,6 @@
             <argument type="service" id="customer.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute" />
             <argument type="service" id="Shopware\Core\System\SalesChannel\Context\SalesChannelContextService" />
-            <argument type="service" id="Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
@@ -394,7 +460,41 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="Symfony\Contracts\Translation\TranslatorInterface" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
             <tag name="twig.extension" />
+        </service>
+
+        <!-- CSP: append IdP origins to directives an existing policy already declares -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcCspHostCollector">
+            <argument type="service" id="sw6oidc_provider.repository" />
+            <argument type="service" id="cache.app" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcCspSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcCspHostCollector" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
+        <!-- CLI config export/import -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Config\OidcConfigTransfer">
+            <argument type="service" id="sw6oidc_provider.repository" />
+            <argument type="service" id="sw6oidc_attribute_mapping.repository" />
+            <argument type="service" id="sw6oidc_role_mapping.repository" />
+            <argument type="service" id="acl_role.repository" />
+            <argument type="service" id="customer_group.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Console\ExportOidcConfigCommand">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Config\OidcConfigTransfer" />
+            <tag name="console.command" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Console\ImportOidcConfigCommand">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Config\OidcConfigTransfer" />
+            <tag name="console.command" />
         </service>
     </services>
 </container>

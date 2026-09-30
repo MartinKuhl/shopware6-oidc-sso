@@ -7,35 +7,34 @@ use Cose\Algorithm\Signature\ECDSA\ES256;
 use Cose\Algorithm\Signature\ECDSA\ES512;
 use Cose\Algorithm\Signature\RSA\RS256;
 use Cose\Algorithm\Signature\RSA\RS512;
-use Webauthn\AttestationStatement\AttestationObjectLoader;
+use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyCeremonyException;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
+use Symfony\Component\Serializer\SerializerInterface;
 use Webauthn\AttestationStatement\AttestationStatementSupportManager;
 use Webauthn\AttestationStatement\NoneAttestationStatementSupport;
-use Webauthn\AuthenticationExtensions\ExtensionOutputCheckerHandler;
 use Webauthn\AuthenticatorAssertionResponseValidator;
 use Webauthn\AuthenticatorAttestationResponseValidator;
 use Webauthn\AuthenticatorSelectionCriteria;
-use Webauthn\PublicKeyCredentialLoader;
+use Webauthn\CeremonyStep\CeremonyStepManagerFactory;
+use Webauthn\Denormalizer\WebauthnSerializerFactory;
+use Webauthn\PublicKeyCredential;
 use Webauthn\PublicKeyCredentialParameters;
 use Webauthn\PublicKeyCredentialRpEntity;
-use Webauthn\TokenBinding\TokenBindingNotSupportedHandler;
 
 /**
- * The single seam constructing every web-auth/webauthn-lib object this plugin
- * needs — mirrors the Magento module's Model/Passkey/WebauthnCeremonyFactory.php.
+ * The single seam constructing every web-auth/webauthn-lib (5.x) object this
+ * plugin needs — mirrors the Magento module's Model/Passkey/WebauthnCeremonyFactory.php.
  * Attestation conveyance is always 'none' (same deliberate trade-off as the
  * Magento module: broad authenticator compatibility over hardware provenance).
  *
- * web-auth/webauthn-lib is pinned to ^4.7 in composer.json deliberately: 5.x
- * removed the PublicKeyCredentialSourceRepository-based validator
- * constructors and the repository interface itself entirely (replaced by a
- * CredentialRecord-based design with a different check() signature), which
- * PasskeyCredentialRepository and the constructors below depend on.
+ * 5.x validators no longer take a credential repository: callers look up the
+ * CredentialRecord themselves and pass it into check(). All JSON (browser
+ * responses, options sent to the browser, stored credential records) goes
+ * through the library's own Symfony serializer.
  */
 class WebauthnCeremonyFactory
 {
-    public function __construct(private readonly PasskeyCredentialRepository $credentialRepository)
-    {
-    }
+    private ?SerializerInterface $serializer = null;
 
     public function rpEntity(string $rpId, string $rpName): PublicKeyCredentialRpEntity
     {
@@ -60,49 +59,66 @@ class WebauthnCeremonyFactory
         );
     }
 
-    private function attestationStatementSupportManager(): AttestationStatementSupportManager
+    public function serializer(): SerializerInterface
     {
-        $manager = new AttestationStatementSupportManager();
-        $manager->add(new NoneAttestationStatementSupport());
-
-        return $manager;
+        return $this->serializer ??= (new WebauthnSerializerFactory($this->attestationStatementSupportManager()))->create();
     }
 
-    public function credentialLoader(): PublicKeyCredentialLoader
+    /**
+     * @throws PasskeyCeremonyException
+     */
+    public function loadCredential(string $json): PublicKeyCredential
     {
-        return PublicKeyCredentialLoader::create(
-            AttestationObjectLoader::create($this->attestationStatementSupportManager()),
-        );
+        try {
+            $credential = $this->serializer()->deserialize($json, PublicKeyCredential::class, 'json');
+        } catch (\Throwable $exception) {
+            throw new PasskeyCeremonyException('The WebAuthn credential response could not be parsed.', 0, $exception);
+        }
+
+        if (!$credential instanceof PublicKeyCredential) {
+            throw new PasskeyCeremonyException('The WebAuthn credential response could not be parsed.');
+        }
+
+        return $credential;
     }
 
-    private function coseAlgorithmManager(): CoseAlgorithmManager
+    /**
+     * JSON for navigator.credentials.create()/get() — nulls are skipped, the
+     * browser API rejects explicit nulls for several optional members.
+     */
+    public function serializeOptions(object $options): string
     {
-        $manager = new CoseAlgorithmManager();
-        $manager->add(new ES256());
-        $manager->add(new ES512());
-        $manager->add(new RS256());
-        $manager->add(new RS512());
-
-        return $manager;
+        return $this->serializer()->serialize($options, 'json', [
+            AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        ]);
     }
 
     public function attestationResponseValidator(): AuthenticatorAttestationResponseValidator
     {
-        return new AuthenticatorAttestationResponseValidator(
-            $this->attestationStatementSupportManager(),
-            $this->credentialRepository,
-            new TokenBindingNotSupportedHandler(),
-            new ExtensionOutputCheckerHandler(),
-        );
+        return AuthenticatorAttestationResponseValidator::create($this->ceremonyStepManagerFactory()->creationCeremony());
     }
 
     public function assertionResponseValidator(): AuthenticatorAssertionResponseValidator
     {
-        return new AuthenticatorAssertionResponseValidator(
-            $this->credentialRepository,
-            new TokenBindingNotSupportedHandler(),
-            new ExtensionOutputCheckerHandler(),
-            $this->coseAlgorithmManager(),
-        );
+        return AuthenticatorAssertionResponseValidator::create($this->ceremonyStepManagerFactory()->requestCeremony());
+    }
+
+    private function ceremonyStepManagerFactory(): CeremonyStepManagerFactory
+    {
+        $factory = new CeremonyStepManagerFactory();
+        $factory->setAlgorithmManager($this->coseAlgorithmManager());
+        $factory->setAttestationStatementSupportManager($this->attestationStatementSupportManager());
+
+        return $factory;
+    }
+
+    private function attestationStatementSupportManager(): AttestationStatementSupportManager
+    {
+        return new AttestationStatementSupportManager([new NoneAttestationStatementSupport()]);
+    }
+
+    private function coseAlgorithmManager(): CoseAlgorithmManager
+    {
+        return CoseAlgorithmManager::create()->add(ES256::create(), ES512::create(), RS256::create(), RS512::create());
     }
 }

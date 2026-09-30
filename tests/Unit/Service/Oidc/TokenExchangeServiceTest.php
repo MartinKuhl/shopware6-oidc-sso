@@ -5,6 +5,8 @@ namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Oidc;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
 use MartinKuhl\Sw6Oidc\Service\Oidc\TokenExchangeService;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\ClientSecretUnavailableException;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
@@ -96,6 +98,18 @@ final class TokenExchangeServiceTest extends TestCase
 
         $service = new TokenExchangeService($httpClient);
         $service->refreshAccessToken($provider, 'refresh-token-value');
+    }
+
+    public function testUndecryptableSecretFailsBeforeAnyRequest(): void
+    {
+        $provider = $this->buildProvider(publicClient: false);
+        $provider->setClientSecret((new Sw6OidcEncryptor('rotated-away'))->encrypt('the-secret'));
+
+        $httpClient = $this->createMock(OidcHttpClient::class);
+        $httpClient->expects(self::never())->method('postForm');
+
+        $this->expectException(ClientSecretUnavailableException::class);
+        (new TokenExchangeService($httpClient))->exchangeCodeForTokens($provider, 'the-code', 'https://shop.example/callback', 'verifier');
     }
 
     private function buildProvider(bool $publicClient): Sw6OidcProviderEntity

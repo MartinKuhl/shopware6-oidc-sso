@@ -50,442 +50,519 @@ function isTechnicalClaim(key) {
  * "notification" mixin isn't registered yet and this component is never
  * rendered anyway.
  */
-Component.register('sw6oidc-provider-detail', () => Promise.resolve({
-    template,
+Component.register('sw6oidc-provider-detail', () => {
+    // Resolved here, not at module top level: core only registers the
+    // component helpers (mapPropertyErrors, ...) in its init phase, which
+    // runs after this bundle's forced-early execution on the login screen.
+    const { mapPropertyErrors } = Component.getComponentHelper();
 
-    inject: ['repositoryFactory', 'loginService'],
+    return Promise.resolve({
+        template,
 
-    mixins: [Mixin.getByName('notification')],
+        inject: ['repositoryFactory', 'loginService'],
 
-    data() {
-        return {
-            provider: null,
-            isLoading: true,
-            isSaveSuccessful: false,
-            isLoadingConfiguration: false,
-            isTestingConnection: false,
-            connectionTestResult: null,
-            isRunningLiveTest: false,
-            liveTestReport: null,
-            /** @type {Record<string, unknown>} claims received on the last live login test, keyed by claim name */
-            liveTestClaims: {},
-            // Fixed, not measured: an earlier version tried to measure each
-            // "add mapping" button's own rendered width via a $refs lookup
-            // and mirror it onto the column, but that never reliably landed
-            // (button and column stayed visibly different widths through
-            // several rebuilds) - a shared literal both the column width
-            // below and the matching button's :style are bound to is less
-            // clever but actually renders correctly. Sized generously for
-            // each button's own (longer) German label; :style on the button
-            // itself guarantees the two always match regardless of exactly
-            // how wide the label really needs.
-            attributeTypeColumnWidth: '280px',
-            mappingTypeColumnWidth: '260px',
-        };
-    },
+        mixins: [Mixin.getByName('notification')],
 
-    metaInfo() {
-        return {
-            title: this.$createTitle(this.identifier),
-        };
-    },
-
-    computed: {
-        identifier() {
-            return this.provider ? (this.provider.displayName || this.provider.appName) : '';
+        data() {
+            return {
+                provider: null,
+                isLoading: true,
+                isSaveSuccessful: false,
+                isLoadingConfiguration: false,
+                isTestingConnection: false,
+                connectionTestResult: null,
+                isRunningLiveTest: false,
+                liveTestReport: null,
+                /** @type {Record<string, unknown>} claims received on the last live login test, keyed by claim name */
+                liveTestClaims: {},
+                // Fixed, not measured: an earlier version tried to measure each
+                // "add mapping" button's own rendered width via a $refs lookup
+                // and mirror it onto the column, but that never reliably landed
+                // (button and column stayed visibly different widths through
+                // several rebuilds) - a shared literal both the column width
+                // below and the matching button's :style are bound to is less
+                // clever but actually renders correctly. Sized generously for
+                // each button's own (longer) German label; :style on the button
+                // itself guarantees the two always match regardless of exactly
+                // how wide the label really needs.
+                attributeTypeColumnWidth: '280px',
+                mappingTypeColumnWidth: '260px',
+            };
         },
 
-        providerRepository() {
-            return this.repositoryFactory.create('sw6oidc_provider');
+        metaInfo() {
+            return {
+                title: this.$createTitle(this.identifier),
+            };
         },
 
-        /**
-         * EntityCollection itself has no `.repository` — a nested
-         * association's own repository has to be created explicitly via
-         * `entity`/`source` off the collection (Shopware's documented
-         * pattern, e.g. `this.product.media.entity`/`.source` in core), then
-         * used to `.create()` a new row before `.add()`-ing it to the
-         * collection.
-         */
-        attributeMappingRepository() {
-            return this.repositoryFactory.create(this.provider.attributeMappings.entity, this.provider.attributeMappings.source);
-        },
+        computed: {
+            // Field-level violations from Sw6OidcProviderWriteGuardSubscriber (SSRF, lockout guard).
+            ...mapPropertyErrors('provider', [
+                'wellKnownConfigUrl',
+                'authorizeEndpoint',
+                'accessTokenEndpoint',
+                'userInfoEndpoint',
+                'jwksEndpoint',
+                'endSessionEndpoint',
+                'revocationEndpoint',
+                'disableNonOidcCustomerLogin',
+                'disableNonOidcAdminLogin',
+            ]),
 
-        roleMappingRepository() {
-            return this.repositoryFactory.create(this.provider.roleMappings.entity, this.provider.roleMappings.source);
-        },
+            /**
+             * client_secret is write-only over the API (encrypted at rest, never
+             * returned), so an existing provider's form starts with it empty —
+             * only required when creating, and a blank value keeps the stored one.
+             */
+            isNewProvider() {
+                return !this.provider || this.provider.isNew();
+            },
 
-        canRunLiveTest() {
-            return !!(this.provider && this.provider.id && this.$route.params.id !== undefined);
-        },
+            identifier() {
+                return this.provider ? (this.provider.displayName || this.provider.appName) : '';
+            },
 
-        // Same presentation as the "OIDC Provider" bind date (sw6oidc-user-provider-info).
-        formattedLastTestAt() {
-            return this.provider?.lastTestAt ? Shopware.Utils.format.date(this.provider.lastTestAt) : '';
-        },
+            providerRepository() {
+                return this.repositoryFactory.create('sw6oidc_provider');
+            },
 
-        attributeTypeOptions() {
-            return [
-                'email', 'username', 'firstname', 'lastname', 'birthday', 'gender', 'phone',
-                'locale', 'zoneinfo', 'picture',
-                'billing_street', 'billing_zipcode', 'billing_city', 'billing_state', 'billing_country', 'billing_phone',
-                'shipping_street', 'shipping_zipcode', 'shipping_city', 'shipping_state', 'shipping_country', 'shipping_phone',
-            ].map((value) => ({ value, label: this.$tc(`sw6oidc.provider.detail.attributeType.${value}`) }));
-        },
+            /**
+             * EntityCollection itself has no `.repository` — a nested
+             * association's own repository has to be created explicitly via
+             * `entity`/`source` off the collection (Shopware's documented
+             * pattern, e.g. `this.product.media.entity`/`.source` in core), then
+             * used to `.create()` a new row before `.add()`-ing it to the
+             * collection.
+             */
+            attributeMappingRepository() {
+                return this.repositoryFactory.create(this.provider.attributeMappings.entity, this.provider.attributeMappings.source);
+            },
 
-        mappingTypeOptions() {
-            return ['admin_role', 'customer_group', 'superadmin'].map((value) => ({
-                value,
-                label: this.$tc(`sw6oidc.provider.detail.mappingType.${value}`),
-            }));
-        },
+            roleMappingRepository() {
+                return this.repositoryFactory.create(this.provider.roleMappings.entity, this.provider.roleMappings.source);
+            },
 
-        loginTypeOptions() {
-            return ['both', 'customer', 'admin'].map((value) => ({
-                value,
-                label: this.$tc(`sw6oidc.provider.detail.loginType.${value}`),
-            }));
-        },
+            canRunLiveTest() {
+                return !!(this.provider && this.provider.id && this.$route.params.id !== undefined);
+            },
 
-        pkceFlowOptions() {
-            return ['S256', 'plain'].map((value) => ({ value, label: value }));
-        },
+            // Same presentation as the "OIDC Provider" bind date (sw6oidc-user-provider-info).
+            formattedLastTestAt() {
+                return this.provider?.lastTestAt ? Shopware.Utils.format.date(this.provider.lastTestAt) : '';
+            },
 
-        claimEncodingOptions() {
-            return ['none', 'base64'].map((value) => ({ value, label: value }));
-        },
+            attributeTypeOptions() {
+                return [
+                    'email', 'username', 'firstname', 'lastname', 'birthday', 'gender', 'phone',
+                    'locale', 'zoneinfo', 'picture',
+                    'billing_street', 'billing_zipcode', 'billing_city', 'billing_state', 'billing_country', 'billing_phone',
+                    'shipping_street', 'shipping_zipcode', 'shipping_city', 'shipping_state', 'shipping_country', 'shipping_phone',
+                ].map((value) => ({ value, label: this.$tc(`sw6oidc.provider.detail.attributeType.${value}`) }));
+            },
 
-        /**
-         * Mirrors AdminProvisioningService::findOrCreateAdmin()'s own
-         * refusal condition — warn here, before it fails a real login, that
-         * a resolvable ACL role (or an active superadmin group mapping) is
-         * required to JIT-create an admin.
-         */
-        adminProvisioningWarning() {
-            if (!this.provider?.autoCreateAdmin || this.provider.defaultAclRoleId) {
-                return false;
-            }
+            mappingTypeOptions() {
+                return ['admin_role', 'customer_group', 'superadmin'].map((value) => ({
+                    value,
+                    label: this.$tc(`sw6oidc.provider.detail.mappingType.${value}`),
+                }));
+            },
 
-            const hasRoleMapping = this.provider.roleMappings?.some((mapping) => mapping.mappingType === 'admin_role');
-            const hasActiveSuperadminMapping = this.provider.allowSuperadminGroupMapping
-                && this.provider.roleMappings?.some((mapping) => mapping.mappingType === 'superadmin');
+            loginTypeOptions() {
+                return ['both', 'customer', 'admin'].map((value) => ({
+                    value,
+                    label: this.$tc(`sw6oidc.provider.detail.loginType.${value}`),
+                }));
+            },
 
-            return !hasRoleMapping && !hasActiveSuperadminMapping;
-        },
+            pkceFlowOptions() {
+                return ['S256', 'plain'].map((value) => ({ value, label: value }));
+            },
 
-        /**
-         * Claim names actually received on the most recent live login test —
-         * the only source for the attribute-mapping picker (no static
-         * "common claims" list): showing a claim this specific IdP doesn't
-         * actually send would just be misleading. Empty until a live test
-         * has been run at least once. Excludes protocol/token-metadata
-         * claims (see TECHNICAL_CLAIM_EXCLUSIONS/isTechnicalClaim) — an
-         * IdP's raw response always includes these, but they're never a
-         * sensible attribute-mapping target.
-         */
-        discoveredClaimKeys() {
-            return Object.keys(this.liveTestClaims ?? {}).filter((key) => !isTechnicalClaim(key));
-        },
+            claimEncodingOptions() {
+                return ['none', 'base64'].map((value) => ({ value, label: value }));
+            },
 
-        /**
-         * sw-single-select's own option shape.
-         */
-        claimSelectOptions() {
-            return this.discoveredClaimKeys.map((key) => ({ value: key, label: key }));
-        },
-    },
-
-    created() {
-        this.createdComponent();
-    },
-
-    mounted() {
-        window.addEventListener('message', this.onTestResultMessage);
-    },
-
-    beforeUnmount() {
-        window.removeEventListener('message', this.onTestResultMessage);
-    },
-
-    methods: {
-        /**
-         * Translated message for a connection-test check / live-test step:
-         * fixed outcomes carry a messageKey (+ params), while dynamic ones
-         * (exception messages from the IdP/HTTP layer) only have the
-         * English `detail`, shown as-is.
-         */
-        testResultMessage(entry) {
-            if (entry.messageKey) {
-                return this.$t(`sw6oidc.provider.detail.testMessage.${entry.messageKey}`, entry.messageParams ?? {});
-            }
-
-            return entry.detail;
-        },
-
-        testStatusVariant(status) {
-            return { pass: 'success', warning: 'warning', skipped: 'neutral' }[status] ?? 'danger';
-        },
-
-        createdComponent() {
-            if (this.$route.params.id) {
-                this.loadEntity(this.$route.params.id);
-
-                return;
-            }
-
-            this.provider = this.providerRepository.create(Shopware.Context.api);
-            this.provider.scope = 'openid profile email';
-            this.provider.pkceFlow = 'S256';
-            this.provider.claimEncoding = 'none';
-            this.provider.groupAttribute = 'groups';
-            this.provider.loginType = 'both';
-            this.provider.isActive = true;
-            this.provider.autoCreateCustomer = true;
-            this.provider.httpTimeout = 30;
-            this.provider.jwksCacheTtl = 86400;
-            this.isLoading = false;
-        },
-
-        loadEntity(id) {
-            this.isLoading = true;
-            const criteria = new Criteria();
-            criteria.addAssociation('attributeMappings');
-            criteria.addAssociation('roleMappings');
-
-            return this.providerRepository.get(id, Shopware.Context.api, criteria).then((entity) => {
-                this.provider = entity;
-                // Seeds the claim picker from whatever the last live login
-                // test actually observed, persisted server-side precisely so
-                // it survives a reload — this in-memory state otherwise has
-                // nowhere else to come from on a fresh page load.
-                this.liveTestClaims = entity.lastTestClaims && typeof entity.lastTestClaims === 'object'
-                    ? entity.lastTestClaims
-                    : {};
-                this.isLoading = false;
-            });
-        },
-
-        async onClickSave() {
-            this.isLoading = true;
-            this.isSaveSuccessful = false;
-
-            if (this.provider.wellKnownConfigUrl) {
-                // Best-effort re-discovery on every save: apply whatever the
-                // IdP returns, but never block the save on it — an admin who
-                // intentionally kept manually-entered endpoints shouldn't be
-                // locked out of saving just because the well-known URL is
-                // temporarily unreachable.
-                try {
-                    await this.discoverAndApply(this.provider.wellKnownConfigUrl);
-                } catch (exception) {
-                    this.createNotificationWarning({
-                        title: this.$tc('sw6oidc.provider.detail.discoverySaveWarningTitle'),
-                        message: exception.message || this.$tc('sw6oidc.provider.detail.discoveryError'),
-                    });
+            /**
+             * Mirrors AdminProvisioningService::findOrCreateAdmin()'s own
+             * refusal condition — warn here, before it fails a real login, that
+             * a resolvable ACL role (or an active superadmin group mapping) is
+             * required to JIT-create an admin.
+             */
+            adminProvisioningWarning() {
+                if (!this.provider?.autoCreateAdmin || this.provider.defaultAclRoleId) {
+                    return false;
                 }
-            }
 
-            return this.providerRepository.save(this.provider, Shopware.Context.api).then(() => {
-                this.isSaveSuccessful = true;
-                this.isLoading = false;
+                const hasRoleMapping = this.provider.roleMappings?.some((mapping) => mapping.mappingType === 'admin_role');
+                const hasActiveSuperadminMapping = this.provider.allowSuperadminGroupMapping
+                    && this.provider.roleMappings?.some((mapping) => mapping.mappingType === 'superadmin');
 
-                if (this.$route.params.id === undefined) {
-                    this.$router.push({ name: 'sw6oidc.provider.detail', params: { id: this.provider.id } });
+                return !hasRoleMapping && !hasActiveSuperadminMapping;
+            },
+
+            /**
+             * Claim names actually received on the most recent live login test —
+             * the only source for the attribute-mapping picker (no static
+             * "common claims" list): showing a claim this specific IdP doesn't
+             * actually send would just be misleading. Empty until a live test
+             * has been run at least once. Excludes protocol/token-metadata
+             * claims (see TECHNICAL_CLAIM_EXCLUSIONS/isTechnicalClaim) — an
+             * IdP's raw response always includes these, but they're never a
+             * sensible attribute-mapping target.
+             */
+            discoveredClaimKeys() {
+                return Object.keys(this.liveTestClaims ?? {}).filter((key) => !isTechnicalClaim(key));
+            },
+
+            /**
+             * sw-single-select's own option shape.
+             */
+            claimSelectOptions() {
+                return this.discoveredClaimKeys.map((key) => ({ value: key, label: key }));
+            },
+
+            /**
+             * AttributeTransformer::FUNCTIONS, plus "none" (null).
+             */
+            transformFunctionOptions() {
+                return [
+                    { value: null, label: this.$tc('sw6oidc.provider.detail.transform.none') },
+                    ...['concat', 'split', 'prefix', 'regex_replace'].map((fn) => ({
+                        value: fn,
+                        label: this.$tc(`sw6oidc.provider.detail.transform.functions.${fn}`),
+                    })),
+                ];
+            },
+        },
+
+        created() {
+            this.createdComponent();
+        },
+
+        mounted() {
+            window.addEventListener('message', this.onTestResultMessage);
+        },
+
+        beforeUnmount() {
+            window.removeEventListener('message', this.onTestResultMessage);
+        },
+
+        methods: {
+            /**
+             * Translated message for a connection-test check / live-test step:
+             * fixed outcomes carry a messageKey (+ params), while dynamic ones
+             * (exception messages from the IdP/HTTP layer) only have the
+             * English `detail`, shown as-is.
+             */
+            testResultMessage(entry) {
+                if (entry.messageKey) {
+                    return this.$t(`sw6oidc.provider.detail.testMessage.${entry.messageKey}`, entry.messageParams ?? {});
+                }
+
+                return entry.detail;
+            },
+
+            testStatusVariant(status) {
+                return { pass: 'success', warning: 'warning', skipped: 'neutral' }[status] ?? 'danger';
+            },
+
+            createdComponent() {
+                if (this.$route.params.id) {
+                    this.loadEntity(this.$route.params.id);
 
                     return;
                 }
 
-                this.loadEntity(this.provider.id);
-            }).catch(() => {
+                this.provider = this.providerRepository.create(Shopware.Context.api);
+                this.provider.scope = 'openid profile email';
+                this.provider.pkceFlow = 'S256';
+                this.provider.claimEncoding = 'none';
+                this.provider.groupAttribute = 'groups';
+                this.provider.loginType = 'both';
+                this.provider.isActive = true;
+                this.provider.autoCreateCustomer = true;
+                this.provider.httpTimeout = 30;
+                this.provider.jwksCacheTtl = 86400;
                 this.isLoading = false;
-                this.createNotificationError({
-                    message: this.$tc('sw6oidc.provider.detail.saveError'),
+            },
+
+            loadEntity(id) {
+                this.isLoading = true;
+                const criteria = new Criteria();
+                criteria.addAssociation('attributeMappings');
+                criteria.addAssociation('roleMappings');
+
+                return this.providerRepository.get(id, Shopware.Context.api, criteria).then((entity) => {
+                    this.provider = entity;
+                    // Seeds the claim picker from whatever the last live login
+                    // test actually observed, persisted server-side precisely so
+                    // it survives a reload — this in-memory state otherwise has
+                    // nowhere else to come from on a fresh page load.
+                    this.liveTestClaims = entity.lastTestClaims && typeof entity.lastTestClaims === 'object'
+                        ? entity.lastTestClaims
+                        : {};
+                    this.isLoading = false;
                 });
-            });
-        },
+            },
 
-        async onClickLoadConfiguration() {
-            this.isLoadingConfiguration = true;
+            async onClickSave() {
+                this.isLoading = true;
+                this.isSaveSuccessful = false;
 
-            try {
-                const warnings = await this.discoverAndApply(this.provider.wellKnownConfigUrl);
-                this.createNotificationSuccess({ message: this.$tc('sw6oidc.provider.detail.discoverySuccess') });
-
-                warnings.forEach((warning) => {
-                    this.createNotificationWarning({ message: warning });
-                });
-            } catch (exception) {
-                this.createNotificationError({
-                    message: exception.message || this.$tc('sw6oidc.provider.detail.discoveryError'),
-                });
-            } finally {
-                this.isLoadingConfiguration = false;
-            }
-        },
-
-        /**
-         * Fetches the well-known document and applies the returned endpoint
-         * fields onto the in-memory (not-yet-saved) provider. Throws with a
-         * human-readable message on failure so both callers (the explicit
-         * "Load configuration" button and the save-time best-effort refresh)
-         * can decide for themselves whether a failure should block anything.
-         *
-         * @return {Promise<string[]>} warnings returned alongside a successful fetch
-         */
-        async discoverAndApply(wellKnownConfigUrl) {
-            if (!wellKnownConfigUrl) {
-                throw new Error(this.$tc('sw6oidc.provider.detail.wellKnownConfigUrlRequired'));
-            }
-
-            const response = await this.sw6oidcApiFetch('/api/_action/sw6oidc/provider/discover', {
-                wellKnownConfigUrl,
-                httpTimeout: this.provider.httpTimeout,
-            });
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.message || this.$tc('sw6oidc.provider.detail.discoveryError'));
-            }
-
-            const { warnings = [], ...endpoints } = result;
-
-            Object.entries(endpoints).forEach(([key, value]) => {
-                if (value) {
-                    this.provider[key] = value;
+                if (this.provider.wellKnownConfigUrl) {
+                    // Best-effort re-discovery on every save: apply whatever the
+                    // IdP returns, but never block the save on it — an admin who
+                    // intentionally kept manually-entered endpoints shouldn't be
+                    // locked out of saving just because the well-known URL is
+                    // temporarily unreachable.
+                    try {
+                        await this.discoverAndApply(this.provider.wellKnownConfigUrl);
+                    } catch (exception) {
+                        this.createNotificationWarning({
+                            title: this.$tc('sw6oidc.provider.detail.discoverySaveWarningTitle'),
+                            message: exception.message || this.$tc('sw6oidc.provider.detail.discoveryError'),
+                        });
+                    }
                 }
-            });
 
-            return warnings;
-        },
+                // A blank secret on an existing provider means "keep the stored
+                // one" — don't send the empty string (it would fail NotBlank).
+                if (!this.isNewProvider && !this.provider.clientSecret) {
+                    this.provider.clientSecret = undefined;
+                }
 
-        async onClickTestConnection() {
-            this.isTestingConnection = true;
-            this.connectionTestResult = null;
+                return this.providerRepository.save(this.provider, Shopware.Context.api).then(() => {
+                    this.isSaveSuccessful = true;
+                    this.isLoading = false;
 
-            try {
-                const response = await this.sw6oidcApiFetch('/api/_action/sw6oidc/provider/test-connection', {
-                    wellKnownConfigUrl: this.provider.wellKnownConfigUrl,
-                    authorizeEndpoint: this.provider.authorizeEndpoint,
-                    accessTokenEndpoint: this.provider.accessTokenEndpoint,
-                    userInfoEndpoint: this.provider.userInfoEndpoint,
-                    jwksEndpoint: this.provider.jwksEndpoint,
-                    endSessionEndpoint: this.provider.endSessionEndpoint,
-                    revocationEndpoint: this.provider.revocationEndpoint,
-                    issuer: this.provider.issuer,
-                    clientId: this.provider.clientId,
-                    clientSecret: this.provider.clientSecret,
-                    publicClient: this.provider.publicClient,
+                    if (this.$route.params.id === undefined) {
+                        this.$router.push({ name: 'sw6oidc.provider.detail', params: { id: this.provider.id } });
+
+                        return;
+                    }
+
+                    this.loadEntity(this.provider.id);
+                }).catch((error) => {
+                    this.isLoading = false;
+
+                    // Surface the server's own violation messages (SSRF block,
+                    // lockout guard, ...) instead of only a generic failure.
+                    const details = (error?.response?.data?.errors ?? [])
+                        .map((entry) => entry.detail)
+                        .filter(Boolean);
+
+                    this.createNotificationError({
+                        message: details.length
+                            ? `${this.$tc('sw6oidc.provider.detail.saveError')} ${details.join(' ')}`
+                            : this.$tc('sw6oidc.provider.detail.saveError'),
+                    });
+                });
+            },
+
+            async onClickLoadConfiguration() {
+                this.isLoadingConfiguration = true;
+
+                try {
+                    const warnings = await this.discoverAndApply(this.provider.wellKnownConfigUrl);
+                    this.createNotificationSuccess({ message: this.$tc('sw6oidc.provider.detail.discoverySuccess') });
+
+                    warnings.forEach((warning) => {
+                        this.createNotificationWarning({ message: warning });
+                    });
+                } catch (exception) {
+                    this.createNotificationError({
+                        message: exception.message || this.$tc('sw6oidc.provider.detail.discoveryError'),
+                    });
+                } finally {
+                    this.isLoadingConfiguration = false;
+                }
+            },
+
+            /**
+             * Fetches the well-known document and applies the returned endpoint
+             * fields onto the in-memory (not-yet-saved) provider. Throws with a
+             * human-readable message on failure so both callers (the explicit
+             * "Load configuration" button and the save-time best-effort refresh)
+             * can decide for themselves whether a failure should block anything.
+             *
+             * @return {Promise<string[]>} warnings returned alongside a successful fetch
+             */
+            async discoverAndApply(wellKnownConfigUrl) {
+                if (!wellKnownConfigUrl) {
+                    throw new Error(this.$tc('sw6oidc.provider.detail.wellKnownConfigUrlRequired'));
+                }
+
+                const response = await this.sw6oidcApiFetch('/api/_action/sw6oidc/provider/discover', {
+                    wellKnownConfigUrl,
                     httpTimeout: this.provider.httpTimeout,
                 });
-
-                this.connectionTestResult = await response.json();
-            } catch (exception) {
-                // eslint-disable-next-line no-console
-                console.error('sw6oidc: connection test failed', exception);
-                this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.testConnectionError') });
-            } finally {
-                this.isTestingConnection = false;
-            }
-        },
-
-        async onClickRunLiveTest() {
-            this.isRunningLiveTest = true;
-            this.liveTestReport = null;
-
-            try {
-                const response = await this.sw6oidcApiFetch(`/api/_action/sw6oidc/provider/${this.provider.id}/test`, {});
                 const result = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(result.message || this.$tc('sw6oidc.provider.detail.liveTestError'));
+                    throw new Error(result.message || this.$tc('sw6oidc.provider.detail.discoveryError'));
                 }
 
-                window.open(result.authorizeUrl, 'sw6oidcTest', 'scrollbars=1,width=800,height=600');
-            } catch (exception) {
-                this.createNotificationError({
-                    message: exception.message || this.$tc('sw6oidc.provider.detail.liveTestError'),
+                const { warnings = [], ...endpoints } = result;
+
+                Object.entries(endpoints).forEach(([key, value]) => {
+                    if (value) {
+                        this.provider[key] = value;
+                    }
                 });
-            } finally {
-                this.isRunningLiveTest = false;
-            }
+
+                return warnings;
+            },
+
+            async onClickTestConnection() {
+                this.isTestingConnection = true;
+                this.connectionTestResult = null;
+
+                try {
+                    const response = await this.sw6oidcApiFetch('/api/_action/sw6oidc/provider/test-connection', {
+                        wellKnownConfigUrl: this.provider.wellKnownConfigUrl,
+                        authorizeEndpoint: this.provider.authorizeEndpoint,
+                        accessTokenEndpoint: this.provider.accessTokenEndpoint,
+                        userInfoEndpoint: this.provider.userInfoEndpoint,
+                        jwksEndpoint: this.provider.jwksEndpoint,
+                        endSessionEndpoint: this.provider.endSessionEndpoint,
+                        revocationEndpoint: this.provider.revocationEndpoint,
+                        issuer: this.provider.issuer,
+                        clientId: this.provider.clientId,
+                        clientSecret: this.provider.clientSecret,
+                        providerId: this.isNewProvider ? null : this.provider.id,
+                        publicClient: this.provider.publicClient,
+                        httpTimeout: this.provider.httpTimeout,
+                    });
+
+                    this.connectionTestResult = await response.json();
+                } catch (exception) {
+                    // eslint-disable-next-line no-console
+                    console.error('sw6oidc: connection test failed', exception);
+                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.testConnectionError') });
+                } finally {
+                    this.isTestingConnection = false;
+                }
+            },
+
+            async onClickRunLiveTest() {
+                this.isRunningLiveTest = true;
+                this.liveTestReport = null;
+
+                try {
+                    // The popup is rendered server-side, so it needs the UI locale passed along.
+                    const response = await this.sw6oidcApiFetch(`/api/_action/sw6oidc/provider/${this.provider.id}/test`, {
+                        locale: Shopware.Store.get('session').currentLocale,
+                    });
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(result.message || this.$tc('sw6oidc.provider.detail.liveTestError'));
+                    }
+
+                    window.open(result.authorizeUrl, 'sw6oidcTest', 'scrollbars=1,width=800,height=600');
+                } catch (exception) {
+                    this.createNotificationError({
+                        message: exception.message || this.$tc('sw6oidc.provider.detail.liveTestError'),
+                    });
+                } finally {
+                    this.isRunningLiveTest = false;
+                }
+            },
+
+            /**
+             * Picks up the pass/fail report the test-callback popup posts back via
+             * window.postMessage once the live login test completes, so the
+             * detail page can show the outcome inline without the admin having to
+             * manually close the popup and reload — reloading the entity also
+             * happens here since the popup already persisted lastTestStatus/
+             * lastTestAt server-side.
+             */
+            onTestResultMessage(event) {
+                if (event.origin !== window.location.origin || !event.data || event.data.type !== 'sw6oidc-test-result') {
+                    return;
+                }
+
+                this.liveTestReport = event.data;
+                this.liveTestClaims = event.data.claims && typeof event.data.claims === 'object' ? event.data.claims : {};
+
+                if (this.provider && this.provider.id) {
+                    this.loadEntity(this.provider.id);
+                }
+            },
+
+            sw6oidcApiFetch(path, bodyFields) {
+                return fetch(path, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        Authorization: `Bearer ${this.loginService.getToken()}`,
+                    },
+                    body: new URLSearchParams(
+                        Object.fromEntries(Object.entries(bodyFields).filter(([, value]) => value !== null && value !== undefined)),
+                    ),
+                });
+            },
+
+            onAddAttributeMapping() {
+                const mapping = this.attributeMappingRepository.create(Shopware.Context.api);
+                mapping.providerId = this.provider.id;
+                mapping.attributeType = 'email';
+                mapping.attributeName = '';
+                this.provider.attributeMappings.add(mapping);
+            },
+
+            /**
+             * Params are function-specific, so switching the function starts from
+             * that function's defaults instead of carrying stale keys over.
+             */
+            onTransformFunctionChange(item, transformFunction) {
+                const defaults = {
+                    concat: { claims: [], separator: ' ' },
+                    split: { separator: ' ', index: 0 },
+                    prefix: { value: '' },
+                    regex_replace: { pattern: '', replacement: '' },
+                };
+
+                item.transformFunction = transformFunction || null;
+                item.transformParams = transformFunction ? { ...defaults[transformFunction] } : null;
+            },
+
+            onRemoveAttributeMapping(item) {
+                this.provider.attributeMappings.remove(item.id);
+            },
+
+            onAddRoleMapping() {
+                const mapping = this.roleMappingRepository.create(Shopware.Context.api);
+                mapping.providerId = this.provider.id;
+                mapping.mappingType = 'customer_group';
+                mapping.oidcGroup = '';
+                mapping.aclRoleId = null;
+                mapping.customerGroupId = null;
+                mapping.sortOrder = this.provider.roleMappings.length;
+                this.provider.roleMappings.add(mapping);
+            },
+
+            onRemoveRoleMapping(item) {
+                this.provider.roleMappings.remove(item.id);
+            },
+
+            /**
+             * Clears whichever target FK no longer applies when a row switches
+             * mapping type — otherwise a stale aclRoleId/customerGroupId from
+             * before the switch would still get saved even though its picker is
+             * no longer shown. 'superadmin' rows need neither target at all.
+             */
+            onMappingTypeChange(item) {
+                if (item.mappingType === 'admin_role') {
+                    item.customerGroupId = null;
+                } else if (item.mappingType === 'customer_group') {
+                    item.aclRoleId = null;
+                } else {
+                    item.aclRoleId = null;
+                    item.customerGroupId = null;
+                }
+            },
         },
-
-        /**
-         * Picks up the pass/fail report the test-callback popup posts back via
-         * window.postMessage once the live login test completes, so the
-         * detail page can show the outcome inline without the admin having to
-         * manually close the popup and reload — reloading the entity also
-         * happens here since the popup already persisted lastTestStatus/
-         * lastTestAt server-side.
-         */
-        onTestResultMessage(event) {
-            if (event.origin !== window.location.origin || !event.data || event.data.type !== 'sw6oidc-test-result') {
-                return;
-            }
-
-            this.liveTestReport = event.data;
-            this.liveTestClaims = event.data.claims && typeof event.data.claims === 'object' ? event.data.claims : {};
-
-            if (this.provider && this.provider.id) {
-                this.loadEntity(this.provider.id);
-            }
-        },
-
-        sw6oidcApiFetch(path, bodyFields) {
-            return fetch(path, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    Authorization: `Bearer ${this.loginService.getToken()}`,
-                },
-                body: new URLSearchParams(
-                    Object.fromEntries(Object.entries(bodyFields).filter(([, value]) => value !== null && value !== undefined)),
-                ),
-            });
-        },
-
-        onAddAttributeMapping() {
-            const mapping = this.attributeMappingRepository.create(Shopware.Context.api);
-            mapping.providerId = this.provider.id;
-            mapping.attributeType = 'email';
-            mapping.attributeName = '';
-            this.provider.attributeMappings.add(mapping);
-        },
-
-        onRemoveAttributeMapping(item) {
-            this.provider.attributeMappings.remove(item.id);
-        },
-
-        onAddRoleMapping() {
-            const mapping = this.roleMappingRepository.create(Shopware.Context.api);
-            mapping.providerId = this.provider.id;
-            mapping.mappingType = 'customer_group';
-            mapping.oidcGroup = '';
-            mapping.aclRoleId = null;
-            mapping.customerGroupId = null;
-            mapping.sortOrder = this.provider.roleMappings.length;
-            this.provider.roleMappings.add(mapping);
-        },
-
-        onRemoveRoleMapping(item) {
-            this.provider.roleMappings.remove(item.id);
-        },
-
-        /**
-         * Clears whichever target FK no longer applies when a row switches
-         * mapping type — otherwise a stale aclRoleId/customerGroupId from
-         * before the switch would still get saved even though its picker is
-         * no longer shown. 'superadmin' rows need neither target at all.
-         */
-        onMappingTypeChange(item) {
-            if (item.mappingType === 'admin_role') {
-                item.customerGroupId = null;
-            } else if (item.mappingType === 'customer_group') {
-                item.aclRoleId = null;
-            } else {
-                item.aclRoleId = null;
-                item.customerGroupId = null;
-            }
-        },
-    },
-}));
+    });
+});

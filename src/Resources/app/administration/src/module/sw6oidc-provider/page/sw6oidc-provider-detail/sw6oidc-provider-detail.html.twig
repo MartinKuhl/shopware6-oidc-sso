@@ -51,11 +51,13 @@
                         v-model="provider.clientSecret"
                         :label="$tc('sw6oidc.provider.detail.clientSecret')"
                         :help-text="$tc('sw6oidc.provider.detail.clientSecretHelp')"
-                        required
+                        :placeholder="isNewProvider ? '' : $tc('sw6oidc.provider.detail.clientSecretStoredPlaceholder')"
+                        :required="isNewProvider"
                     />
                 </sw-container>
                 <sw-text-field
                     v-model="provider.wellKnownConfigUrl"
+                    :error="providerWellKnownConfigUrlError"
                     :label="$tc('sw6oidc.provider.detail.wellKnownConfigUrl')"
                     :help-text="$tc('sw6oidc.provider.detail.wellKnownConfigUrlHelp')"
                 />
@@ -103,11 +105,13 @@
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-text-field
                         v-model="provider.authorizeEndpoint"
+                        :error="providerAuthorizeEndpointError"
                         :label="$tc('sw6oidc.provider.detail.authorizeEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.authorizeEndpointHelp')"
                     />
                     <sw-text-field
                         v-model="provider.accessTokenEndpoint"
+                        :error="providerAccessTokenEndpointError"
                         :label="$tc('sw6oidc.provider.detail.accessTokenEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.accessTokenEndpointHelp')"
                     />
@@ -115,11 +119,13 @@
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-text-field
                         v-model="provider.userInfoEndpoint"
+                        :error="providerUserInfoEndpointError"
                         :label="$tc('sw6oidc.provider.detail.userInfoEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.userInfoEndpointHelp')"
                     />
                     <sw-text-field
                         v-model="provider.jwksEndpoint"
+                        :error="providerJwksEndpointError"
                         :label="$tc('sw6oidc.provider.detail.jwksEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.jwksEndpointHelp')"
                     />
@@ -127,11 +133,13 @@
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-text-field
                         v-model="provider.endSessionEndpoint"
+                        :error="providerEndSessionEndpointError"
                         :label="$tc('sw6oidc.provider.detail.endSessionEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.endSessionEndpointHelp')"
                     />
                     <sw-text-field
                         v-model="provider.revocationEndpoint"
+                        :error="providerRevocationEndpointError"
                         :label="$tc('sw6oidc.provider.detail.revocationEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.revocationEndpointHelp')"
                     />
@@ -289,11 +297,13 @@
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-switch-field
                         v-model:value="provider.disableNonOidcCustomerLogin"
+                        :error="providerDisableNonOidcCustomerLoginError"
                         :label="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLogin')"
                         :help-text="$tc('sw6oidc.provider.detail.disableNonOidcCustomerLoginHelp')"
                     />
                     <sw-switch-field
                         v-model:value="provider.disableNonOidcAdminLogin"
+                        :error="providerDisableNonOidcAdminLoginError"
                         :label="$tc('sw6oidc.provider.detail.disableNonOidcAdminLogin')"
                         :help-text="$tc('sw6oidc.provider.detail.disableNonOidcAdminLoginHelp')"
                     />
@@ -357,6 +367,8 @@
                     :columns="[
                         { property: 'attributeType', label: $tc('sw6oidc.provider.detail.attributeType.label'), width: attributeTypeColumnWidth },
                         { property: 'attributeName', label: $tc('sw6oidc.provider.detail.attributeClaimName'), width: '294px' },
+                        { property: 'transformFunction', label: $tc('sw6oidc.provider.detail.transform.label'), width: '200px' },
+                        { property: 'transformParams', label: $tc('sw6oidc.provider.detail.transform.params') },
                     ]"
                     :show-selection="false"
                 >
@@ -381,6 +393,66 @@
                             :placeholder="$tc('sw6oidc.provider.detail.pickDiscoveredClaimPlaceholder')"
                             size="small"
                         />
+                    </template>
+                    {# Optional value transform, applied by AttributeTransformer on every login. #}
+                    <template #column-transformFunction="{ item }">
+                        <sw-single-select
+                            :value="item.transformFunction"
+                            :options="transformFunctionOptions"
+                            size="small"
+                            @update:value="onTransformFunctionChange(item, $event)"
+                        />
+                    </template>
+                    <template #column-transformParams="{ item }">
+                        <div
+                            v-if="item.transformFunction && item.transformParams"
+                            class="sw6oidc-transform-params"
+                        >
+                            <template v-if="item.transformFunction === 'concat'">
+                                <sw-multi-select
+                                    v-model:value="item.transformParams.claims"
+                                    :options="claimSelectOptions"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.concatClaims')"
+                                    size="small"
+                                />
+                                <sw-text-field
+                                    v-model="item.transformParams.separator"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.separator')"
+                                    size="small"
+                                />
+                            </template>
+                            <template v-else-if="item.transformFunction === 'split'">
+                                <sw-text-field
+                                    v-model="item.transformParams.separator"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.separator')"
+                                    size="small"
+                                />
+                                <sw-number-field
+                                    v-model="item.transformParams.index"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.index')"
+                                    number-type="int"
+                                    size="small"
+                                />
+                            </template>
+                            <sw-text-field
+                                v-else-if="item.transformFunction === 'prefix'"
+                                v-model="item.transformParams.value"
+                                :placeholder="$tc('sw6oidc.provider.detail.transform.prefix')"
+                                size="small"
+                            />
+                            <template v-else-if="item.transformFunction === 'regex_replace'">
+                                <sw-text-field
+                                    v-model="item.transformParams.pattern"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.pattern')"
+                                    size="small"
+                                />
+                                <sw-text-field
+                                    v-model="item.transformParams.replacement"
+                                    :placeholder="$tc('sw6oidc.provider.detail.transform.replacement')"
+                                    size="small"
+                                />
+                            </template>
+                        </div>
                     </template>
                     <template #actions="{ item }">
                         <sw-context-menu-item variant="danger" @click="onRemoveAttributeMapping(item)">

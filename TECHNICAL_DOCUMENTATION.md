@@ -21,7 +21,7 @@ Shopware ships with password-based auth only. Organizations that already run a c
 
 ### Project status
 
-This is early-stage software: version `0.1.0`, MIT-licensed, two narrow unit tests, no integration tests against a live Shopware instance. Read [Section 5 — Gotchas](#5-gotchas--edge-cases--limitations) before you assume any given feature is fully wired end to end — several config toggles exist in the UI/schema but aren't yet connected to real logic.
+This is early-stage software: version `0.1.0` plus unreleased changes (see `CHANGELOG.md`), MIT-licensed, unit-tested but with no integration tests against a live Shopware instance. Read [Section 5 — Gotchas](#5-gotchas--edge-cases--limitations) before you assume any given feature is fully wired end to end.
 
 ---
 
@@ -150,46 +150,41 @@ The Administration SPA has to be manually kicked (a router push plus, in some ca
 
 There is no password check, no credential check, inside the grant itself — it reads a pre-verified user id off a PSR-7 request attribute and issues a token for that user, full stop. This is safe *only* because every caller sets that attribute strictly after independently verifying the user via OIDC (JWT-verified claims) or Passkey (a verified WebAuthn assertion). If you ever add a new caller of this grant, you are personally responsible for verifying the user *before* calling it — the grant will not save you.
 
-### webauthn-lib 4.x quirks (deliberate workarounds, not bugs)
+### webauthn-lib 5.x: the caller owns credential lookup and persistence
 
-- **Registration caches raw inputs, not serialized options.** There's a documented webauthn-lib 4.9.3 bug where `PublicKeyCredentialUserEntity::jsonSerialize()` encodes the user handle as URL-safe base64, but `createFromArray()` decodes it as *standard* base64 — which throws whenever the sha256-derived handle happens to contain a URL-safe-only character. This is deterministic per user (always fails or never fails for a given account), which makes it nasty to reproduce in ad hoc testing. The registration service works around it by rebuilding the options object from raw inputs via the constructor on verify, rather than round-tripping through serialization. Don't "simplify" this by switching to `createFromArray()`.
-- **Assertion verification wants raw bytes, not the base64-encoded credential id.** Passing the already-encoded id into `check()` causes the repository to double-encode it, producing a confusing "The credential ID is invalid" error that has nothing to do with the actual credential.
-
-### webauthn-lib is pinned to `^4.7`, and 5.x is a breaking rewrite
-
-See `TODO.md` for the full list, but in short: the repository interface the plugin implements (`PublicKeyCredentialSourceRepository`) is gone in 5.x, the credential model changes class, and validator constructors drop the repository argument entirely in favor of the caller doing the lookup itself. This is deferred deliberately, not overlooked — don't attempt a "quick" version bump without budgeting for a real migration.
+- **Both ceremony caches hold raw inputs, not serialized options.** Registration and login rebuild the options object from the cached challenge/rpId/user/allow-list via the constructor on verify. This originally worked around a webauthn-lib 4.9.3 base64 round-trip bug (url-safe encode vs standard decode of the user handle); it is kept because it is simpler and doesn't depend on the library's (de)serialization being symmetric.
+- **There is no repository contract anymore.** `PasskeyAuthenticationService` looks the `CredentialRecord` up itself, passes it into `check()`, and must persist the returned record (`PasskeyCredentialRepository::updateAfterAssertion()`) — skipping that silently disables signature-counter replay detection.
+- **Stored credentials are the library's normalized `CredentialRecord` JSON.** Rows written by 4.x have the same shape and deserialize unchanged (covered by `PasskeyCredentialRepositoryTest`).
 
 ### The passkey session-kill feature has a real time-boxed gap
 
 `AdminPasskeyLoginTokenTracker` lets an admin force-logout a session if they delete the exact passkey that's currently authenticating it — but it's keyed by the access token's `jti`, with a 900s TTL matching the 10-minute access-token lifetime. Once that token silently refreshes (via the refresh token), a new `jti` is minted that the tracker never learns about, and the "kill this session" guarantee silently stops applying. This is a known, accepted scope limit — don't advertise this as "delete a passkey to instantly and permanently kill any session using it."
 
-### Several schema columns and one UI toggle are not wired to any logic
+### One UI toggle is not wired to any logic
 
 Before you build a feature "on top of" one of these, check that it's actually read anywhere:
-- `sync_customer_profile_on_sso`, `sync_customer_address_on_sso`, `sync_customer_group_on_sso`, `sync_admin_profile_on_sso` — exist on `sw6oidc_provider`, read by nothing. Only `sync_admin_role_on_sso` actually does anything (`AdminProvisioningService::syncRole()`).
-- `transform_function`/`transform_params` on `sw6oidc_attribute_mapping` — schema-only, no code applies a transform to a mapped claim value.
 - The **"Enable debug logging"** toggle in the plugin's config UI does nothing — actual log verbosity is controlled entirely by the `SW6OIDC_LOG_LEVEL` environment variable.
-- `ClaimsNormalizer::extractEmail()` and `UserProviderBindingService::unbind()` have no callers anywhere in the codebase.
+- `ClaimsNormalizer::extractEmail()` has no callers anywhere in the codebase.
 
-### Client secrets are stored in plaintext
+### Client secrets are encrypted with a key derived from APP_SECRET
 
-`sw6oidc_provider.client_secret` is not encrypted at rest (the entity has a `// TODO(later phase): encrypt at rest` comment marking this as known and deferred). Treat database access/backups as equivalent to credential access until this changes.
+`sw6oidc_provider.client_secret` is a `Sw6OidcEncryptedField`: its serializer encrypts on write and decrypts on read, so entity code only ever sees plaintext. Rotating `APP_SECRET` makes the stored envelopes undecryptable — hydration still succeeds (the envelope is passed through), and `TokenExchangeService` then throws `ClientSecretUnavailableException` instead of sending ciphertext to the IdP. The field has no `ApiAware` flag, so Admin API reads never return it.
 
 ### No back-channel logout, no admin-side RP-initiated logout
 
 If a user signs out at the IdP directly (not through Shopware), nothing tells Shopware to end that session — there's no OIDC Back-Channel Logout endpoint implemented. And logging an admin out of the Administration panel does not redirect to the IdP to end that session there either — only the Storefront/customer logout flow does the full IdP round-trip.
 
-### The atomic cache isn't actually atomic by default
+### The atomic cache is only atomic with Redis
 
-The default `AtomicCacheInterface` implementation does a sequential get-then-delete against Shopware's app cache — fine for a single node, but not safe against a genuine race on the same key across concurrent requests on multiple nodes. A Redis-backed truly-atomic implementation (`RedisAtomicCache`) exists in the codebase but is **not wired into `services.xml`** — a multi-node deployment has to override the DI alias itself. If you're debugging an intermittent "state token already used" error under load on a multi-node deployment, this is the first thing to check.
+Without `SW6OIDC_REDIS_DSN`, `RedisAtomicCache` delegates to a sequential get-then-delete against Shopware's app cache — fine for a single node, but not safe against a genuine race on the same key across concurrent requests on multiple nodes. Multi-node deployments must set `SW6OIDC_REDIS_DSN`; the backend is selected at runtime, so no cache clear is needed after changing it. If you're debugging an intermittent "state token already used" error under load on a multi-node deployment, check that variable first — and the `sw6oidc` log for "Redis ... failed" warnings.
 
 ### Passkeys are locked to one domain
 
 A passkey is cryptographically bound to a single Relying Party ID (essentially, the domain). Changing the RP ID override, or serving the shop under a new hostname, invalidates every previously registered passkey — there is no migration path other than re-registration.
 
-### Test coverage won't catch regressions in the flows that matter most
+### Unit tests only — no end-to-end safety net yet
 
-Only two unit tests exist (`AdminPasskeyLoginTokenTrackerTest`, `PasskeyConfigTest`), both pure-logic tests with no Shopware bootstrap. Nothing exercises the OIDC callback pipeline, provisioning, controllers, or the WebAuthn ceremony against a real Shopware instance. If you change anything in `Service/Oidc/` or `Service/Provisioning/`, manual end-to-end testing against a real IdP is currently the only safety net — `composer ci` (cs-check → phpstan → psalm → rector → test) will not catch a logic regression in these flows.
+The unit suite (`tests/Unit/`) covers the OIDC core (state/PKCE, JWT verification, claims normalization), both provisioning services, group mapping and bindings, the WebAuthn ceremonies against the real webauthn-lib validators (via an in-process software authenticator), and every security/config component — all without a Shopware kernel. What it can't catch: wiring and DAL behaviour inside a real Shopware instance, admin/storefront JS, and real IdP quirks. After changing controllers, `services.xml`, templates or Vue code, do a manual end-to-end login (Storefront + Admin, OIDC + Passkey) against a real IdP.
 
 ---
 
@@ -197,11 +192,7 @@ Only two unit tests exist (`AdminPasskeyLoginTokenTrackerTest`, `PasskeyConfigTe
 
 Roughly in order of "would most reduce risk right now":
 
-1. **Encrypt `client_secret` at rest.** The clearest security gap relative to the sibling Magento module, which already does this. Low effort, high value.
-2. **Wire up or remove the dead schema/config surface.** The unused `sync_*_on_sso` columns (besides admin role), `transform_function`/`transform_params`, and the non-functional debug-logging toggle create a false impression of functionality. Either implement them or remove them so the admin UI doesn't lie about what the plugin does.
-3. **Add integration tests against a real (or containerized) Shopware instance.** Right now correctness of the actual login flows rests entirely on manual testing. Even a small integration suite covering the happy path for customer OIDC login, admin OIDC login, and one passkey round-trip would catch the regressions unit tests structurally can't.
-4. **Implement OIDC Back-Channel Logout and admin-side RP-initiated logout**, bringing session termination guarantees in line with the Storefront/customer flow and closing the gap where an IdP-side logout or admin-side logout doesn't propagate.
-5. **Wire `RedisAtomicCache` into `services.xml` behind an environment-driven toggle** (or document the manual override step prominently) so multi-node deployments don't discover the single-node caveat the hard way, under production load.
-6. **Complete the webauthn-lib 5.x migration** once the current flows are proven in production (per `TODO.md`) — 4.x is in maintenance mode, and security fixes are landing in 5.x, not 4.x.
-7. **Add a CHANGELOG.md** — `LICENSE.txt` is already committed (MIT, matching `composer.json`), but there's still no changelog to track what changed between versions as the plugin matures past 0.1.0.
-8. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.
+1. **Wire up or remove the debug-logging toggle.** The "Enable debug logging" config toggle still does nothing (verbosity comes from `SW6OIDC_LOG_LEVEL`) and creates a false impression of functionality.
+2. **Add integration tests against a real (or containerized) Shopware instance.** Right now correctness of the actual login flows rests entirely on manual testing. Even a small integration suite covering the happy path for customer OIDC login, admin OIDC login, and one passkey round-trip would catch the regressions unit tests structurally can't.
+3. **Implement OIDC Back-Channel Logout and admin-side RP-initiated logout**, bringing session termination guarantees in line with the Storefront/customer flow and closing the gap where an IdP-side logout or admin-side logout doesn't propagate.
+4. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.

@@ -6,6 +6,7 @@ use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
+use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\Contracts\Translation\TranslatorInterface;
 use Twig\Extension\AbstractExtension;
@@ -29,6 +30,7 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
         private readonly PasskeyConfig $passkeyConfig,
         private readonly PasskeyCredentialRepository $passkeyCredentialRepository,
         private readonly TranslatorInterface $translator,
+        private readonly PasswordLoginPolicy $passwordLoginPolicy,
     ) {
     }
 
@@ -37,6 +39,7 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
         return [
             new TwigFunction('sw6oidc_storefront_sso_providers', $this->getSsoProviders(...)),
             new TwigFunction('sw6oidc_storefront_passkey_available', $this->isPasskeyAvailable(...)),
+            new TwigFunction('sw6oidc_storefront_password_login_disabled', $this->isPasswordLoginDisabled(...)),
         ];
     }
 
@@ -66,5 +69,10 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
     {
         return $this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())
             && $this->passkeyCredentialRepository->existsForUserType('customer', $context->getContext());
+    }
+
+    public function isPasswordLoginDisabled(SalesChannelContext $context): bool
+    {
+        return $this->passwordLoginPolicy->isPasswordLoginDisabled('customer', $context->getContext());
     }
 }

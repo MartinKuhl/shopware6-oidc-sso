@@ -21,6 +21,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  */
 class JwtVerifier
 {
+    private const JWKS_FAILURE_TTL_SECONDS = 60;
+
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly CacheItemPoolInterface $cache,
@@ -45,13 +47,20 @@ class JwtVerifier
         $jws = $this->deserialize($jwt);
         $this->assertSupportedAlgorithm($jws);
 
-        $jwkSet = $this->getJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds);
+        $jwsVerifier = new JWSVerifier(new AlgorithmManager([new RS256(), new RS384(), new RS512()]));
 
-        $algorithmManager = new AlgorithmManager([new RS256(), new RS384(), new RS512()]);
-        $jwsVerifier = new JWSVerifier($algorithmManager);
+        $jwkSet = $this->getJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, false);
 
         if (!$jwsVerifier->verifyWithKeySet($jws, $jwkSet, 0)) {
-            throw new InvalidJwtException('JWT signature verification failed against the provider JWKS.');
+            // The IdP may have rotated its signing key since the JWKS was
+            // cached: refetch once (still circuit-breaker protected) instead
+            // of rejecting every login until the cache TTL runs out.
+            $this->logger->info('sw6oidc: JWT signature did not verify against the cached JWKS; refetching once.');
+            $jwkSet = $this->getJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, true);
+
+            if (!$jwsVerifier->verifyWithKeySet($jws, $jwkSet, 0)) {
+                throw new InvalidJwtException('JWT signature verification failed against the provider JWKS.');
+            }
         }
 
         $payload = json_decode($jws->getPayload() ?? '', true);
@@ -120,12 +129,32 @@ class JwtVerifier
         }
     }
 
-    private function getJwks(string $jwksEndpoint, int $ttlSeconds, int $httpTimeoutSeconds): JWKSet
+    /**
+     * JWKS from cache, else fetched. A failed fetch trips a 60s circuit
+     * breaker (flag in the same cache pool) so an unreachable IdP doesn't
+     * cost a blocking HTTP timeout on every single login attempt.
+     *
+     * @throws InvalidJwtException
+     */
+    private function getJwks(string $jwksEndpoint, int $ttlSeconds, int $httpTimeoutSeconds, bool $forceRefresh): JWKSet
     {
-        $cacheKey = 'sw6oidc_jwks_' . hash('sha256', $jwksEndpoint);
-        $item = $this->cache->getItem($cacheKey);
+        $endpointHash = hash('sha256', $jwksEndpoint);
+        $item = $this->cache->getItem('sw6oidc_jwks_' . $endpointHash);
 
-        if ($item->isHit() && \is_string($item->get())) {
+        if ($forceRefresh) {
+            // At most one forced (key-rotation) refetch per endpoint per
+            // cooldown window, so a stream of badly signed tokens can't turn
+            // into a stream of requests against the IdP.
+            $refreshedItem = $this->cache->getItem('sw6oidc_jwks_refreshed_' . $endpointHash);
+
+            if ($refreshedItem->isHit()) {
+                throw new InvalidJwtException('JWT signature verification failed against the provider JWKS.');
+            }
+
+            $refreshedItem->set(true);
+            $refreshedItem->expiresAfter(self::JWKS_FAILURE_TTL_SECONDS);
+            $this->cache->save($refreshedItem);
+        } elseif ($item->isHit() && \is_string($item->get())) {
             try {
                 return JWKSet::createFromJson($item->get());
             } catch (\Throwable) {
@@ -133,13 +162,38 @@ class JwtVerifier
             }
         }
 
-        $response = $this->httpClient->request('GET', $jwksEndpoint, ['timeout' => $httpTimeoutSeconds]);
-        $json = $response->getContent();
+        $failKey = 'sw6oidc_jwks_fail_' . $endpointHash;
+
+        if ($this->cache->getItem($failKey)->isHit()) {
+            throw new InvalidJwtException('The provider JWKS endpoint is temporarily unavailable (recent fetch failed); try again shortly.');
+        }
+
+        try {
+            $json = $this->httpClient->request('GET', $jwksEndpoint, ['timeout' => $httpTimeoutSeconds])->getContent();
+            $jwkSet = JWKSet::createFromJson($json);
+
+            if ($jwkSet->count() === 0) {
+                throw new \RuntimeException('JWKS contains no keys.');
+            }
+        } catch (\Throwable $exception) {
+            $failItem = $this->cache->getItem($failKey);
+            $failItem->set(true);
+            $failItem->expiresAfter(self::JWKS_FAILURE_TTL_SECONDS);
+            $this->cache->save($failItem);
+
+            $this->logger->warning('sw6oidc: JWKS fetch failed; pausing further fetches for this endpoint.', [
+                'jwksEndpoint' => $jwksEndpoint,
+                'pauseSeconds' => self::JWKS_FAILURE_TTL_SECONDS,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            throw new InvalidJwtException('Could not fetch the provider JWKS: ' . $exception->getMessage(), 0, $exception);
+        }
 
         $item->set($json);
         $item->expiresAfter($ttlSeconds);
         $this->cache->save($item);
 
-        return JWKSet::createFromJson($json);
+        return $jwkSet;
     }
 }

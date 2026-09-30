@@ -16,6 +16,7 @@ use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
+use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
@@ -52,6 +53,7 @@ class OidcAdminAuthController extends AbstractController
         private readonly PasskeyConfig $passkeyConfig,
         private readonly PasskeyCredentialRepository $passkeyCredentialRepository,
         private readonly UserProviderBindingService $bindingService,
+        private readonly PasswordLoginPolicy $passwordLoginPolicy,
     ) {
     }
 
@@ -90,6 +92,7 @@ class OidcAdminAuthController extends AbstractController
             ),
             'passkeyAvailable' => $this->passkeyConfig->isEnabledForAdmin()
                 && $this->passkeyCredentialRepository->existsForUserType('admin', $context),
+            'passwordLoginDisabled' => $this->passwordLoginPolicy->isPasswordLoginDisabled('admin', $context),
         ]);
     }
 

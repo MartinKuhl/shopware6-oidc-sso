@@ -4,6 +4,8 @@ namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
+use MartinKuhl\Sw6Oidc\Event\CustomerAfterCreateEvent;
+use MartinKuhl\Sw6Oidc\Event\CustomerBeforeCreateEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\CustomerProvisioningDeniedException;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
@@ -14,6 +16,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Finds-or-JIT-creates a Shopware customer from a MappedProfile, enforcing
@@ -35,6 +38,7 @@ class CustomerProvisioningService
         private readonly UserProviderBindingService $bindingService,
         private readonly NumberRangeValueGeneratorInterface $numberRangeValueGenerator,
         private readonly LoggerInterface $logger,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -80,6 +84,8 @@ class CustomerProvisioningService
 
         $created = $this->customerRepository->search(new Criteria([$customerId]), $context)->first();
         \assert($created instanceof CustomerEntity);
+
+        $this->eventDispatcher->dispatch(new CustomerAfterCreateEvent($provider, $profile, $created, $salesChannelContext));
 
         return $created;
     }
@@ -186,6 +192,10 @@ class CustomerProvisioningService
             ];
             $customerPayload['defaultShippingAddressId'] = $shippingAddressId;
         }
+
+        $event = new CustomerBeforeCreateEvent($provider, $profile, $customerPayload, $salesChannelContext);
+        $this->eventDispatcher->dispatch($event);
+        $customerPayload = [...$event->getPayload(), 'id' => $customerId];
 
         $this->customerRepository->create([$customerPayload], $context);
 

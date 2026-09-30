@@ -43,7 +43,7 @@ class ClaimsNormalizer
         foreach ($claims as $key => $value) {
             $flatKey = $prefix === '' ? (string) $key : $prefix . '.' . $key;
 
-            if (\count($target) > self::MAX_FLATTENED_KEYS) {
+            if (\count($target) >= self::MAX_FLATTENED_KEYS) {
                 throw new ClaimsTooComplexException('OIDC claims response is too large or deeply nested to process safely.');
             }
 
@@ -90,13 +90,21 @@ class ClaimsNormalizer
             return [];
         }
 
+        // Note: a Zitadel role object whose *only* key is "0" ({"0": {...}})
+        // decodes to the same PHP array as a JSON list ([{...}]) and is
+        // therefore treated as a list — indistinguishable after json_decode().
         $isList = array_is_list($groupsClaim);
 
         if ($isList) {
-            return array_values(array_filter(array_map(
-                static fn (mixed $item): ?string => \is_string($item) ? $item : null,
-                $groupsClaim,
-            )));
+            // Explicit callback: a bare array_filter() would also drop a group
+            // literally named "0". Integer ids (some IdPs) are kept as strings.
+            return array_values(array_filter(
+                array_map(
+                    static fn (mixed $item): ?string => \is_string($item) || \is_int($item) ? (string) $item : null,
+                    $groupsClaim,
+                ),
+                static fn (?string $group): bool => $group !== null && $group !== '',
+            ));
         }
 
         // Associative: Zitadel-style nested role object — parent keys are the groups.

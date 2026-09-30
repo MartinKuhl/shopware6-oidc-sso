@@ -11,7 +11,21 @@
     form closes instead.
 #}
 {% block sw_login_login %}
+{#
+    Native username/password form, hidden while disable_non_oidc_admin_login
+    is on — cosmetic only, AdminPasswordLoginGuardSubscriber rejects the
+    password grant server-side either way.
+#}
+<div v-show="!sw6oidcPasswordLoginDisabled">
 {% parent %}
+</div>
+
+<p
+    v-if="sw6oidcPasswordLoginDisabled"
+    class="sw6oidc-login-actions__notice"
+>
+    {{ sw6oidcTranslate('sw6oidc.login.passwordLoginDisabled', 'Password login is disabled. Please sign in with single sign-on or a passkey.') }}
+</p>
 
 {#
     Real <mt-button> components, not plain <button> with copied class
