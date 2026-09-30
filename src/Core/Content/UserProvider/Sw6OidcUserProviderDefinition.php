@@ -15,9 +15,10 @@ use Shopware\Core\Framework\DataAbstractionLayer\Field\StringField;
 use Shopware\Core\Framework\DataAbstractionLayer\FieldCollection;
 
 /**
- * Binds a Shopware `user` (admin) or `customer` id to the OIDC provider that first
- * authenticated them. Enforces per-user IdP binding at login and doubles as the
- * session-activity log (see plan: mirrors m2oidc_oauth_user_provider).
+ * Binds a Shopware `user` (admin) or `customer` id to an IdP identity: the
+ * provider plus the subject (`iss` + `sub`) it authenticated. Logins look
+ * accounts up by that subject; `sub` is NULL only on legacy bindings created
+ * before subject binding existed (backfilled on the next verified login).
  */
 class Sw6OidcUserProviderDefinition extends EntityDefinition
 {
@@ -45,6 +46,8 @@ class Sw6OidcUserProviderDefinition extends EntityDefinition
             (new StringField('user_type', 'userType', 16))->addFlags(new ApiAware(), new Required()),
             (new IdField('user_id', 'userId'))->addFlags(new ApiAware(), new Required()),
             (new FkField('provider_id', 'providerId', Sw6OidcProviderDefinition::class))->addFlags(new ApiAware(), new Required()),
+            (new StringField('issuer', 'issuer', 2048))->addFlags(new ApiAware()),
+            (new StringField('sub', 'sub', 255))->addFlags(new ApiAware()),
             new CreatedAtField(),
 
             (new ManyToOneAssociationField('provider', 'provider_id', Sw6OidcProviderDefinition::class, 'id'))

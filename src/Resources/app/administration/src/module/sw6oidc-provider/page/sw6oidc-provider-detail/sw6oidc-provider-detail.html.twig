@@ -635,6 +635,27 @@
             </sw-card>
             {% endblock %}
 
+            <sw-card :title="$tc('sw6oidc.provider.detail.cardAccountLinking')">
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-switch-field
+                        v-model:value="provider.requireEmailVerified"
+                        :label="$tc('sw6oidc.provider.detail.requireEmailVerified')"
+                        :help-text="$tc('sw6oidc.provider.detail.requireEmailVerifiedHelp')"
+                    />
+                    <sw-switch-field
+                        v-model:value="provider.linkExistingAccounts"
+                        :label="$tc('sw6oidc.provider.detail.linkExistingAccounts')"
+                        :help-text="$tc('sw6oidc.provider.detail.linkExistingAccountsHelp')"
+                    />
+                </sw-container>
+                <mt-banner
+                    v-if="provider.linkExistingAccounts && !provider.requireEmailVerified"
+                    variant="attention"
+                >
+                    {{ $tc('sw6oidc.provider.detail.linkExistingAccountsUnverifiedWarning') }}
+                </mt-banner>
+            </sw-card>
+
             <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioningSuperadmin')">
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-switch-field

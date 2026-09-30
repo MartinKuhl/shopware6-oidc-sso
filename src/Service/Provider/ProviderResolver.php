@@ -12,8 +12,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 
 /**
- * Resolves sw6oidc_provider rows for the current request — multi-provider
- * support from day one, mirroring the Magento module's Model/Provider/ProviderResolver.php.
+ * Resolves sw6oidc_provider rows for the current request.
  */
 class ProviderResolver
 {
@@ -22,14 +21,22 @@ class ProviderResolver
     }
 
     /**
+     * An active provider that serves this login type ('customer' or 'admin';
+     * providers configured for 'both' serve either). A customer-only IdP must
+     * never be usable for an Administration login, and vice versa.
+     *
      * @throws ProviderNotFoundException
      */
-    public function getActiveById(string $providerId, Context $context): Sw6OidcProviderEntity
+    public function getActiveById(string $providerId, string $loginType, Context $context): Sw6OidcProviderEntity
     {
         $provider = $this->providerRepository->search(new Criteria([$providerId]), $context)->first();
 
-        if (!$provider instanceof Sw6OidcProviderEntity || !$provider->isActive()) {
-            throw new ProviderNotFoundException(sprintf('No active OIDC provider found for id "%s".', $providerId));
+        if (
+            !$provider instanceof Sw6OidcProviderEntity
+            || !$provider->isActive()
+            || !\in_array($provider->getLoginType(), [$loginType, 'both'], true)
+        ) {
+            throw new ProviderNotFoundException(sprintf('No active OIDC provider for login type "%s" found for id "%s".', $loginType, $providerId));
         }
 
         return $provider;

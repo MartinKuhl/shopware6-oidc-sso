@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AttributeTransformFailedException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -40,8 +41,12 @@ class AttributeTransformer
     /**
      * @param array<string, mixed> $params
      * @param array<string, mixed> $flattenedClaims
+     * @param bool                 $strict for identity attributes (email, username): a failed transform
+     *                                     fails the login instead of passing the raw IdP value through
+     *
+     * @throws AttributeTransformFailedException in strict mode
      */
-    public function apply(?string $function, array $params, ?string $value, array $flattenedClaims): ?string
+    public function apply(?string $function, array $params, ?string $value, array $flattenedClaims, bool $strict = false): ?string
     {
         if ($function === null || $function === '') {
             return $value;
@@ -56,6 +61,15 @@ class AttributeTransformer
                 default => throw new \InvalidArgumentException(sprintf('Unknown transform function "%s".', $function)),
             };
         } catch (\Throwable $exception) {
+            if ($strict) {
+                $this->logger->warning('sw6oidc: transform of an identity attribute failed; refusing the login.', [
+                    'function' => $function,
+                    'exception' => $exception->getMessage(),
+                ]);
+
+                throw new AttributeTransformFailedException(sprintf('The "%s" transform failed.', $function), 0, $exception);
+            }
+
             $this->logger->warning('sw6oidc: attribute transform failed; using the untransformed value.', [
                 'function' => $function,
                 'exception' => $exception->getMessage(),

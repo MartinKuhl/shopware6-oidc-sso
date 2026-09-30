@@ -67,7 +67,13 @@ class AttributeMapper
 
             // Applied even when the claim itself is missing, so e.g. a concat
             // transform can still build a value from its other claims.
-            return $this->transformer->apply($mapping->getTransformFunction(), $mapping->getTransformParams() ?? [], $value, $flattenedClaims);
+            return $this->transformer->apply(
+                $mapping->getTransformFunction(),
+                $mapping->getTransformParams() ?? [],
+                $value,
+                $flattenedClaims,
+                \in_array($attributeType, [Attr::TYPE_EMAIL, Attr::TYPE_USERNAME], true),
+            );
         };
 
         $email = $read(Attr::TYPE_EMAIL);

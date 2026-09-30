@@ -2,15 +2,14 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\Service;
 
+use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerSalesChannelBinding;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Checkout\Customer\Event\CustomerBeforeLoginEvent;
 use Shopware\Core\Checkout\Customer\Event\CustomerLoginEvent;
 use Shopware\Core\Checkout\Customer\CustomerException;
-use Shopware\Core\Checkout\Customer\Exception\BadCredentialsException;
 use Shopware\Core\Checkout\Customer\SalesChannel\AbstractLoginRoute;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Plugin\Exception\DecorationPatternException;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\System\SalesChannel\Context\CartRestorer;
@@ -41,13 +40,36 @@ class OidcCustomerLoginRoute extends AbstractLoginRoute
         throw new DecorationPatternException(self::class);
     }
 
+    /**
+     * AbstractLoginRoute contract: expects the already-verified `customerId`
+     * in the data bag. There is deliberately no lookup by email — several
+     * customers may share one (sales-channel-bound duplicates), and the
+     * caller has already resolved exactly which one authenticated.
+     */
     public function login(RequestDataBag $data, SalesChannelContext $context): ContextTokenResponse
     {
-        $email = (string) $data->get('email');
+        $customerId = $data->get('customerId');
 
-        $this->eventDispatcher->dispatch(new CustomerBeforeLoginEvent($context, $email));
+        if (!\is_string($customerId) || $customerId === '') {
+            throw CustomerException::badCredentials();
+        }
 
-        $customer = $this->getCustomerByEmail($email, $context);
+        return $this->loginByCustomerId($customerId, $context);
+    }
+
+    public function loginByCustomerId(string $customerId, SalesChannelContext $context): ContextTokenResponse
+    {
+        $customer = $this->customerRepository->search(new Criteria([$customerId]), $context->getContext())->first();
+
+        if (
+            !$customer instanceof CustomerEntity
+            || $customer->getGuest()
+            || !CustomerSalesChannelBinding::allows($customer, $context->getSalesChannelId())
+        ) {
+            throw CustomerException::badCredentials();
+        }
+
+        $this->eventDispatcher->dispatch(new CustomerBeforeLoginEvent($context, $customer->getEmail()));
 
         if (!$customer->getActive()) {
             throw CustomerException::inactive($customer->getId());
@@ -64,24 +86,5 @@ class OidcCustomerLoginRoute extends AbstractLoginRoute
         $this->eventDispatcher->dispatch(new CustomerLoginEvent($restoredContext, $customer, $newToken));
 
         return new ContextTokenResponse($newToken);
-    }
-
-    private function getCustomerByEmail(string $email, SalesChannelContext $context): CustomerEntity
-    {
-        $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('email', $email));
-        $criteria->addFilter(new EqualsFilter('guest', false));
-
-        foreach ($this->customerRepository->search($criteria, $context->getContext())->getEntities() as $customer) {
-            \assert($customer instanceof CustomerEntity);
-
-            $boundSalesChannelId = $customer->getBoundSalesChannelId();
-
-            if ($boundSalesChannelId === null || $boundSalesChannelId === $context->getSalesChannelId()) {
-                return $customer;
-            }
-        }
-
-        throw new BadCredentialsException();
     }
 }

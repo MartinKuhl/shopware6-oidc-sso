@@ -36,6 +36,7 @@ class CustomerProvisioningService
         private readonly CountryResolver $countryResolver,
         private readonly GroupMappingResolver $groupMappingResolver,
         private readonly UserProviderBindingService $bindingService,
+        private readonly IdentityResolver $identityResolver,
         private readonly NumberRangeValueGeneratorInterface $numberRangeValueGenerator,
         private readonly LoggerInterface $logger,
         private readonly EventDispatcherInterface $eventDispatcher,
@@ -44,28 +45,40 @@ class CustomerProvisioningService
 
     /**
      * @throws CustomerProvisioningDeniedException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AccountLinkingRequiredException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\EmailNotVerifiedException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException
      */
     public function findOrCreateCustomer(
         Sw6OidcProviderEntity $provider,
         MappedProfile $profile,
+        ExternalIdentity $identity,
         SalesChannelContext $salesChannelContext,
     ): CustomerEntity {
         $context = $salesChannelContext->getContext();
-        $existing = $this->findByEmail($profile->email, $salesChannelContext);
+        $emailMatch = $this->findByEmail($profile->email, $salesChannelContext);
 
-        if ($existing instanceof \Shopware\Core\Checkout\Customer\CustomerEntity) {
-            $this->bindingService->assertNotBoundToDifferentProvider(
-                Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER,
-                $existing->getId(),
-                $provider->getId(),
-                $context,
-            );
-            $this->bindingService->bindIfUnbound(
-                Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER,
-                $existing->getId(),
-                $provider->getId(),
-                $context,
-            );
+        $customerId = $this->identityResolver->resolve(
+            Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER,
+            $provider,
+            $identity,
+            $emailMatch?->getId(),
+            false,
+            $context,
+        );
+
+        if ($customerId !== null) {
+            $existing = $emailMatch instanceof \Shopware\Core\Checkout\Customer\CustomerEntity && $emailMatch->getId() === $customerId
+                ? $emailMatch
+                : $this->customerRepository->search(new Criteria([$customerId]), $context)->first();
+
+            if (
+                !$existing instanceof CustomerEntity
+                || $existing->getGuest()
+                || !CustomerSalesChannelBinding::allows($existing, $salesChannelContext->getSalesChannelId())
+            ) {
+                throw new CustomerProvisioningDeniedException('The customer bound to this identity is not available in this sales channel.');
+            }
 
             $this->syncExisting($provider, $existing, $profile, $salesChannelContext);
 
@@ -80,7 +93,7 @@ class CustomerProvisioningService
         }
 
         $customerId = $this->create($provider, $profile, $salesChannelContext);
-        $this->bindingService->bindIfUnbound(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $customerId, $provider->getId(), $context);
+        $this->bindingService->bind(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $customerId, $identity, $context);
 
         $created = $this->customerRepository->search(new Criteria([$customerId]), $context)->first();
         \assert($created instanceof CustomerEntity);
@@ -101,9 +114,7 @@ class CustomerProvisioningService
         foreach ($customers as $customer) {
             \assert($customer instanceof CustomerEntity);
 
-            $boundSalesChannelId = $customer->getBoundSalesChannelId();
-
-            if ($boundSalesChannelId === null || $boundSalesChannelId === $salesChannelContext->getSalesChannelId()) {
+            if (CustomerSalesChannelBinding::allows($customer, $salesChannelContext->getSalesChannelId())) {
                 return $customer;
             }
         }

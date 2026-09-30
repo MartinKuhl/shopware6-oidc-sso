@@ -9,7 +9,10 @@
             "passkeyButton": "Login with Passkey",
             "passkeyError": "Passkey login failed. Please try again or log in with your username and password.",
             "passwordLoginDisabled": "Password login is disabled. Please sign in with single sign-on or a passkey.",
-            "errorAccessDenied": "Access denied: your account does not meet the requirements for signing in to the Administration."
+            "errorAccessDenied": "Access denied: your account does not meet the requirements for signing in to the Administration.",
+            "errorLinkRequired": "An account with this email address already exists. Log in with your password and connect single sign-on in your profile.",
+            "errorEmailNotVerified": "Your identity provider has not verified your email address.",
+            "errorProviderMismatch": "This account is connected to a different single sign-on identity."
         },
         "provider": {
             "moduleTitle": "OIDC Providers",
@@ -284,7 +287,13 @@
                     "client_id_missing": "client ID missing",
                     "client_secret_missing": "client secret missing",
                     "client_secret_undecryptable": "client secret cannot be decrypted (APP_SECRET changed?) — re-enter it"
-                }
+                },
+                "cardAccountLinking": "Account linking",
+                "requireEmailVerified": "Require a verified email",
+                "requireEmailVerifiedHelp": "Refuse logins unless the IdP sends email_verified: true for the mapped email claim. Turn off only for IdPs that never send the claim and fully control every user's email address.",
+                "linkExistingAccounts": "Link existing accounts by verified email",
+                "linkExistingAccountsHelp": "On a first SSO login, connect an existing Shopware account with the same, verified email address. Off: existing accounts must be connected explicitly from their profile (\"Connect SSO\"). Superadmins are never linked automatically.",
+                "linkExistingAccountsUnverifiedWarning": "Existing accounts are never linked with an unverified email, even with email verification not required — such users have to connect SSO from their profile."
             }
         },
         "userProvider": {

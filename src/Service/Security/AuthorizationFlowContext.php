@@ -2,16 +2,27 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Security;
 
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+
 /**
  * Everything needed to complete one SP-initiated OIDC round trip, stored
  * server-side under the opaque `state` value for the duration of the IdP
- * redirect (see OidcSecurityHelper). Bundling these fields together, keyed by
- * `state` itself, replaces the Magento module's pipe-delimited relay-state
- * string plus separate PKCE-verifier/nonce cookies with a single atomic-cache
- * round trip.
+ * redirect (see OidcSecurityHelper).
+ *
+ * `purpose` says what the round trip is for: a normal login, an explicit
+ * "Connect SSO" of an already logged-in account (`link`), or a fresh
+ * re-authentication (`step_up`). The last two carry the account that started
+ * the flow in `expectedUserId`; the callback must act on exactly that account.
  */
 final readonly class AuthorizationFlowContext
 {
+    public const PURPOSE_LOGIN = 'login';
+    public const PURPOSE_LINK = 'link';
+    public const PURPOSE_STEP_UP = 'step_up';
+
+    private const PURPOSES = [self::PURPOSE_LOGIN, self::PURPOSE_LINK, self::PURPOSE_STEP_UP];
+    private const LOGIN_TYPES = ['customer', 'admin'];
+
     public function __construct(
         public string $providerId,
         /** 'customer' | 'admin' */
@@ -21,11 +32,25 @@ final readonly class AuthorizationFlowContext
         /** 'S256' | 'plain' */
         public string $codeChallengeMethod,
         public string $nonce,
+        public string $purpose = self::PURPOSE_LOGIN,
+        public ?string $expectedUserId = null,
+        /** unix time the flow started, for step-up `auth_time` checks */
+        public int $startedAt = 0,
     ) {
     }
 
     /**
-     * @return array{providerId: string, loginType: string, relayState: string, codeVerifier: string, codeChallengeMethod: string, nonce: string}
+     * @return array{
+     *     providerId: string,
+     *     loginType: string,
+     *     relayState: string,
+     *     codeVerifier: string,
+     *     codeChallengeMethod: string,
+     *     nonce: string,
+     *     purpose: string,
+     *     expectedUserId: string|null,
+     *     startedAt: int
+     * }
      */
     public function toArray(): array
     {
@@ -36,21 +61,49 @@ final readonly class AuthorizationFlowContext
             'codeVerifier' => $this->codeVerifier,
             'codeChallengeMethod' => $this->codeChallengeMethod,
             'nonce' => $this->nonce,
+            'purpose' => $this->purpose,
+            'expectedUserId' => $this->expectedUserId,
+            'startedAt' => $this->startedAt,
         ];
     }
 
     /**
-     * @param array<string, mixed> $data
+     * @param array<mixed> $data
+     *
+     * @throws InvalidStateException when the stored flow is incomplete or malformed
      */
     public static function fromArray(array $data): self
     {
+        foreach (['providerId', 'loginType', 'relayState', 'codeVerifier', 'codeChallengeMethod', 'nonce'] as $key) {
+            if (!\is_string($data[$key] ?? null)) {
+                throw new InvalidStateException(sprintf('Stored OAuth state is missing "%s".', $key));
+            }
+        }
+
+        $purpose = $data['purpose'] ?? self::PURPOSE_LOGIN;
+        $expectedUserId = $data['expectedUserId'] ?? null;
+        $startedAt = $data['startedAt'] ?? 0;
+
+        if (
+            !\in_array($data['loginType'], self::LOGIN_TYPES, true)
+            || !\in_array($purpose, self::PURPOSES, true)
+            || ($expectedUserId !== null && !\is_string($expectedUserId))
+            || !\is_int($startedAt)
+            || ($purpose !== self::PURPOSE_LOGIN && $expectedUserId === null)
+        ) {
+            throw new InvalidStateException('Stored OAuth state is malformed.');
+        }
+
         return new self(
-            (string) $data['providerId'],
-            (string) $data['loginType'],
-            (string) $data['relayState'],
-            (string) $data['codeVerifier'],
-            (string) $data['codeChallengeMethod'],
-            (string) $data['nonce'],
+            $data['providerId'],
+            $data['loginType'],
+            $data['relayState'],
+            $data['codeVerifier'],
+            $data['codeChallengeMethod'],
+            $data['nonce'],
+            $purpose,
+            $expectedUserId,
+            $startedAt,
         );
     }
 }

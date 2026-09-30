@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Service\Oidc;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\ExternalIdentity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\MappedProfile;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 
@@ -29,7 +30,8 @@ final readonly class OidcCallbackResult
     }
 
     /**
-     * The IdP subject: from the verified id_token, else from userinfo.
+     * The IdP subject: from the verified id_token, else (providers without
+     * the openid scope) from userinfo. The processor rejects a mismatch.
      */
     public function subject(): ?string
     {
@@ -51,5 +53,43 @@ final readonly class OidcCallbackResult
         $sid = $this->idTokenClaims['sid'] ?? null;
 
         return \is_string($sid) && $sid !== '' ? $sid : null;
+    }
+
+    /**
+     * Whether the IdP vouches for the email this login maps to: the standard
+     * `email_verified` claim is true (boolean, or the string "true" some IdPs
+     * send) *and* the mapped email is the standard `email` claim it refers to.
+     * An email mapped from a custom claim is never considered verified.
+     */
+    public function emailVerified(): bool
+    {
+        $verified = $this->claims['email_verified'] ?? null;
+        $email = $this->claims['email'] ?? null;
+
+        return ($verified === true || $verified === 'true')
+            && \is_string($email)
+            && strcasecmp(trim($email), $this->profile->email) === 0;
+    }
+
+    /**
+     * @throws \LogicException when called without a subject (the processor guarantees one)
+     */
+    public function identity(): ExternalIdentity
+    {
+        $subject = $this->subject();
+
+        if ($subject === null) {
+            throw new \LogicException('OIDC callback result has no subject.');
+        }
+
+        $issuer = $this->idTokenClaims['iss'] ?? null;
+
+        return new ExternalIdentity(
+            $this->provider->getId(),
+            \is_string($issuer) && $issuer !== '' ? $issuer : (string) $this->provider->getIssuer(),
+            $subject,
+            $this->profile->email,
+            $this->emailVerified(),
+        );
     }
 }

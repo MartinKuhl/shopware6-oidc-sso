@@ -22,7 +22,16 @@ use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
+use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackResult;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AccountLinkingRequiredException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\EmailNotVerifiedException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
+use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+use MartinKuhl\Sw6Oidc\Service\Security\UserVerifiedScope;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
@@ -77,6 +86,7 @@ class OidcAdminAuthController extends AbstractController
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
         private readonly Sw6OidcRateLimiter $rateLimiter,
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
+        private readonly IdentityResolver $identityResolver,
     ) {
     }
 
@@ -146,7 +156,7 @@ class OidcAdminAuthController extends AbstractController
 
         try {
             $provider = $providerId !== null
-                ? $this->providerResolver->getActiveById((string) $providerId, $context)
+                ? $this->providerResolver->getActiveById((string) $providerId, 'admin', $context)
                 : $this->providerResolver->resolveDefault('admin', $context);
         } catch (ProviderNotFoundException $exception) {
             $this->logger->warning('sw6oidc: admin SSO login requested but no active provider is configured.', [
@@ -193,10 +203,19 @@ class OidcAdminAuthController extends AbstractController
                 $request->query->get('code'),
                 $request->query->get('state'),
                 $redirectUri,
+                Sw6OidcUserProviderEntity::USER_TYPE_ADMIN,
                 $context,
             );
 
-            $adminUser = $this->adminProvisioningService->findOrCreateAdmin($result->provider, $result->profile, $context);
+            if ($result->flow->purpose === AuthorizationFlowContext::PURPOSE_LINK) {
+                return $this->completeLink($result, $context);
+            }
+
+            if ($result->flow->purpose !== AuthorizationFlowContext::PURPOSE_LOGIN) {
+                throw new InvalidStateException(sprintf('Unsupported flow purpose "%s" on the admin callback.', $result->flow->purpose));
+            }
+
+            $adminUser = $this->adminProvisioningService->findOrCreateAdmin($result->provider, $result->profile, $result->identity(), $context);
 
             $this->logoutContextStore->rememberForAdmin(
                 $adminUser->getId(),
@@ -216,14 +235,11 @@ class OidcAdminAuthController extends AbstractController
                 $result->sessionId(),
                 $result->idToken(),
             );
-            $redirectUrl = $this->administrationLoginUrl(['sw6oidc_nonce' => $nonce]);
-
             $this->logger->debug('sw6oidc: admin OIDC callback succeeded, redirecting back into the Administration SPA.', [
                 'userId' => $adminUser->getId(),
-                'redirectUrl' => $redirectUrl,
             ]);
 
-            return new RedirectResponse($redirectUrl);
+            return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_nonce' => $nonce]));
         } catch (AccessControlDeniedException $exception) {
             $query = ['sw6oidc_error' => 'access_denied'];
             $message = $exception->getDisplayMessage();
@@ -233,12 +249,24 @@ class OidcAdminAuthController extends AbstractController
             }
 
             return new RedirectResponse($this->administrationLoginUrl($query));
+        } catch (AccountLinkingRequiredException | EmailNotVerifiedException | ProviderMismatchException | SubjectAlreadyLinkedException $exception) {
+            $this->logger->notice('sw6oidc: admin OIDC login refused by the account policy.', [
+                'exceptionClass' => $exception::class,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            return new RedirectResponse($this->administrationLoginUrl([
+                'sw6oidc_error' => match (true) {
+                    $exception instanceof AccountLinkingRequiredException => 'link_required',
+                    $exception instanceof EmailNotVerifiedException => 'email_not_verified',
+                    default => 'provider_mismatch',
+                },
+            ]));
         } catch (AdminProvisioningDeniedException $exception) {
             $this->logger->warning('sw6oidc: admin OIDC callback failed.', [
                 'exception' => $exception->getMessage(),
                 'reason' => $exception->reason,
                 'providerId' => $result->provider->getId(),
-                'groups' => $result->profile->groups,
             ]);
 
             return new RedirectResponse($this->administrationLoginUrl([
@@ -260,6 +288,49 @@ class OidcAdminAuthController extends AbstractController
 
             return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_error' => 'oidc_failed']));
         }
+    }
+
+    /**
+     * Starts "Connect SSO" for the logged-in admin: returns the IdP authorize
+     * URL of an OIDC round trip whose callback binds the IdP identity to
+     * exactly this user. Requires a freshly re-authenticated (`user-verified`)
+     * token — otherwise a hijacked session could attach the attacker's own
+     * IdP account as a permanent way in.
+     */
+    #[Route(
+        path: '/api/sw6oidc/admin/link/start',
+        name: 'api.action.sw6oidc.admin.link-start',
+        defaults: ['auth_required' => true],
+        methods: ['POST'],
+    )]
+    public function startLink(Request $request, Context $context): JsonResponse
+    {
+        $source = $context->getSource();
+
+        if (!$source instanceof AdminApiSource || $source->getUserId() === null) {
+            return $this->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        if (!UserVerifiedScope::isPresent($request)) {
+            return $this->json(['error' => 'user_verification_required'], Response::HTTP_FORBIDDEN);
+        }
+
+        try {
+            $provider = $this->providerResolver->getActiveById((string) $request->request->get('providerId'), 'admin', $context);
+        } catch (ProviderNotFoundException) {
+            return $this->json(['error' => 'provider_unavailable'], Response::HTTP_NOT_FOUND);
+        }
+
+        $redirectUri = $this->generateUrl('api.action.sw6oidc.admin.callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
+
+        return $this->json(['authorizeUrl' => $this->requestBuilder->build(
+            $provider,
+            'admin',
+            '',
+            $redirectUri,
+            AuthorizationFlowContext::PURPOSE_LINK,
+            $source->getUserId(),
+        )]);
     }
 
     /**
@@ -451,7 +522,7 @@ class OidcAdminAuthController extends AbstractController
         }
 
         try {
-            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, $context);
+            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, 'admin', $context);
         } catch (ProviderNotFoundException $exception) {
             $this->logger->warning('sw6oidc: admin RP-initiated logout skipped, provider no longer active.', [
                 'providerId' => $logoutContext->providerId,
@@ -563,5 +634,20 @@ class OidcAdminAuthController extends AbstractController
     private function administrationLoginUrl(array $query): string
     {
         return rtrim($this->administrationBaseUrl, '/') . '/#/login?' . http_build_query($query);
+    }
+
+    /**
+     * "Connect SSO" round trip: bind the IdP identity to the admin who started
+     * it (authenticated and user-verified at link/start), then return to the
+     * profile page. The only way an existing superadmin gets bound.
+     */
+    private function completeLink(OidcCallbackResult $result, Context $context): RedirectResponse
+    {
+        $userId = $result->flow->expectedUserId;
+        \assert($userId !== null);
+
+        $this->identityResolver->linkExplicitly(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $userId, $result->identity(), $context);
+
+        return new RedirectResponse(rtrim($this->administrationBaseUrl, '/') . '/#/sw/profile/index/general?sw6oidc_linked=1');
     }
 }

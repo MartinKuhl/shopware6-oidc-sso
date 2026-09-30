@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\AdminAuth;
 
+use Doctrine\DBAL\Connection;
 use League\OAuth2\Server\Entities\UserEntityInterface;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use League\OAuth2\Server\Grant\AbstractGrant;
@@ -13,6 +14,7 @@ use League\OAuth2\Server\ResponseTypes\ResponseTypeInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Shopware\Core\Framework\Api\OAuth\ScopeRepository;
 use Shopware\Core\Framework\Api\OAuth\User\User as ShopwareOAuthUser;
+use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
  * A custom `league/oauth2-server` grant that trusts a pre-verified Shopware
@@ -34,8 +36,10 @@ class AdminOidcGrant extends AbstractGrant
     public const GRANT_IDENTIFIER = 'sw6oidc_admin';
     public const REQUEST_ATTRIBUTE_USER_ID = 'sw6oidc_user_id';
 
-    public function __construct(RefreshTokenRepositoryInterface $refreshTokenRepository)
-    {
+    public function __construct(
+        RefreshTokenRepositoryInterface $refreshTokenRepository,
+        private readonly Connection $connection,
+    ) {
         // AuthorizationServer::enableGrantType() never sets this - League
         // only wires up client/access-token/scope repositories, default
         // scope, private key and the emitter there. Every stock grant that
@@ -88,12 +92,26 @@ class AdminOidcGrant extends AbstractGrant
         return self::GRANT_IDENTIFIER;
     }
 
+    /**
+     * The caller verified *who* the user is (OIDC or WebAuthn); whether that
+     * account may still log in is decided here, for every caller at once —
+     * exactly like core's password grant refuses deleted and inactive users.
+     */
     private function validateUser(ServerRequestInterface $request): UserEntityInterface
     {
         $userId = $request->getAttribute(self::REQUEST_ATTRIBUTE_USER_ID);
 
-        if (!\is_string($userId) || $userId === '') {
+        if (!\is_string($userId) || !Uuid::isValid($userId)) {
             throw OAuthServerException::invalidRequest(self::REQUEST_ATTRIBUTE_USER_ID);
+        }
+
+        $active = $this->connection->fetchOne(
+            'SELECT `active` FROM `user` WHERE `id` = :id',
+            ['id' => Uuid::fromHexToBytes($userId)],
+        );
+
+        if ($active === false || !(bool) $active) {
+            throw OAuthServerException::invalidGrant('The user does not exist or is inactive.');
         }
 
         return new ShopwareOAuthUser($userId);

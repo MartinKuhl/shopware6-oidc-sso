@@ -14,7 +14,6 @@ use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Uuid\Uuid;
-use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextService;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextServiceParameters;
@@ -137,7 +136,7 @@ class PasskeyController extends StorefrontController
                 throw new \RuntimeException('The customer for this passkey no longer exists.');
             }
 
-            $tokenResponse = $this->loginRoute->login(new RequestDataBag(['email' => $customer->getEmail()]), $context);
+            $tokenResponse = $this->loginRoute->loginByCustomerId($customer->getId(), $context);
 
             $newContext = $this->salesChannelContextService->get(new SalesChannelContextServiceParameters(
                 $context->getSalesChannelId(),

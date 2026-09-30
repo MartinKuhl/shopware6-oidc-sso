@@ -4,16 +4,24 @@ namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
+use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
+use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackResult;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AccountLinkingRequiredException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\EmailNotVerifiedException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
+use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
 use Psr\Log\LoggerInterface;
-use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextService;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextServiceParameters;
@@ -46,6 +54,7 @@ class OidcCallbackController extends StorefrontController
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
         private readonly Sw6OidcRateLimiter $rateLimiter,
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
+        private readonly IdentityResolver $identityResolver,
     ) {
     }
 
@@ -82,12 +91,21 @@ class OidcCallbackController extends StorefrontController
                 $request->query->get('code'),
                 $request->query->get('state'),
                 $redirectUri,
+                Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER,
                 $context->getContext(),
             );
 
-            $customer = $this->customerProvisioningService->findOrCreateCustomer($result->provider, $result->profile, $context);
+            if ($result->flow->purpose === AuthorizationFlowContext::PURPOSE_LINK) {
+                return $this->completeLink($result, $context);
+            }
 
-            $tokenResponse = $this->loginRoute->login(new RequestDataBag(['email' => $customer->getEmail()]), $context);
+            if ($result->flow->purpose !== AuthorizationFlowContext::PURPOSE_LOGIN) {
+                throw new InvalidStateException(sprintf('Unsupported flow purpose "%s" on the customer callback.', $result->flow->purpose));
+            }
+
+            $customer = $this->customerProvisioningService->findOrCreateCustomer($result->provider, $result->profile, $result->identity(), $context);
+
+            $tokenResponse = $this->loginRoute->loginByCustomerId($customer->getId(), $context);
 
             $newContext = $this->salesChannelContextService->get(new SalesChannelContextServiceParameters(
                 $context->getSalesChannelId(),
@@ -141,6 +159,20 @@ class OidcCallbackController extends StorefrontController
             $this->addFlash(self::DANGER, $exception->getDisplayMessage() ?? $this->trans('sw6oidc.login.accessDenied'));
 
             return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
+        } catch (AccountLinkingRequiredException | EmailNotVerifiedException | ProviderMismatchException | SubjectAlreadyLinkedException $exception) {
+            // A legitimate user hitting an account policy — not a failure that counts towards the rate limit.
+            $this->logger->notice('sw6oidc: customer OIDC login refused by the account policy.', [
+                'exceptionClass' => $exception::class,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            $this->addFlash(self::DANGER, $this->trans(match (true) {
+                $exception instanceof AccountLinkingRequiredException => 'sw6oidc.login.linkRequired',
+                $exception instanceof EmailNotVerifiedException => 'sw6oidc.login.emailNotVerified',
+                default => 'sw6oidc.login.providerMismatch',
+            }));
+
+            return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
         } catch (\Throwable $exception) {
             $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp());
             $this->logger->warning('sw6oidc: customer OIDC callback failed.', [
@@ -153,6 +185,25 @@ class OidcCallbackController extends StorefrontController
 
             return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
         }
+    }
+
+    /**
+     * "Connect SSO" round trip: bind the IdP identity to the customer who
+     * started it — and only if that customer is still the one logged in.
+     */
+    private function completeLink(OidcCallbackResult $result, SalesChannelContext $context): Response
+    {
+        $customer = $context->getCustomer();
+
+        if (!$customer instanceof \Shopware\Core\Checkout\Customer\CustomerEntity || $customer->getId() !== $result->flow->expectedUserId) {
+            throw new InvalidStateException('The "Connect SSO" flow was started by a different customer session.');
+        }
+
+        $this->identityResolver->linkExplicitly(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $customer->getId(), $result->identity(), $context->getContext());
+
+        $this->addFlash(self::SUCCESS, $this->trans('sw6oidc.account.linkSuccess'));
+
+        return new RedirectResponse($this->generateUrl('frontend.account.profile.page'));
     }
 
     /**

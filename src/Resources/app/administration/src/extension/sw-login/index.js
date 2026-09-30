@@ -40,6 +40,9 @@ const FALLBACK_LOCALE_DICTIONARY = {
         'sw6oidc.login.errorAutoCreateDisabled': 'Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.',
         'sw6oidc.login.passwordLoginDisabled': 'Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.',
         'sw6oidc.login.errorAccessDenied': 'Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung an der Administration.',
+        'sw6oidc.login.errorLinkRequired': 'Es gibt bereits ein Konto mit dieser E-Mail-Adresse. Bitte melden Sie sich mit Ihrem Passwort an und verbinden Sie Single Sign-on in Ihrem Profil.',
+        'sw6oidc.login.errorEmailNotVerified': 'Ihr Identitätsanbieter hat Ihre E-Mail-Adresse nicht bestätigt.',
+        'sw6oidc.login.errorProviderMismatch': 'Dieses Konto ist mit einer anderen Single-Sign-on-Identität verbunden.',
     },
 };
 
@@ -94,6 +97,18 @@ Component.override('sw-login-login', {
                 admin_auto_create_disabled: [
                     'sw6oidc.login.errorAutoCreateDisabled',
                     'Automatic account creation is disabled for this login method. Please contact your administrator.',
+                ],
+                link_required: [
+                    'sw6oidc.login.errorLinkRequired',
+                    'An account with this email address already exists. Log in with your password and connect single sign-on in your profile.',
+                ],
+                email_not_verified: [
+                    'sw6oidc.login.errorEmailNotVerified',
+                    'Your identity provider has not verified your email address.',
+                ],
+                provider_mismatch: [
+                    'sw6oidc.login.errorProviderMismatch',
+                    'This account is connected to a different single sign-on identity.',
                 ],
             };
 

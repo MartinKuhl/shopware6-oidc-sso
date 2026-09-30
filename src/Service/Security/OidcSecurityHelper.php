@@ -31,12 +31,24 @@ class OidcSecurityHelper
         string $loginType,
         string $relayState,
         string $codeChallengeMethod,
+        string $purpose = AuthorizationFlowContext::PURPOSE_LOGIN,
+        ?string $expectedUserId = null,
     ): array {
         $state = $this->randomUrlSafeString(32);
         $codeVerifier = $this->randomUrlSafeString(64);
         $nonce = $this->randomUrlSafeString(32);
 
-        $context = new AuthorizationFlowContext($providerId, $loginType, $relayState, $codeVerifier, $codeChallengeMethod, $nonce);
+        $context = new AuthorizationFlowContext(
+            $providerId,
+            $loginType,
+            $relayState,
+            $codeVerifier,
+            $codeChallengeMethod,
+            $nonce,
+            $purpose,
+            $expectedUserId,
+            time(),
+        );
 
         $this->cache->save(
             self::FLOW_CACHE_PREFIX . $state,
@@ -73,6 +85,10 @@ class OidcSecurityHelper
             $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $exception) {
             throw new InvalidStateException('Stored OAuth state is corrupted.', 0, $exception);
+        }
+
+        if (!\is_array($data)) {
+            throw new InvalidStateException('Stored OAuth state is corrupted.');
         }
 
         return AuthorizationFlowContext::fromArray($data);

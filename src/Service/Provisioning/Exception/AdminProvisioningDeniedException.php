@@ -6,6 +6,7 @@ class AdminProvisioningDeniedException extends \RuntimeException
 {
     public const REASON_AUTO_CREATE_DISABLED = 'auto_create_disabled';
     public const REASON_NO_ROLE = 'no_role';
+    public const REASON_ACCOUNT_MISSING = 'account_missing';
 
     private function __construct(string $message, public readonly string $reason)
     {
@@ -26,5 +27,10 @@ class AdminProvisioningDeniedException extends \RuntimeException
             "No admin role mapping (or default role) matched this user's OIDC groups; refusing to create an admin without a role.",
             self::REASON_NO_ROLE,
         );
+    }
+
+    public static function accountMissing(): self
+    {
+        return new self('The account bound to this identity no longer exists.', self::REASON_ACCOUNT_MISSING);
     }
 }

@@ -57,6 +57,8 @@ class Sw6OidcProviderEntity extends Entity
      * via OIDC group membership always requires two deliberate steps.
      */
     protected bool $allowSuperadminGroupMapping = false;
+    protected bool $requireEmailVerified = true;
+    protected bool $linkExistingAccounts = false;
     protected int $httpTimeout = 30;
     protected int $jwksCacheTtl = 86400;
     /** 'pass'|'fail'|'warning'|null (never tested) — set only by the live login test */
@@ -612,5 +614,25 @@ class Sw6OidcProviderEntity extends Entity
     public function setDefaultAclRole(?AclRoleEntity $defaultAclRole): void
     {
         $this->defaultAclRole = $defaultAclRole;
+    }
+
+    public function isRequireEmailVerified(): bool
+    {
+        return $this->requireEmailVerified;
+    }
+
+    public function setRequireEmailVerified(bool $requireEmailVerified): void
+    {
+        $this->requireEmailVerified = $requireEmailVerified;
+    }
+
+    public function isLinkExistingAccounts(): bool
+    {
+        return $this->linkExistingAccounts;
+    }
+
+    public function setLinkExistingAccounts(bool $linkExistingAccounts): void
+    {
+        $this->linkExistingAccounts = $linkExistingAccounts;
     }
 }

@@ -6,7 +6,10 @@
             "providerUnavailable": "Single Sign-on ist derzeit nicht verfuegbar. Bitte melden Sie sich mit E-Mail und Passwort an.",
             "failed": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit E-Mail und Passwort an.",
             "passwordLoginDisabled": "Die Anmeldung mit Passwort ist für diesen Shop deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.",
-            "accessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung in diesem Shop."
+            "accessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung in diesem Shop.",
+            "linkRequired": "Es gibt bereits ein Konto mit dieser E-Mail-Adresse. Bitte melden Sie sich mit Ihrem Passwort an und verbinden Sie Single Sign-on in Ihren Kontoeinstellungen.",
+            "emailNotVerified": "Ihr Identitätsanbieter hat Ihre E-Mail-Adresse nicht bestätigt. Bitte bestätigen Sie sie dort und versuchen Sie es erneut.",
+            "providerMismatch": "Dieses Konto ist mit einer anderen Single-Sign-on-Identität verbunden."
         },
         "passkey": {
             "button": "Login mit Passkey",
@@ -24,6 +27,13 @@
             "noSupport": "Dieser Browser unterstützt keine Passkeys (WebAuthn).",
             "nicknamePrompt": "Bezeichnung für diesen Passkey (optional)",
             "registerError": "Der Passkey konnte nicht registriert werden. Bitte versuchen Sie es erneut."
+        },
+        "account": {
+            "ssoTitle": "Single Sign-on",
+            "ssoIntro": "Verbinden Sie Ihr Konto mit einem Single-Sign-on-Anbieter, um sich ohne Passwort anzumelden.",
+            "ssoConnect": "Mit %name% verbinden",
+            "ssoConnected": "Ihr Konto ist mit %name% verbunden.",
+            "linkSuccess": "Single Sign-on wurde mit Ihrem Konto verbunden."
         }
     }
 }

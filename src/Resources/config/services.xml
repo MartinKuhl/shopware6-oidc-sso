@@ -164,6 +164,11 @@
             <argument type="service" id="sw6oidc_user_provider.repository" />
         </service>
 
+        <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\GroupMappingResolver">
             <argument type="service" id="sw6oidc_role_mapping.repository" />
         </service>
@@ -194,6 +199,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\CountryResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\GroupMappingResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
             <argument type="service" id="Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="event_dispatcher" />
@@ -205,6 +211,7 @@
             <argument type="service" id="media.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\GroupMappingResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
             <argument type="service" id="Shopware\Core\Content\Media\MediaService" />
             <argument type="service" id="Shopware\Core\Content\Media\File\FileFetcher" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\TimeZoneValidator" />
@@ -269,6 +276,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -415,6 +423,7 @@
         -->
         <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant">
             <argument type="service" id="Shopware\Core\Framework\Api\OAuth\RefreshTokenRepository" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminAuthorizationServerFactory">
@@ -497,6 +506,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -608,6 +618,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="Symfony\Contracts\Translation\TranslatorInterface" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <tag name="twig.extension" />
         </service>
 

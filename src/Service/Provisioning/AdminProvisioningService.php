@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Event\AdminAfterCreateEvent;
@@ -34,6 +35,7 @@ class AdminProvisioningService
         private readonly EntityRepository $mediaRepository,
         private readonly GroupMappingResolver $groupMappingResolver,
         private readonly UserProviderBindingService $bindingService,
+        private readonly IdentityResolver $identityResolver,
         private readonly MediaService $mediaService,
         private readonly FileFetcher $fileFetcher,
         private readonly TimeZoneValidator $timeZoneValidator,
@@ -44,24 +46,31 @@ class AdminProvisioningService
 
     /**
      * @throws AdminProvisioningDeniedException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AccountLinkingRequiredException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\EmailNotVerifiedException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException
      */
-    public function findOrCreateAdmin(Sw6OidcProviderEntity $provider, MappedProfile $profile, Context $context): UserEntity
+    public function findOrCreateAdmin(Sw6OidcProviderEntity $provider, MappedProfile $profile, ExternalIdentity $identity, Context $context): UserEntity
     {
-        $existing = $this->findByEmail($profile->email, $context);
+        $emailMatch = $this->findByEmail($profile->email, $context);
 
-        if ($existing instanceof \Shopware\Core\System\User\UserEntity) {
-            $this->bindingService->assertNotBoundToDifferentProvider(
-                Sw6OidcUserProviderEntity::USER_TYPE_ADMIN,
-                $existing->getId(),
-                $provider->getId(),
-                $context,
-            );
-            $this->bindingService->bindIfUnbound(
-                Sw6OidcUserProviderEntity::USER_TYPE_ADMIN,
-                $existing->getId(),
-                $provider->getId(),
-                $context,
-            );
+        $userId = $this->identityResolver->resolve(
+            Sw6OidcUserProviderEntity::USER_TYPE_ADMIN,
+            $provider,
+            $identity,
+            $emailMatch?->getId(),
+            $emailMatch?->isAdmin() ?? false,
+            $context,
+        );
+
+        if ($userId !== null) {
+            $existing = $emailMatch instanceof \Shopware\Core\System\User\UserEntity && $emailMatch->getId() === $userId
+                ? $emailMatch
+                : $this->userRepository->search(new Criteria([$userId]), $context)->first();
+
+            if (!$existing instanceof UserEntity) {
+                throw AdminProvisioningDeniedException::accountMissing();
+            }
 
             if ($provider->isSyncAdminRoleOnSso()) {
                 $this->syncRole($provider, $existing->getId(), $profile->groups, $context);
@@ -92,7 +101,7 @@ class AdminProvisioningService
         }
 
         $userId = $this->create($provider, $profile, $aclRoleId, $isSuperadmin, $context);
-        $this->bindingService->bindIfUnbound(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $userId, $provider->getId(), $context);
+        $this->bindingService->bind(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $userId, $identity, $context);
 
         $created = $this->userRepository->search(new Criteria([$userId]), $context)->first();
         \assert($created instanceof UserEntity);
@@ -139,9 +148,9 @@ class AdminProvisioningService
 
         $event = new AdminBeforeCreateEvent($provider, $profile, $payload, $context);
         $this->eventDispatcher->dispatch($event);
-        $payload = [...$event->getPayload(), 'id' => $userId];
+        $payload = $this->recheckListenerPayload($provider, $payload, [...$event->getPayload(), 'id' => $userId]);
 
-        $this->userRepository->create([$payload], $context);
+        $this->createWithUniqueUsername($payload, $profile, $context);
 
         if ($profile->picture !== null) {
             $avatarId = $this->syncAvatar($userId, $profile->picture, null, $context);
@@ -158,6 +167,66 @@ class AdminProvisioningService
         ]);
 
         return $userId;
+    }
+
+    /**
+     * AdminBeforeCreateEvent listeners are trusted code, but an escalation
+     * they cause must never be silent: log a superadmin grant or role change
+     * the provider's own mapping did not decide, and never let the email
+     * drift from the verified claim.
+     *
+     * @param array<string, mixed> $original
+     * @param array<string, mixed> $changed
+     *
+     * @return array<string, mixed>
+     */
+    private function recheckListenerPayload(Sw6OidcProviderEntity $provider, array $original, array $changed): array
+    {
+        if (($changed['email'] ?? null) !== $original['email']) {
+            $this->logger->warning('sw6oidc: AdminBeforeCreateEvent listener changed the email; the verified claim is kept.', [
+                'providerId' => $provider->getId(),
+            ]);
+            $changed['email'] = $original['email'];
+        }
+
+        if ((bool) ($changed['admin'] ?? false) && !(bool) $original['admin']) {
+            $this->logger->warning('sw6oidc: AdminBeforeCreateEvent listener granted superadmin outside the provider group mapping.', [
+                'providerId' => $provider->getId(),
+                'userId' => $original['id'],
+            ]);
+        }
+
+        if (($changed['aclRoles'] ?? null) != $original['aclRoles']) {
+            $this->logger->warning('sw6oidc: AdminBeforeCreateEvent listener changed the ACL roles.', [
+                'providerId' => $provider->getId(),
+                'userId' => $original['id'],
+            ]);
+        }
+
+        return $changed;
+    }
+
+    /**
+     * The username is unique; two concurrent first logins can derive the same
+     * one. Retry with a fresh suffix instead of failing the login.
+     *
+     * @param array<string, mixed> $payload
+     */
+    private function createWithUniqueUsername(array $payload, MappedProfile $profile, Context $context): void
+    {
+        for ($attempt = 0;; ++$attempt) {
+            try {
+                $this->userRepository->create([$payload], $context);
+
+                return;
+            } catch (UniqueConstraintViolationException $exception) {
+                if ($attempt >= 2) {
+                    throw $exception;
+                }
+
+                $payload['username'] = $this->resolveUniqueUsername($profile, $context) . '-' . bin2hex(random_bytes(2));
+            }
+        }
     }
 
     /**

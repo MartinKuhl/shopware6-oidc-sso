@@ -17,6 +17,8 @@ class Sw6OidcUserProviderEntity extends Entity
     protected string $userType;
     protected string $userId;
     protected string $providerId;
+    protected ?string $issuer = null;
+    protected ?string $sub = null;
 
     protected ?Sw6OidcProviderEntity $provider = null;
 
@@ -58,5 +60,25 @@ class Sw6OidcUserProviderEntity extends Entity
     public function setProvider(?Sw6OidcProviderEntity $provider): void
     {
         $this->provider = $provider;
+    }
+
+    public function getIssuer(): ?string
+    {
+        return $this->issuer;
+    }
+
+    public function setIssuer(?string $issuer): void
+    {
+        $this->issuer = $issuer;
+    }
+
+    public function getSub(): ?string
+    {
+        return $this->sub;
+    }
+
+    public function setSub(?string $sub): void
+    {
+        $this->sub = $sub;
     }
 }

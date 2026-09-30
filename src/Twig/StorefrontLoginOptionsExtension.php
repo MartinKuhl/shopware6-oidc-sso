@@ -6,6 +6,7 @@ use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Symfony\Contracts\Translation\TranslatorInterface;
@@ -31,6 +32,7 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
         private readonly PasskeyCredentialRepository $passkeyCredentialRepository,
         private readonly TranslatorInterface $translator,
         private readonly PasswordLoginPolicy $passwordLoginPolicy,
+        private readonly UserProviderBindingService $bindingService,
     ) {
     }
 
@@ -40,6 +42,7 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
             new TwigFunction('sw6oidc_storefront_sso_providers', $this->getSsoProviders(...)),
             new TwigFunction('sw6oidc_storefront_passkey_available', $this->isPasskeyAvailable(...)),
             new TwigFunction('sw6oidc_storefront_password_login_disabled', $this->isPasswordLoginDisabled(...)),
+            new TwigFunction('sw6oidc_storefront_account_sso', $this->getAccountSso(...)),
         ];
     }
 
@@ -74,5 +77,48 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
     public function isPasswordLoginDisabled(SalesChannelContext $context): bool
     {
         return $this->passwordLoginPolicy->isPasswordLoginDisabled('customer', $context->getContext());
+    }
+
+    /**
+     * The account page's "Single sign-on" card: whether the logged-in
+     * customer is connected to a provider, else which providers they can
+     * connect explicitly ("Connect SSO").
+     *
+     * @return array{bound: bool, boundLabel: string|null, providers: list<array{id: string, label: string}>}
+     */
+    public function getAccountSso(SalesChannelContext $context): array
+    {
+        $customer = $context->getCustomer();
+
+        if (!$customer instanceof \Shopware\Core\Checkout\Customer\CustomerEntity || $customer->getGuest()) {
+            return ['bound' => false, 'boundLabel' => null, 'providers' => []];
+        }
+
+        $providers = $this->providerResolver->getVisibleProviders('customer', $context->getContext());
+        $boundProviderId = $this->bindingService->getBoundProviderId('customer', $customer->getId(), $context->getContext());
+
+        if ($boundProviderId !== null) {
+            $label = null;
+
+            foreach ($providers as $provider) {
+                if ($provider->getId() === $boundProviderId) {
+                    $label = $provider->getDisplayName() ?: $provider->getAppName();
+                }
+            }
+
+            return ['bound' => true, 'boundLabel' => $label ?? $this->translator->trans('sw6oidc.login.button'), 'providers' => []];
+        }
+
+        return [
+            'bound' => false,
+            'boundLabel' => null,
+            'providers' => array_values(array_map(
+                static fn (Sw6OidcProviderEntity $provider): array => [
+                    'id' => $provider->getId(),
+                    'label' => $provider->getDisplayName() ?: $provider->getAppName(),
+                ],
+                $providers,
+            )),
+        ];
     }
 }

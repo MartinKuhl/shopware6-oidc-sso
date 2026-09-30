@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
+use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Controller\StorefrontController;
@@ -40,7 +41,7 @@ class SendAuthorizationRequestController extends StorefrontController
 
         try {
             $provider = $providerId !== null
-                ? $this->providerResolver->getActiveById((string) $providerId, $context->getContext())
+                ? $this->providerResolver->getActiveById((string) $providerId, 'customer', $context->getContext())
                 : $this->providerResolver->resolveDefault('customer', $context->getContext());
         } catch (ProviderNotFoundException $exception) {
             $this->logger->warning('sw6oidc: SSO login requested but no active provider is configured.', [
@@ -56,5 +57,42 @@ class SendAuthorizationRequestController extends StorefrontController
         $authorizeUrl = $this->requestBuilder->build($provider, 'customer', $relayState, $redirectUri);
 
         return new RedirectResponse($authorizeUrl);
+    }
+
+    /**
+     * "Connect SSO" from the logged-in account: an OIDC round trip whose
+     * callback binds the IdP identity to exactly this customer (see
+     * OidcCallbackController::completeLink()). The only way to connect an
+     * existing account when the provider doesn't link by email.
+     */
+    #[Route(
+        path: '/sw6oidc/link',
+        name: 'frontend.sw6oidc.link',
+        defaults: ['_loginRequired' => true],
+        methods: ['POST'],
+    )]
+    public function link(Request $request, SalesChannelContext $context): RedirectResponse
+    {
+        $customer = $context->getCustomer();
+        \assert($customer instanceof \Shopware\Core\Checkout\Customer\CustomerEntity);
+
+        try {
+            $provider = $this->providerResolver->getActiveById((string) $request->request->get('providerId'), 'customer', $context->getContext());
+        } catch (ProviderNotFoundException) {
+            $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.providerUnavailable'));
+
+            return new RedirectResponse($this->generateUrl('frontend.account.profile.page'));
+        }
+
+        $redirectUri = $this->generateUrl('frontend.sw6oidc.callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
+
+        return new RedirectResponse($this->requestBuilder->build(
+            $provider,
+            'customer',
+            '',
+            $redirectUri,
+            AuthorizationFlowContext::PURPOSE_LINK,
+            $customer->getId(),
+        ));
     }
 }

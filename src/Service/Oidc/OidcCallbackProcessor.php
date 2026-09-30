@@ -41,31 +41,29 @@ class OidcCallbackProcessor
      * @throws \MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException
      * @throws \MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException
      */
-    public function process(?string $code, ?string $state, string $redirectUri, Context $context): OidcCallbackResult
+    /**
+     * @param string $expectedLoginType the login type of the callback endpoint ('customer' or 'admin');
+     *                                  a flow started for the other one is rejected
+     */
+    public function process(?string $code, ?string $state, string $redirectUri, string $expectedLoginType, Context $context): OidcCallbackResult
     {
-        // Temporary diagnostic aid: confirms the callback route was actually
-        // reached at all - if a login attempt produces no log lines
-        // whatsoever, this one is missing too, which points at the IdP
-        // never redirecting back here (wrong redirect_uri, rejected client,
-        // etc.) rather than anything failing inside this plugin.
-        $this->logger->debug('sw6oidc: OIDC callback received.', [
-            'hasCode' => $code !== null && $code !== '',
-            'hasState' => $state !== null && $state !== '',
-            'redirectUri' => $redirectUri,
-        ]);
-
         $flow = $this->securityHelper->consumeAuthorizationFlow($state);
 
-        $this->logger->debug('sw6oidc: authorization flow state consumed.', [
-            'providerId' => $flow->providerId,
-            'loginType' => $flow->loginType,
-        ]);
+        if ($flow->loginType !== $expectedLoginType) {
+            throw new InvalidStateException(sprintf(
+                'OAuth state was issued for a "%s" login, not "%s".',
+                $flow->loginType,
+                $expectedLoginType,
+            ));
+        }
 
         if ($code === null || $code === '') {
             throw new InvalidStateException('Callback is missing the "code" parameter.');
         }
 
-        $provider = $this->providerResolver->getActiveById($flow->providerId, $context);
+        // Re-checked here, not only at flow start: the provider may have been
+        // deactivated or re-scoped while the user was at the IdP.
+        $provider = $this->providerResolver->getActiveById($flow->providerId, $flow->loginType, $context);
 
         $tokens = $this->tokenExchangeService->exchangeCodeForTokens($provider, $code, $redirectUri, $flow->codeVerifier);
 
@@ -90,19 +88,23 @@ class OidcCallbackProcessor
                 $provider->getJwksCacheTtl(),
                 $provider->getHttpTimeout(),
             );
+        } elseif ($this->requestsOpenIdScope($provider->getScope())) {
+            // OIDC Core §3.1.3.3: an openid request always yields an id_token.
+            // Its absence means the only signed statement about the user is
+            // missing, so userinfo alone is not trusted.
+            throw new InvalidStateException('Token response did not include the id_token required for the "openid" scope.');
         } else {
-            $this->logger->warning('sw6oidc: token response did not include an id_token; relying on userinfo alone.', [
+            $this->logger->warning('sw6oidc: provider does not request the "openid" scope; relying on userinfo alone.', [
                 'providerId' => $provider->getId(),
             ]);
         }
 
-        $this->logger->debug('sw6oidc: id_token verified (or skipped, see above).', [
-            'providerId' => $provider->getId(),
-            'idTokenClaimKeys' => array_keys($idTokenClaims),
-        ]);
-
         $userInfoClaims = $this->userInfoService->fetchClaims($provider, $tokens['access_token']);
-        $mergedClaims = array_merge($idTokenClaims, $userInfoClaims);
+        $mergedClaims = $this->mergeClaims($idTokenClaims, $userInfoClaims);
+
+        if (!\is_string($mergedClaims['sub'] ?? null) || $mergedClaims['sub'] === '') {
+            throw new InvalidStateException('The identity provider did not return a subject ("sub") claim.');
+        }
 
         $this->logger->debug('sw6oidc: userinfo fetched and merged with id_token claims.', [
             'providerId' => $provider->getId(),
@@ -125,10 +127,44 @@ class OidcCallbackProcessor
 
         $this->logger->debug('sw6oidc: claims mapped to profile.', [
             'providerId' => $provider->getId(),
-            'email' => $profile->email,
-            'groups' => $groups,
+            'groupCount' => \count($groups),
         ]);
 
         return new OidcCallbackResult($provider, $flow, $profile, $tokens, $idTokenClaims, $mergedClaims);
+    }
+
+    private function requestsOpenIdScope(string $scope): bool
+    {
+        return \in_array('openid', preg_split('/\s+/', trim($scope)) ?: [], true);
+    }
+
+    /**
+     * Userinfo usually carries more claims and wins in general, but the
+     * identity-defining claims come from the signed id_token (OIDC Core
+     * §5.3.2): userinfo must describe the same subject, and `sub`, `email`
+     * and `email_verified` are never taken from it when the id_token has them.
+     *
+     * @param array<string, mixed> $idTokenClaims
+     * @param array<string, mixed> $userInfoClaims
+     *
+     * @return array<string, mixed>
+     */
+    private function mergeClaims(array $idTokenClaims, array $userInfoClaims): array
+    {
+        $idTokenSub = $idTokenClaims['sub'] ?? null;
+
+        if ($idTokenClaims !== [] && $userInfoClaims !== [] && ($userInfoClaims['sub'] ?? null) !== $idTokenSub) {
+            throw new InvalidStateException('The userinfo response describes a different subject than the id_token.');
+        }
+
+        $merged = array_merge($idTokenClaims, $userInfoClaims);
+
+        foreach (['sub', 'email', 'email_verified'] as $claim) {
+            if (\array_key_exists($claim, $idTokenClaims)) {
+                $merged[$claim] = $idTokenClaims[$claim];
+            }
+        }
+
+        return $merged;
     }
 }

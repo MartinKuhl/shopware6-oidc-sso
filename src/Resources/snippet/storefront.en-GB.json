@@ -6,7 +6,10 @@
             "providerUnavailable": "Single sign-on is currently unavailable. Please log in with your email and password.",
             "failed": "Single sign-on login failed. Please try again or log in with your email and password.",
             "passwordLoginDisabled": "Password login is disabled for this shop. Please sign in with single sign-on or a passkey.",
-            "accessDenied": "Access denied: your account does not meet the requirements for signing in to this shop."
+            "accessDenied": "Access denied: your account does not meet the requirements for signing in to this shop.",
+            "linkRequired": "An account with this email address already exists. Log in with your password and connect single sign-on in your account settings.",
+            "emailNotVerified": "Your identity provider has not verified your email address. Please verify it there and try again.",
+            "providerMismatch": "This account is connected to a different single sign-on identity."
         },
         "passkey": {
             "button": "Login with Passkey",
@@ -24,6 +27,13 @@
             "noSupport": "This browser does not support passkeys (WebAuthn).",
             "nicknamePrompt": "Nickname for this passkey (optional)",
             "registerError": "The passkey could not be registered. Please try again."
+        },
+        "account": {
+            "ssoTitle": "Single sign-on",
+            "ssoIntro": "Connect your account to a single sign-on provider to log in without a password.",
+            "ssoConnect": "Connect %name%",
+            "ssoConnected": "Your account is connected to %name%.",
+            "linkSuccess": "Single sign-on has been connected to your account."
         }
     }
 }

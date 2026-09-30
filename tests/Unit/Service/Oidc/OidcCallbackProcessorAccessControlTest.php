@@ -57,7 +57,8 @@ final class OidcCallbackProcessorAccessControlTest extends TestCase
     private function process(AttributeMapper $mapper, Sw6OidcAccessControlRuleEntity $rule, array $userInfoClaims): \MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackResult
     {
         $provider = new Sw6OidcProviderEntity();
-        $provider->assign(['id' => 'provider-1', 'groupAttribute' => 'groups', 'claimEncoding' => 'none']);
+        // Without the openid scope the flow may rely on userinfo alone.
+        $provider->assign(['id' => 'provider-1', 'groupAttribute' => 'groups', 'claimEncoding' => 'none', 'scope' => 'email profile']);
 
         $resolver = $this->createStub(ProviderResolver::class);
         $resolver->method('getActiveById')->willReturn($provider);
@@ -66,7 +67,7 @@ final class OidcCallbackProcessorAccessControlTest extends TestCase
         $tokens->method('exchangeCodeForTokens')->willReturn(['access_token' => 'at']);
 
         $userInfo = $this->createStub(UserInfoService::class);
-        $userInfo->method('fetchClaims')->willReturn($userInfoClaims);
+        $userInfo->method('fetchClaims')->willReturn(['sub' => 'subject-1', ...$userInfoClaims]);
 
         $rules = $this->createStub(EntityRepository::class);
         $rules->method('search')->willReturnCallback(static fn (Criteria $criteria, Context $context): EntitySearchResult => new EntitySearchResult(
@@ -93,7 +94,7 @@ final class OidcCallbackProcessorAccessControlTest extends TestCase
             new Sw6OidcAccessControlEvaluator($rules, new NullLogger()),
         );
 
-        return $processor->process('code', $state, 'https://shop.example/sw6oidc/callback', Context::createDefaultContext());
+        return $processor->process('code', $state, 'https://shop.example/sw6oidc/callback', 'customer', Context::createDefaultContext());
     }
 
     private function rule(string $claimKey, string $operator, string $value): Sw6OidcAccessControlRuleEntity

@@ -5,7 +5,10 @@ namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Provisioning;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\ExternalIdentity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -80,12 +83,12 @@ final class UserProviderBindingServiceTest extends TestCase
         $service = new UserProviderBindingService($this->repositoryReturning($this->binding($userId, Uuid::randomHex())));
 
         $this->expectException(ProviderMismatchException::class);
-        $this->expectExceptionMessage('This admin account was created with a different identity provider.');
+        $this->expectExceptionMessage('This admin account is bound to a different identity provider.');
 
         $service->assertNotBoundToDifferentProvider(self::USER_TYPE, $userId, Uuid::randomHex(), Context::createDefaultContext());
     }
 
-    public function testBindIfUnboundCreatesBindingWhenUnbound(): void
+    public function testBindCreatesSubjectBindingWhenUnbound(): void
     {
         $userId = Uuid::randomHex();
         $providerId = Uuid::randomHex();
@@ -103,6 +106,8 @@ final class UserProviderBindingServiceTest extends TestCase
                         'userType' => self::USER_TYPE,
                         'userId' => $userId,
                         'providerId' => $providerId,
+                        'issuer' => 'https://idp.example.com',
+                        'sub' => 'subject-1',
                     ], $payload[0]);
 
                     return true;
@@ -110,28 +115,68 @@ final class UserProviderBindingServiceTest extends TestCase
                 $context,
             );
 
-        (new UserProviderBindingService($repository))->bindIfUnbound(self::USER_TYPE, $userId, $providerId, $context);
+        (new UserProviderBindingService($repository))->bind(self::USER_TYPE, $userId, $this->identity($providerId), $context);
     }
 
-    public function testBindIfUnboundDoesNotWriteWhenAlreadyBoundToSameProvider(): void
+    public function testBindIsNoOpWhenTheSubjectIsAlreadyBoundToTheSameAccount(): void
     {
         $userId = Uuid::randomHex();
         $providerId = Uuid::randomHex();
 
-        $repository = $this->repositoryReturning($this->binding($userId, $providerId));
+        $repository = $this->repositoryReturning($this->binding($userId, $providerId, 'subject-1'));
         $repository->expects(self::never())->method('create');
 
-        (new UserProviderBindingService($repository))->bindIfUnbound(self::USER_TYPE, $userId, $providerId, Context::createDefaultContext());
+        (new UserProviderBindingService($repository))->bind(self::USER_TYPE, $userId, $this->identity($providerId), Context::createDefaultContext());
     }
 
-    public function testBindIfUnboundDoesNotOverwriteBindingToDifferentProvider(): void
+    public function testBindRefusesASubjectBoundToAnotherAccount(): void
     {
-        $userId = Uuid::randomHex();
+        $providerId = Uuid::randomHex();
 
-        $repository = $this->repositoryReturning($this->binding($userId, Uuid::randomHex()));
+        $repository = $this->repositoryReturning($this->binding(Uuid::randomHex(), $providerId, 'subject-1'));
         $repository->expects(self::never())->method('create');
 
-        (new UserProviderBindingService($repository))->bindIfUnbound(self::USER_TYPE, $userId, Uuid::randomHex(), Context::createDefaultContext());
+        $this->expectException(SubjectAlreadyLinkedException::class);
+
+        (new UserProviderBindingService($repository))->bind(self::USER_TYPE, Uuid::randomHex(), $this->identity($providerId), Context::createDefaultContext());
+    }
+
+    public function testConcurrentBindOfTheSameIdentityIsAccepted(): void
+    {
+        $userId = Uuid::randomHex();
+        $providerId = Uuid::randomHex();
+        $calls = 0;
+
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->method('search')->willReturnCallback(function (Criteria $criteria, Context $context) use (&$calls, $userId, $providerId): EntitySearchResult {
+            ++$calls;
+
+            // First lookup (by subject) sees nothing; the re-read after the lost race sees the winner.
+            return $this->searchResult($calls === 1 ? null : $this->binding($userId, $providerId, 'subject-1'), $criteria, $context);
+        });
+        $repository->method('create')->willThrowException($this->createStub(UniqueConstraintViolationException::class));
+
+        (new UserProviderBindingService($repository))->bind(self::USER_TYPE, $userId, $this->identity($providerId), Context::createDefaultContext());
+
+        self::assertSame(2, $calls);
+    }
+
+    public function testConcurrentBindOfADifferentIdentityIsRefused(): void
+    {
+        $userId = Uuid::randomHex();
+        $calls = 0;
+
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->method('search')->willReturnCallback(function (Criteria $criteria, Context $context) use (&$calls, $userId): EntitySearchResult {
+            ++$calls;
+
+            return $this->searchResult($calls === 1 ? null : $this->binding($userId, Uuid::randomHex(), 'other'), $criteria, $context);
+        });
+        $repository->method('create')->willThrowException($this->createStub(UniqueConstraintViolationException::class));
+
+        $this->expectException(ProviderMismatchException::class);
+
+        (new UserProviderBindingService($repository))->bind(self::USER_TYPE, $userId, $this->identity(Uuid::randomHex()), Context::createDefaultContext());
     }
 
     public function testUnbindDeletesAllBindingRowsForUser(): void
@@ -168,15 +213,21 @@ final class UserProviderBindingServiceTest extends TestCase
         (new UserProviderBindingService($repository))->unbind(self::USER_TYPE, Uuid::randomHex(), Context::createDefaultContext());
     }
 
-    private function binding(string $userId, string $providerId): Sw6OidcUserProviderEntity
+    private function binding(string $userId, string $providerId, ?string $sub = null): Sw6OidcUserProviderEntity
     {
         $entity = new Sw6OidcUserProviderEntity();
         $entity->setId(Uuid::randomHex());
         $entity->setUserType(self::USER_TYPE);
         $entity->setUserId($userId);
         $entity->setProviderId($providerId);
+        $entity->setSub($sub);
 
         return $entity;
+    }
+
+    private function identity(string $providerId): ExternalIdentity
+    {
+        return new ExternalIdentity($providerId, 'https://idp.example.com', 'subject-1', 'jane@example.com', true);
     }
 
     private function repositoryReturning(?Sw6OidcUserProviderEntity $binding): EntityRepository&\PHPUnit\Framework\MockObject\MockObject

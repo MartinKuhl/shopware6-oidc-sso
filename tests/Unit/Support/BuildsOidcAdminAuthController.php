@@ -16,6 +16,7 @@ use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
@@ -61,6 +62,7 @@ trait BuildsOidcAdminAuthController
             'sessionRegistry' => new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger()),
             'rateLimiter' => new Sw6OidcRateLimiter(null, new ArrayAdapter()),
             'activityRecorder' => $this->createMock(Sw6OidcSessionActivityRecorder::class),
+            'identityResolver' => $this->createMock(IdentityResolver::class),
         ];
 
         $unknown = array_diff_key($overrides, $defaults);

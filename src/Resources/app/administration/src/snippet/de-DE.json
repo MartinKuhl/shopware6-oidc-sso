@@ -9,7 +9,10 @@
             "passkeyButton": "Login mit Passkey",
             "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
             "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.",
-            "errorAccessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung an der Administration."
+            "errorAccessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung an der Administration.",
+            "errorLinkRequired": "Es gibt bereits ein Konto mit dieser E-Mail-Adresse. Bitte melden Sie sich mit Ihrem Passwort an und verbinden Sie Single Sign-on in Ihrem Profil.",
+            "errorEmailNotVerified": "Ihr Identitätsanbieter hat Ihre E-Mail-Adresse nicht bestätigt.",
+            "errorProviderMismatch": "Dieses Konto ist mit einer anderen Single-Sign-on-Identität verbunden."
         },
         "provider": {
             "moduleTitle": "OIDC-Anbieter",
@@ -284,7 +287,13 @@
                     "client_id_missing": "Client-ID fehlt",
                     "client_secret_missing": "Client-Secret fehlt",
                     "client_secret_undecryptable": "Client-Secret kann nicht entschlüsselt werden (APP_SECRET geändert?) — bitte neu eingeben"
-                }
+                },
+                "cardAccountLinking": "Kontoverknüpfung",
+                "requireEmailVerified": "Bestätigte E-Mail-Adresse verlangen",
+                "requireEmailVerifiedHelp": "Anmeldungen ablehnen, wenn der IdP für die zugeordnete E-Mail nicht email_verified: true sendet. Nur für IdPs deaktivieren, die den Claim nie senden und die E-Mail-Adressen aller Benutzer vollständig kontrollieren.",
+                "linkExistingAccounts": "Bestehende Konten per bestätigter E-Mail verknüpfen",
+                "linkExistingAccountsHelp": "Beim ersten SSO-Login ein bestehendes Shopware-Konto mit derselben, bestätigten E-Mail-Adresse verknüpfen. Aus: Bestehende Konten müssen im Profil ausdrücklich verbunden werden („SSO verbinden“). Superadmins werden nie automatisch verknüpft.",
+                "linkExistingAccountsUnverifiedWarning": "Bestehende Konten werden nie mit einer unbestätigten E-Mail-Adresse verknüpft, auch wenn keine Bestätigung verlangt wird — diese Benutzer müssen SSO in ihrem Profil verbinden."
             }
         },
         "userProvider": {

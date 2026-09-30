@@ -92,7 +92,7 @@ class OidcLogoutRoute extends AbstractLogoutRoute
         }
 
         try {
-            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, $context->getContext());
+            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, 'customer', $context->getContext());
         } catch (ProviderNotFoundException $exception) {
             $this->logger->warning('sw6oidc: RP-initiated logout skipped, provider no longer active.', [
                 'providerId' => $logoutContext->providerId,

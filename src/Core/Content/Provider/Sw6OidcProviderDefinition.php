@@ -47,6 +47,20 @@ class Sw6OidcProviderDefinition extends EntityDefinition
         return Sw6OidcProviderCollection::class;
     }
 
+    /**
+     * Security-relevant defaults for new providers (also created by the
+     * Administration, which would otherwise send the switches' falsy state).
+     *
+     * @return array<string, mixed>
+     */
+    public function getDefaults(): array
+    {
+        return [
+            'requireEmailVerified' => true,
+            'linkExistingAccounts' => false,
+        ];
+    }
+
     protected function defineFields(): FieldCollection
     {
         return new FieldCollection([
@@ -88,6 +102,8 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new BoolField('sync_admin_profile_on_sso', 'syncAdminProfileOnSso'))->addFlags(new ApiAware()),
             (new BoolField('sync_admin_role_on_sso', 'syncAdminRoleOnSso'))->addFlags(new ApiAware()),
             (new BoolField('allow_superadmin_group_mapping', 'allowSuperadminGroupMapping'))->addFlags(new ApiAware()),
+            (new BoolField('require_email_verified', 'requireEmailVerified'))->addFlags(new ApiAware()),
+            (new BoolField('link_existing_accounts', 'linkExistingAccounts'))->addFlags(new ApiAware()),
             (new IntField('http_timeout', 'httpTimeout'))->addFlags(new ApiAware()),
             (new IntField('jwks_cache_ttl', 'jwksCacheTtl'))->addFlags(new ApiAware()),
             (new StringField('last_test_status', 'lastTestStatus', 16))->addFlags(new ApiAware()),
