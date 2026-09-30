@@ -8,7 +8,10 @@ use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
+use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext;
+use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
+use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
@@ -54,6 +57,8 @@ class OidcAdminAuthController extends AbstractController
         private readonly PasskeyCredentialRepository $passkeyCredentialRepository,
         private readonly UserProviderBindingService $bindingService,
         private readonly PasswordLoginPolicy $passwordLoginPolicy,
+        private readonly LogoutContextStore $logoutContextStore,
+        private readonly RpInitiatedLogoutService $rpInitiatedLogoutService,
     ) {
     }
 
@@ -153,6 +158,12 @@ class OidcAdminAuthController extends AbstractController
             );
 
             $adminUser = $this->adminProvisioningService->findOrCreateAdmin($result->provider, $result->profile, $context);
+
+            $this->logoutContextStore->rememberForAdmin(
+                $adminUser->getId(),
+                $result->provider->getId(),
+                \is_string($result->tokens['id_token'] ?? null) ? $result->tokens['id_token'] : null,
+            );
 
             $this->logger->debug('sw6oidc: admin user resolved, minting login nonce.', [
                 'providerId' => $result->provider->getId(),
@@ -324,6 +335,63 @@ class OidcAdminAuthController extends AbstractController
         $this->logger->debug('sw6oidc: admin session verification succeeded, skipping password reconfirmation.', ['userId' => $userId]);
 
         return (new HttpFoundationFactory())->createResponse($tokenResponse);
+    }
+
+    /**
+     * RP-Initiated Logout for Administration users. Called by the
+     * `sw-admin-menu` override right before its normal local logout; returns
+     * the IdP logout URL the SPA should navigate to, or `null` (plain local
+     * logout) when this admin didn't log in via OIDC, the provider is gone,
+     * or it has no end_session_endpoint. Never fails the logout itself.
+     */
+    #[Route(
+        path: '/api/sw6oidc/admin/logout',
+        name: 'api.action.sw6oidc.admin.logout',
+        defaults: ['auth_required' => true],
+        methods: ['POST'],
+    )]
+    public function logout(Context $context): JsonResponse
+    {
+        $source = $context->getSource();
+        $userId = $source instanceof AdminApiSource ? $source->getUserId() : null;
+
+        $logoutContext = $userId !== null ? $this->logoutContextStore->consumeForAdmin($userId) : null;
+
+        if (!$logoutContext instanceof LogoutContext) {
+            $this->logger->debug('sw6oidc: no OIDC logout context for this admin session, skipping RP-initiated logout.', [
+                'userId' => $userId,
+            ]);
+
+            return new JsonResponse(['logoutUrl' => null]);
+        }
+
+        try {
+            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, $context);
+        } catch (ProviderNotFoundException $exception) {
+            $this->logger->warning('sw6oidc: admin RP-initiated logout skipped, provider no longer active.', [
+                'providerId' => $logoutContext->providerId,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            return new JsonResponse(['logoutUrl' => null]);
+        }
+
+        $this->rpInitiatedLogoutService->revokeToken($provider, null);
+
+        $logoutUrl = $this->rpInitiatedLogoutService->buildLogoutUrl(
+            $provider,
+            $logoutContext->idToken,
+            rtrim($this->administrationBaseUrl, '/') . '/',
+            'admin:',
+        );
+
+        $this->logger->debug('sw6oidc: resolved admin RP-initiated logout URL.', [
+            'userId' => $userId,
+            'providerId' => $logoutContext->providerId,
+            'hasLogoutUrl' => $logoutUrl !== null,
+        ]);
+
+        return new JsonResponse(['logoutUrl' => $logoutUrl]);
     }
 
     private function isSsoProvisioned(string $userId, Context $context): bool

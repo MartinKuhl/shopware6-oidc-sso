@@ -120,7 +120,7 @@ That's OIDC. Passkeys are a separate, independent setup: enable the two toggles 
 
 **Per-user IdP binding** — once an account is first authenticated by a given provider, it stays bound to that provider. Use case: prevents a scenario where the same email exists in two IdPs with different security postures — without binding, an attacker who compromises the weaker IdP could log in as a user whose "real" identity is meant to be governed by the stronger one.
 
-**RP-Initiated Logout + token revocation** — logging out of the Storefront also redirects to the IdP's own logout endpoint and revokes the access token server-side (RFC 7009), so "logging out" actually ends the session at the IdP too, not just locally.
+**RP-Initiated Logout + token revocation** — logging out of the Storefront or the Administration also redirects to the IdP's own logout endpoint and revokes the access token server-side (RFC 7009), so "logging out" actually ends the session at the IdP too, not just locally.
 
 ### What it deliberately does *not* try to be
 
@@ -170,9 +170,9 @@ Before you build a feature "on top of" one of these, check that it's actually re
 
 `sw6oidc_provider.client_secret` is a `Sw6OidcEncryptedField`: its serializer encrypts on write and decrypts on read, so entity code only ever sees plaintext. Rotating `APP_SECRET` makes the stored envelopes undecryptable — hydration still succeeds (the envelope is passed through), and `TokenExchangeService` then throws `ClientSecretUnavailableException` instead of sending ciphertext to the IdP. The field has no `ApiAware` flag, so Admin API reads never return it.
 
-### No back-channel logout, no admin-side RP-initiated logout
+### No back-channel logout
 
-If a user signs out at the IdP directly (not through Shopware), nothing tells Shopware to end that session — there's no OIDC Back-Channel Logout endpoint implemented. And logging an admin out of the Administration panel does not redirect to the IdP to end that session there either — only the Storefront/customer logout flow does the full IdP round-trip.
+If a user signs out at the IdP directly (not through Shopware), nothing tells Shopware to end that session — there's no OIDC Back-Channel Logout endpoint implemented. (The opposite direction works: logging out of the Storefront or the Administration redirects to the IdP's end-session endpoint.)
 
 ### The atomic cache is only atomic with Redis
 
@@ -194,5 +194,5 @@ Roughly in order of "would most reduce risk right now":
 
 1. **Wire up or remove the debug-logging toggle.** The "Enable debug logging" config toggle still does nothing (verbosity comes from `SW6OIDC_LOG_LEVEL`) and creates a false impression of functionality.
 2. **Add integration tests against a real (or containerized) Shopware instance.** Right now correctness of the actual login flows rests entirely on manual testing. Even a small integration suite covering the happy path for customer OIDC login, admin OIDC login, and one passkey round-trip would catch the regressions unit tests structurally can't.
-3. **Implement OIDC Back-Channel Logout and admin-side RP-initiated logout**, bringing session termination guarantees in line with the Storefront/customer flow and closing the gap where an IdP-side logout or admin-side logout doesn't propagate.
+3. **Implement OIDC Back-Channel Logout**, closing the gap where an IdP-side logout doesn't propagate to Shopware.
 4. **Consider a real dev/test Shopware environment** (a `docker-compose.yml` or similar, matching the Magento sibling's `Test/docker-compose.test.yml`) so new contributors — and CI, eventually — can spin up a disposable Shopware instance to exercise the flows end to end rather than relying on a personal staging install.

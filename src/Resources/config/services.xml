@@ -260,11 +260,23 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
 
-        <service id="MartinKuhl\Sw6Oidc\Storefront\EventSubscriber\CustomerLogoutSubscriber">
+        <service id="MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect">
+            <tag name="kernel.reset" method="reset" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Storefront\Service\OidcLogoutRoute"
+                 decorates="Shopware\Core\Checkout\Customer\SalesChannel\LogoutRoute">
+            <argument type="service" id=".inner" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect" />
+            <argument type="service" id="router" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Storefront\EventSubscriber\CustomerLogoutSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect" />
             <tag name="kernel.event_subscriber" />
         </service>
 
@@ -353,6 +365,8 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>

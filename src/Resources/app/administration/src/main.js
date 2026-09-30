@@ -17,6 +17,7 @@
 import './component/sw6oidc-rp-id-field';
 import './component/sw6oidc-user-provider-info';
 import './extension/sw-login';
+import './extension/sw-admin-menu';
 import './extension/sw-inactivity-login';
 import './extension/sw-profile';
 import './extension/sw-users-permissions-user-listing';

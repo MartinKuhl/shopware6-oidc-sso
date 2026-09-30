@@ -55,6 +55,15 @@
     }
 }
 
-.sw6oidc-live-test-result {
-    margin-top: 32px;
+// Spacing lives on the button row: sw-card renders as Meteor's mt-card, whose
+// scoped `margin: 0 auto 40px` overrides any margin-top set on the card itself.
+.sw6oidc-live-test-actions {
+    margin-bottom: 32px;
+}
+
+// Drop mt-card's default 40px bottom margin: the result card is the last thing
+// in the surrounding settings card, so it would only pad out that card's end.
+// `article` tag outranks Meteor's scoped `.mt-card[data-v-…]` rule.
+article.mt-card.sw6oidc-live-test-result {
+    margin-bottom: 0;
 }

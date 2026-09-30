@@ -21,7 +21,7 @@ Shopware's built-in authentication is password-based. This plugin bridges Shopwa
 - **Group/Role Mapping**: map OIDC group claims to Shopware customer groups and ACL roles, case-insensitively, first match wins, with configurable defaults
 - **Rich Attribute Mapping**: map claims to 19 Shopware fields — identity (email, username, name, birthday, gender, phone) plus full billing/shipping address
 - **Per-User IdP Binding**: the IdP that first authenticates an account is permanently bound to it; login via a different provider is rejected
-- **RP-Initiated Logout**: redirects to the IdP's end-session endpoint on logout and revokes the access token (RFC 7009), for the Storefront/customer flow
+- **RP-Initiated Logout**: redirects to the IdP's end-session endpoint on logout and revokes the access token (RFC 7009), for both Storefront customers and Administration users
 - **PKCE + Nonce**: always-on PKCE (S256 or plain, configurable) and single-use state/nonce for every authorization request
 - **JWT Verification**: RS256/384/512 signature verification with JWKS caching
 - **Base64 Claim Encoding**: supports Zitadel-style Base64-encoded claim values and nested role objects
@@ -222,7 +222,7 @@ The first IdP to authenticate (or claim) an account is permanently bound to it. 
 
 ### RP-Initiated Logout
 
-On Storefront logout, the plugin redirects to the IdP's end-session endpoint (if configured) and fire-and-forget revokes the access token via RFC 7009. A failed revocation call never blocks the user from logging out locally.
+On Storefront logout and on Administration logout (user menu → Log out), the plugin redirects to the IdP's end-session endpoint (if configured) and fire-and-forget revokes the access token via RFC 7009. A failed revocation call never blocks the user from logging out locally. After the IdP logout, customers land on `/account/login` and admins on the Administration login page. Inactivity/session-timeout logouts in the Administration stay local, so the admin can simply re-authenticate.
 
 **Authelia note**: Authelia does not implement standards-based RP-Initiated Logout / OIDC Session Management — its discovery document has no `end_session_endpoint` at all, so **auto-discovery leaves this field blank** and it must be set manually to Authelia's own portal logout page:
 ```
@@ -249,7 +249,6 @@ Client secrets are **encrypted at rest** (libsodium secretbox, key derived from 
 ## Known Limitations
 
 - **No OIDC Back-Channel Logout** — an IdP cannot push a server-side logout notification to this plugin.
-- **No admin-side RP-Initiated Logout** — only the Storefront/customer logout flow redirects to the IdP's end-session endpoint; logging an admin out of Shopware does not currently log them out at the IdP.
 - **"Sync on SSO" is per provider, not per attribute** — all five provider-level toggles (customer profile/address/group, admin profile/role) are applied on repeat logins, but there is no per-attribute sync control.
 - **The "Enable debug logging" toggle does not control log verbosity** — the plugin's log level is set via the `SW6OIDC_LOG_LEVEL` environment variable (default `debug`), not this UI toggle. Logs are written to a plugin-specific log file/channel and can contain claim data — handle with the same care as any log containing PII.
 - **Single-node atomic cache unless Redis is configured** — without `SW6OIDC_REDIS_DSN`, one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. Multi-node/HA deployments must set `SW6OIDC_REDIS_DSN` (e.g. `redis://:password@redis:6379/2`, or `rediss://` for TLS); it is picked up at runtime.
