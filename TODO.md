@@ -31,6 +31,12 @@ recorded so nobody "fixes" them back:
 - **Phase 9:** the export omits the client secret by default
   (`--keep-encrypted` / `--plaintext` opt in); ACL roles/customer groups are
   resolved on import by id, then unique name.
+- **Phase 8c (minimal, shipped ahead of 7/8):** admin RP-initiated logout
+  works without the session registry — `LogoutContextStore` keys the admin
+  logout context by user id (last login wins across concurrent sessions), and
+  the interception point is the `sw-admin-menu` `onLogoutUser()` override. Still
+  open: `post_logout_url` override column and the shared `postlogout` landing
+  action (see Phase 8c below).
 - **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
   `kernel.response` subscriber that only appends IdP origins to directives an
   existing policy already declares.
@@ -153,20 +159,17 @@ Ships no user-visible behavior by itself — pure plumbing that Phases
 
 - [ ] New migration adding `post_logout_url` (nullable string, 1024) to
       `sw6oidc_provider` — per-provider landing-page override.
-- [ ] `OidcAdminAuthController::logout()` action (`POST /api/sw6oidc/admin/logout`,
+- [x] `OidcAdminAuthController::logout()` action (`POST /api/sw6oidc/admin/logout`,
       authenticated — route-level override of the controller's class-level
-      `auth_required: false`). Extract caller's token `jti`, look up the
-      session registry for `providerId`/`idToken`, destroy the session, call
-      the existing `RpInitiatedLogoutService::buildLogoutUrl()`/`revokeToken()`,
-      return `{"logoutUrl": ...}` as JSON (not a redirect).
+      `auth_required: false`), returning `{"logoutUrl": ...}` as JSON. Uses
+      `LogoutContextStore::consumeForAdmin(userId)` for now; switch to the
+      Phase 7 session registry once it exists.
 - [ ] Shared `postlogout` landing action mirroring Magento's unified
       controller, for IdPs with a single registered redirect URI.
-- [ ] Admin Vue — extend `sw-login` (or find the correct logout-interception
-      point — *verify during implementation*) to call the new endpoint before
-      falling through to normal local logout.
-- [ ] Tests: registry-hit vs registry-miss logout, revoke-token failure never
-      blocks logout.
-- [ ] Docs: `CLAUDE.md` Logout section — update the "gaps" bullet; `README.md`.
+- [x] Admin Vue — `extension/sw-admin-menu` overrides `onLogoutUser()` to call
+      the new endpoint before falling through to normal local logout.
+- [x] Tests: context hit vs miss, inactive provider (`OidcAdminAuthControllerLogoutTest`).
+- [x] Docs: `CLAUDE.md` Logout section — update the "gaps" bullet; `README.md`.
 
 ---
 

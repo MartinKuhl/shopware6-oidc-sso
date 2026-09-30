@@ -17,6 +17,7 @@ class LogoutContextStore
 {
     private const TTL_SECONDS = 86400; // matches typical Shopware storefront session lifetime
     private const CACHE_PREFIX = 'sw6oidc_logout_ctx_';
+    private const ADMIN_CACHE_PREFIX = 'sw6oidc_admin_logout_ctx_';
 
     public function __construct(private readonly AtomicCacheInterface $cache)
     {
@@ -24,18 +25,40 @@ class LogoutContextStore
 
     public function remember(string $sessionToken, string $providerId, ?string $idToken): void
     {
-        $context = new LogoutContext($providerId, $idToken);
-
-        $this->cache->save(
-            self::CACHE_PREFIX . $sessionToken,
-            json_encode($context->toArray(), JSON_THROW_ON_ERROR),
-            self::TTL_SECONDS,
-        );
+        $this->save(self::CACHE_PREFIX . $sessionToken, $providerId, $idToken);
     }
 
     public function consume(string $sessionToken): ?LogoutContext
     {
-        $raw = $this->cache->getAndDelete(self::CACHE_PREFIX . $sessionToken);
+        return $this->load(self::CACHE_PREFIX . $sessionToken);
+    }
+
+    /**
+     * Administration sessions are keyed by admin user id rather than by
+     * access token: the SPA's silent refresh mints a new token (and jti)
+     * every 10 minutes, so no token-derived key would still match at logout.
+     * Concurrent sessions of the same admin share one entry (last login wins).
+     */
+    public function rememberForAdmin(string $userId, string $providerId, ?string $idToken): void
+    {
+        $this->save(self::ADMIN_CACHE_PREFIX . $userId, $providerId, $idToken);
+    }
+
+    public function consumeForAdmin(string $userId): ?LogoutContext
+    {
+        return $this->load(self::ADMIN_CACHE_PREFIX . $userId);
+    }
+
+    private function save(string $key, string $providerId, ?string $idToken): void
+    {
+        $context = new LogoutContext($providerId, $idToken);
+
+        $this->cache->save($key, json_encode($context->toArray(), JSON_THROW_ON_ERROR), self::TTL_SECONDS);
+    }
+
+    private function load(string $key): ?LogoutContext
+    {
+        $raw = $this->cache->getAndDelete($key);
 
         if ($raw === null) {
             return null;

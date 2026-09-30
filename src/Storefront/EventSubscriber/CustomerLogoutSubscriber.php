@@ -2,12 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\EventSubscriber;
 
-use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
-use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
-use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
-use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
-use Psr\Log\LoggerInterface;
-use Shopware\Core\Checkout\Customer\Event\CustomerLogoutEvent;
+use MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
@@ -18,84 +13,39 @@ use Symfony\Component\HttpKernel\KernelEvents;
  * end_session_endpoint after a customer logs out — mirrors the Magento
  * module's Observer/OAuthLogoutObserver.php.
  *
- * Two-step because a domain event listener (CustomerLogoutEvent) cannot
- * replace the controller's HTTP response: onCustomerLogout() runs first
- * (while the pre-logout context/token are still available) and only
- * *resolves* the IdP logout URL into a request-scoped property; onKernelResponse()
- * runs afterwards, for the same request, and rewrites the logout controller's
- * redirect target to that URL — the same "capture before destroy, redirect
- * after" shape as the Magento observer, expressed with Symfony's two separate
- * hook points instead of Magento's single postdispatch hook.
- *
- * NOTE: relies on CustomerLogoutEvent still carrying the pre-invalidation
- * context token when dispatched, and on Shopware's logout route producing a
- * RedirectResponse this listener can safely overwrite — verify both against
- * a live Shopware 6.7 checkout before shipping (see plan's Verification
- * section).
+ * Two-step because the logout route itself cannot replace the controller's
+ * HTTP response: OidcLogoutRoute (decorating core's LogoutRoute) resolves
+ * the IdP logout URL while the logout runs, and this listener rewrites the
+ * Storefront logout controller's redirect to that URL afterwards. Limited to
+ * the Storefront logout page — a Store API logout must keep its JSON body.
  */
 class CustomerLogoutSubscriber implements EventSubscriberInterface
 {
-    private ?string $pendingLogoutUrl = null;
+    private const STOREFRONT_LOGOUT_ROUTE = 'frontend.account.logout.page';
 
-    public function __construct(
-        private readonly LogoutContextStore $logoutContextStore,
-        private readonly ProviderResolver $providerResolver,
-        private readonly RpInitiatedLogoutService $rpInitiatedLogoutService,
-        private readonly LoggerInterface $logger,
-    ) {
+    public function __construct(private readonly PendingLogoutRedirect $pendingLogoutRedirect)
+    {
     }
 
     public static function getSubscribedEvents(): array
     {
         return [
-            CustomerLogoutEvent::class => 'onCustomerLogout',
             KernelEvents::RESPONSE => 'onKernelResponse',
         ];
     }
 
-    public function onCustomerLogout(CustomerLogoutEvent $event): void
-    {
-        $logoutContext = $this->logoutContextStore->consume($event->getSalesChannelContext()->getToken());
-
-        if (!$logoutContext instanceof \MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext) {
-            return;
-        }
-
-        try {
-            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, $event->getSalesChannelContext()->getContext());
-        } catch (ProviderNotFoundException $exception) {
-            $this->logger->warning('sw6oidc: RP-initiated logout skipped, provider no longer active.', [
-                'providerId' => $logoutContext->providerId,
-                'exception' => $exception->getMessage(),
-            ]);
-
-            return;
-        }
-
-        $this->rpInitiatedLogoutService->revokeToken($provider, null);
-
-        $this->pendingLogoutUrl = $this->rpInitiatedLogoutService->buildLogoutUrl(
-            $provider,
-            $logoutContext->idToken,
-            $this->postLogoutRedirectUri(),
-            'customer:',
-        );
-    }
-
     public function onKernelResponse(ResponseEvent $event): void
     {
-        if ($this->pendingLogoutUrl === null || !$event->isMainRequest()) {
+        if (!$event->isMainRequest()) {
             return;
         }
 
-        $logoutUrl = $this->pendingLogoutUrl;
-        $this->pendingLogoutUrl = null;
+        $logoutUrl = $this->pendingLogoutRedirect->pull();
+
+        if ($logoutUrl === null || $event->getRequest()->attributes->get('_route') !== self::STOREFRONT_LOGOUT_ROUTE) {
+            return;
+        }
 
         $event->setResponse(new RedirectResponse($logoutUrl));
-    }
-
-    private function postLogoutRedirectUri(): string
-    {
-        return rtrim((string) getenv('APP_URL'), '/') . '/account/login';
     }
 }
