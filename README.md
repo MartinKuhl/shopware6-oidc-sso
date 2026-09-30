@@ -66,7 +66,7 @@ bin/console database:migrate Sw6Oidc --all
 | `https://your-shop.com/api/sw6oidc/provider/test-callback` | Redirect URI | Optional | Only needed if you use the **Run live login test** button on a provider's detail page in the Administration — the IdP redirects back here with the same strict exact-match check as the other two URIs |
 | `https://your-shop.com/sw6oidc/backchannel-logout` | Back-Channel Logout URI | Optional | Lets the IdP end shop sessions when the user logs out at the IdP (see [Back-Channel Logout](#back-channel-logout)). Enable "session required" / `backchannel_logout_session_required` if the IdP offers it |
 | `https://your-shop.com/sw6oidc/frontchannel-logout` | Front-Channel Logout URI | Optional | Alternative to Back-Channel Logout for IdPs that only support the browser-based variant; enable "session required" (`frontchannel_logout_session_required`) — the plugin needs `iss` and `sid` |
-| Your shop's account login page | Post Logout Redirect URI | Optional | Only the Storefront/customer flow redirects back from the IdP on logout today (see [Known Limitations](#known-limitations)) |
+| Your shop's account login page and `https://your-shop.com/admin/` — **or** only `https://your-shop.com/sw6oidc/postlogout` | Post Logout Redirect URI | Optional | Where the IdP returns the user after RP-initiated logout. By default customers return to `/account/login` and admins to the Administration. If the IdP accepts only one URI, set the provider's **Post-logout redirect URI** to `https://your-shop.com/sw6oidc/postlogout` and register just that: it sends customers and admins to the right login page |
 
 Register only the redirect URI(s) for the flow(s) you intend to use — you don't need both if, say, only customer SSO is enabled for a given provider.
 
@@ -241,7 +241,7 @@ The first IdP to authenticate (or claim) an account is permanently bound to it. 
 
 ### RP-Initiated Logout
 
-On Storefront logout and on Administration logout (user menu → Log out), the plugin redirects to the IdP's end-session endpoint (if configured) and fire-and-forget revokes the access token via RFC 7009. A failed revocation call never blocks the user from logging out locally. After the IdP logout, customers land on `/account/login` and admins on the Administration login page. Inactivity/session-timeout logouts in the Administration stay local, so the admin can simply re-authenticate.
+On Storefront logout and on Administration logout (user menu → Log out), the plugin redirects to the IdP's end-session endpoint (if configured) and fire-and-forget revokes the access token via RFC 7009. A failed revocation call never blocks the user from logging out locally. After the IdP logout, customers land on `/account/login` and admins on the Administration login page — unless the provider's **Post-logout redirect URI** is set, which replaces both (use `https://your-shop.com/sw6oidc/postlogout` to keep the per-flow login pages with a single registered URI; its `state` parameter is signed, so a crafted link can't choose the destination). Inactivity/session-timeout logouts in the Administration stay local, so the admin can simply re-authenticate.
 
 **Authelia note**: Authelia does not implement standards-based RP-Initiated Logout / OIDC Session Management — its discovery document has no `end_session_endpoint` at all, so **auto-discovery leaves this field blank** and it must be set manually to Authelia's own portal logout page:
 ```

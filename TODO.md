@@ -36,11 +36,12 @@ recorded so nobody "fixes" them back:
   logout context by user id (last login wins across concurrent sessions), and
   the interception point is the `sw-admin-menu` `onLogoutUser()` override. Still
   open: `post_logout_url` override column and the shared `postlogout` landing
-  action (see Phase 8c below).
+  action (see Phase 8c below) — shipped too, see Phase 8c.
 - **Phase 6:** matching is list-aware (`groups` matches `groups.0`, `groups.1`, …; Zitadel role-object names count as entries), case-insensitive, and treats `true`/`1`/`false`/`0` as booleans; unknown operators fail closed. The admin callback passes the denial message through a one-time error ticket (`AdminLoginErrorTicketStore`) instead of the URL. Rules are part of config export/import (not in the original plan).
 - **Phase 7:** the registry also indexes by local account (`resolveByUser()`, needed for admin logout once `jti`s rotate). Admin session destruction ends **all** of that admin's sessions (refresh tokens revoked + `last_updated_password_at` bumped): Shopware access tokens are stateless and `revokeAccessToken()` is a no-op, so a single admin session can't be targeted. Customer destruction is exact (`SalesChannelContextPersister::delete()`).
 - **Phase 8:** the rate limiter uses a *penalty model* — only failed requests consume the 10/60s budget, so a busy IdP or a NAT'd office is never throttled; applied to the back-channel endpoint and both callbacks. `cache.rate_limiter` exists on 6.7 (`on-invalid="null"` falls back to `cache.app`). Logout-token checks live in a dedicated `JwtVerifier::verifyLogoutToken()` (shares signature + `exp`/`iss`/`aud` checks with `verify()`, rejects `nonce`, requires `events`/`iat`/`sub`-or-`sid`) instead of `verify(expectedNonce: null)`, which would have logged a nonce warning and accepted id_tokens. `findByIssuer()` returns a list (providers sharing an IdP are told apart by `aud`). Added `jti` replay protection. The session fan-out lives in `Sw6OidcIdpLogoutHandler`, shared with Phase 8b.
 - **Phase 8b:** `iss` + `sid` are both required (no cookie fallback: SameSite cookies aren't sent in a cross-site iframe); every provider sharing the issuer is tried. Unknown sids count as rate-limit failures. The GIF response sets `Content-Security-Policy: frame-ancestors *` so the iframe can render despite core's `X-Frame-Options: deny`.
+- **Phase 8c (rest):** `post_logout_url` *replaces* the default post-logout redirect URI (it is what gets registered at the IdP), so the shared `/sw6oidc/postlogout` landing is opt-in by setting it — no change for existing setups. The landing picks the target from an HMAC-signed `state` (`PostLogoutState`); Authelia's `rd` gets the state appended. Admin logout reads the registry first (current jti, else newest session) with `LogoutContextStore` as fallback.
 - **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
   `kernel.response` subscriber that only appends IdP origins to directives an
   existing policy already declares.
@@ -52,7 +53,7 @@ Phase 6  Claims-based access-control rules engine     (shipped)
 Phase 7  Session/subject registry (foundational)      (shipped)
 Phase 8  Rate limiting + Back-Channel Logout          (shipped)
 Phase 8b Front-Channel Logout                         (shipped)
-Phase 8c Admin-side RP-initiated logout               (needs 7, 8)
+Phase 8c Admin-side RP-initiated logout               (shipped)
 Phase 10 Audit/session-activity log + admin UI         (needs 7, 8, 8b, 8c)
 Phase 11 Health-check/diagnostics + alerting           (deps 2, 3 shipped — ready)
 Phase 13 Integration test harness (Dex)                (stretch goal)
@@ -159,16 +160,16 @@ Ships no user-visible behavior by itself — pure plumbing that Phases
 
 ---
 
-## Phase 8c — Admin-side RP-initiated logout
+## Phase 8c — Admin-side RP-initiated logout (shipped)
 
-- [ ] New migration adding `post_logout_url` (nullable string, 1024) to
+- [x] New migration adding `post_logout_url` (nullable string, 1024) to
       `sw6oidc_provider` — per-provider landing-page override.
 - [x] `OidcAdminAuthController::logout()` action (`POST /api/sw6oidc/admin/logout`,
       authenticated — route-level override of the controller's class-level
-      `auth_required: false`), returning `{"logoutUrl": ...}` as JSON. Uses
-      `LogoutContextStore::consumeForAdmin(userId)` for now; switch to the
-      Phase 7 session registry once it exists.
-- [ ] Shared `postlogout` landing action mirroring Magento's unified
+      `auth_required: false`), returning `{"logoutUrl": ...}` as JSON. Reads
+      the Phase 7 session registry, with `LogoutContextStore::consumeForAdmin(userId)`
+      as fallback.
+- [x] Shared `postlogout` landing action mirroring Magento's unified
       controller, for IdPs with a single registered redirect URI.
 - [x] Admin Vue — `extension/sw-admin-menu` overrides `onLogoutUser()` to call
       the new endpoint before falling through to normal local logout.

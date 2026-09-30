@@ -118,7 +118,7 @@
                 "jwksEndpoint": "JWKS endpoint",
                 "jwksEndpointHelp": "The IdP's JSON Web Key Set endpoint, used to verify the ID token's signature.",
                 "endSessionEndpoint": "End-session (logout) endpoint",
-                "endSessionEndpointHelp": "The IdP's end-session endpoint, used to also log the user out at the IdP on Storefront logout. Leave blank if unsupported (see the Authelia note in the documentation).",
+                "endSessionEndpointHelp": "The IdP's end-session endpoint, used to also log the user out at the IdP on Storefront and Administration logout. Leave blank if unsupported (see the Authelia note in the documentation).",
                 "revocationEndpoint": "Token revocation endpoint",
                 "revocationEndpointHelp": "The IdP's token revocation endpoint (RFC 7009), used to revoke the access token on logout. Optional — a failed revocation never blocks the local logout.",
                 "issuer": "Issuer",
@@ -252,7 +252,9 @@
                     "not_contains": "does not contain",
                     "exists": "exists",
                     "not_exists": "does not exist"
-                }
+                },
+                "postLogoutUrl": "Post-logout redirect URI",
+                "postLogoutUrlHelp": "Where the IdP sends the user after logging out there. Leave empty for the defaults (customers: the Storefront login page, admins: the Administration). For IdPs that accept only one post-logout URI, enter the shown /sw6oidc/postlogout URL and register just that one — it sends customers and admins to the right login page."
             }
         },
         "userProvider": {

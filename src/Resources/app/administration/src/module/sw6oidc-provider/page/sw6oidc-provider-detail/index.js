@@ -105,6 +105,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 'userInfoEndpoint',
                 'jwksEndpoint',
                 'endSessionEndpoint',
+                'postLogoutUrl',
                 'revocationEndpoint',
                 'disableNonOidcCustomerLogin',
                 'disableNonOidcAdminLogin',
@@ -165,6 +166,11 @@ Component.register('sw6oidc-provider-detail', () => {
                 const keys = Object.keys(this.liveTestClaims ?? {}).map((key) => key.replace(/\.\d+(?=\.|$).*$/, ''));
 
                 return [...new Set(keys)].sort();
+            },
+
+            /** The shared post-logout landing (PostLogoutController), suggested as the placeholder. */
+            postLogoutLandingUrl() {
+                return `${window.location.origin}/sw6oidc/postlogout`;
             },
 
             canRunLiveTest() {

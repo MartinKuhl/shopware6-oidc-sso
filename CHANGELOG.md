@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Per-provider **Post-logout redirect URI** (`post_logout_url`) for RP-initiated logout, and a shared landing page `/sw6oidc/postlogout` for IdPs that accept only one post-logout URI: it sends customers to the Storefront login and admins to the Administration, based on a signed `state`.
+- Administration RP-initiated logout now takes the provider and id_token from the session registry (the current session, else the newest), with the previous per-user store as fallback. Storefront logout removes its session from the registry.
 - OIDC Front-Channel Logout (`GET /sw6oidc/frontchannel-logout?iss=…&sid=…`): ends the shop sessions of an IdP session from the IdP's logout page iframe; always answers with a 1×1 GIF. Unknown `sid`s count toward the rate limit.
 - OIDC Back-Channel Logout (`POST /sw6oidc/backchannel-logout`): the IdP can end shop sessions server-to-server. Logout tokens are fully verified (signature, `iss`/`aud`/`exp`, `events`, no `nonce`, `jti` replay protection). Customers lose exactly the affected session; Administration users lose all their sessions (admin access tokens can't be revoked individually).
 - Rate limiting for the unauthenticated endpoints (OIDC callbacks, Back-Channel Logout): 10 failed requests per minute per client address, after which the address is refused until the window ends. Successful requests never count.
@@ -36,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The RP-initiated logout `state` parameter is now HMAC-signed (`customer.<random>.<sig>` / `admin.<random>.<sig>`) instead of `customer:<random>` / `admin:<random>`.
 - The live login test popup is translated (German/English, following the Administration UI language) and styled like the provider detail page's result card. It reads the Administration snippet files, so both use the same wording.
 - Test status labels are aligned across the plugin ("Erfolgreich"/"Fehlgeschlagen", "Passed"/"Failed"), and the provider list's "Test status" column uses the same pill style as the detail page.
 

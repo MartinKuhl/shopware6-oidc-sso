@@ -118,7 +118,7 @@
                 "jwksEndpoint": "JWKS-Endpunkt",
                 "jwksEndpointHelp": "Der JWKS-Endpunkt des IdP zur Prüfung der Signatur des ID-Tokens.",
                 "endSessionEndpoint": "End-Session-Endpunkt (Logout)",
-                "endSessionEndpointHelp": "Der End-Session-Endpunkt des IdP, über den beim Storefront-Logout auch beim IdP abgemeldet wird. Leer lassen, falls nicht unterstützt (siehe Authelia-Hinweis in der Dokumentation).",
+                "endSessionEndpointHelp": "Der End-Session-Endpunkt des IdP, über den beim Storefront- und Administration-Logout auch beim IdP abgemeldet wird. Leer lassen, falls nicht unterstützt (siehe Authelia-Hinweis in der Dokumentation).",
                 "revocationEndpoint": "Token-Revocation-Endpunkt",
                 "revocationEndpointHelp": "Der Token-Revocation-Endpunkt (RFC 7009) des IdP zum Widerruf des Access Tokens beim Logout. Optional – ein fehlgeschlagener Widerruf blockiert den lokalen Logout nie.",
                 "issuer": "Issuer",
@@ -252,7 +252,9 @@
                     "not_contains": "enthält nicht",
                     "exists": "existiert",
                     "not_exists": "existiert nicht"
-                }
+                },
+                "postLogoutUrl": "Weiterleitungs-URI nach dem Logout",
+                "postLogoutUrlHelp": "Wohin der IdP den Benutzer nach dem Logout dort schickt. Leer lassen für die Standardwerte (Kunden: Storefront-Login-Seite, Admins: die Administration). Für IdPs, die nur eine Post-Logout-URI akzeptieren, die angezeigte /sw6oidc/postlogout-URL eintragen und nur diese registrieren – sie leitet Kunden und Admins zur jeweils richtigen Login-Seite."
             }
         },
         "userProvider": {

@@ -24,6 +24,9 @@ use Symfony\Component\Validator\ConstraintViolationList;
  *    never fetched, so it isn't checked. Outbound calls are additionally
  *    guarded at request time (Sw6OidcHttpClientFactory), since DNS can change
  *    after save.
+ *  - Redirect URLs the browser is sent to (post_logout_url) must be absolute
+ *    http(s) URLs — never fetched server-side, so no SSRF check, but no
+ *    javascript:/data: or relative values either.
  *  - Lockout guard: disable_non_oidc_{admin,customer}_login can only be
  *    switched on once at least one account of that type is bound to *this*
  *    provider — otherwise enabling it would lock every user of that type out
@@ -36,6 +39,12 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface
 {
     public const CODE_URL_BLOCKED = 'SW6OIDC_URL_BLOCKED';
     public const CODE_LOCKOUT_GUARD = 'SW6OIDC_LOCKOUT_GUARD';
+    public const CODE_REDIRECT_URL_INVALID = 'SW6OIDC_REDIRECT_URL_INVALID';
+
+    /** storage name => property name */
+    private const REDIRECT_URL_FIELDS = [
+        'post_logout_url' => 'postLogoutUrl',
+    ];
 
     /** storage name => property name */
     private const FETCHED_URL_FIELDS = [
@@ -74,6 +83,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface
 
             $violations = new ConstraintViolationList();
             $this->validateUrls($command, $violations);
+            $this->validateRedirectUrls($command, $violations);
             $this->validateLockout($command, $violations);
 
             if ($violations->count() > 0) {
@@ -97,6 +107,26 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface
 
             if ($result['blocked']) {
                 $violations->add($this->violation(implode(' ', $result['warnings']), $propertyName, $url, self::CODE_URL_BLOCKED));
+            }
+        }
+    }
+
+    private function validateRedirectUrls(WriteCommand $command, ConstraintViolationList $violations): void
+    {
+        $payload = $command->getPayload();
+
+        foreach (self::REDIRECT_URL_FIELDS as $storageName => $propertyName) {
+            $url = $payload[$storageName] ?? null;
+
+            if (!\is_string($url) || $url === '') {
+                continue;
+            }
+
+            $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+            $host = parse_url($url, PHP_URL_HOST);
+
+            if (!\in_array($scheme, ['https', 'http'], true) || !\is_string($host) || $host === '') {
+                $violations->add($this->violation('Must be an absolute http(s) URL.', $propertyName, $url, self::CODE_REDIRECT_URL_INVALID));
             }
         }
     }

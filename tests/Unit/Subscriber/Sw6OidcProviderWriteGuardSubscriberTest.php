@@ -55,6 +55,22 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
         self::assertCount(0, $event->getExceptions()->getExceptions());
     }
 
+    public function testPostLogoutUrlMustBeAnAbsoluteHttpUrl(): void
+    {
+        foreach (['javascript:alert(1)', '/account/login', 'data:text/html,x', 'https://'] as $bad) {
+            $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, ['post_logout_url' => $bad])]));
+            self::assertSame('/postLogoutUrl', $violation->getPropertyPath(), $bad);
+            self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_REDIRECT_URL_INVALID, $violation->getCode());
+        }
+    }
+
+    public function testPostLogoutUrlIsNotSsrfChecked(): void
+    {
+        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['post_logout_url' => 'http://localhost/sw6oidc/postlogout'])], privateIps: true);
+
+        self::assertCount(0, $event->getExceptions()->getExceptions());
+    }
+
     public function testEnablingDisableFlagWithoutBoundAccountIsRejected(): void
     {
         $event = $this->validateCommands([$this->command(UpdateCommand::class, ['disable_non_oidc_admin_login' => 1])], boundAccount: false);

@@ -22,6 +22,8 @@ class Sw6OidcProviderEntity extends Entity
     protected ?string $accessTokenEndpoint = null;
     protected ?string $userInfoEndpoint = null;
     protected ?string $endSessionEndpoint = null;
+    /** where the IdP sends the user after RP-initiated logout; null = the login page of the flow */
+    protected ?string $postLogoutUrl = null;
     protected ?string $revocationEndpoint = null;
     protected ?string $jwksEndpoint = null;
     protected ?string $issuer = null;
@@ -149,6 +151,16 @@ class Sw6OidcProviderEntity extends Entity
     public function setEndSessionEndpoint(?string $endSessionEndpoint): void
     {
         $this->endSessionEndpoint = $endSessionEndpoint;
+    }
+
+    public function getPostLogoutUrl(): ?string
+    {
+        return $this->postLogoutUrl;
+    }
+
+    public function setPostLogoutUrl(?string $postLogoutUrl): void
+    {
+        $this->postLogoutUrl = $postLogoutUrl;
     }
 
     public function getRevocationEndpoint(): ?string

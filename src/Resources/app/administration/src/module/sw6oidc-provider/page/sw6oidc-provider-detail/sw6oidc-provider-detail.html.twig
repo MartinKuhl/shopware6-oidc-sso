@@ -138,6 +138,13 @@
                         :help-text="$tc('sw6oidc.provider.detail.endSessionEndpointHelp')"
                     />
                     <sw-text-field
+                        v-model="provider.postLogoutUrl"
+                        :error="providerPostLogoutUrlError"
+                        :label="$tc('sw6oidc.provider.detail.postLogoutUrl')"
+                        :help-text="$tc('sw6oidc.provider.detail.postLogoutUrlHelp')"
+                        :placeholder="postLogoutLandingUrl"
+                    />
+                    <sw-text-field
                         v-model="provider.revocationEndpoint"
                         :error="providerRevocationEndpointError"
                         :label="$tc('sw6oidc.provider.detail.revocationEndpoint')"

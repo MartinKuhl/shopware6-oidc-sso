@@ -333,6 +333,20 @@
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState">
+            <argument>%env(APP_SECRET)%</argument>
+        </service>
+
+        <!-- Shared post-logout landing (one registrable post_logout_redirect_uri for both flows) -->
+        <service id="MartinKuhl\Sw6Oidc\Controller\Oidc\PostLogoutController" public="true">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState" />
+            <argument>%env(APP_URL)%/admin</argument>
+            <call method="setContainer">
+                <argument type="service" id="service_container" />
+            </call>
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect">
@@ -348,6 +362,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect" />
             <argument type="service" id="router" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Storefront\EventSubscriber\CustomerLogoutSubscriber">

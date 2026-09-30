@@ -12,7 +12,12 @@ use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
+use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\PlatformRequest;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
+use Symfony\Component\HttpFoundation\Request;
 
 #[CoversClass(OidcAdminAuthController::class)]
 final class OidcAdminAuthControllerLogoutTest extends TestCase
@@ -38,6 +43,42 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
         self::assertNull($this->store->consumeForAdmin(self::USER_ID), 'logout context is single-use');
     }
 
+    public function testRegistrySessionOfTheCurrentTokenWinsOverTheFallback(): void
+    {
+        $registry = new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger());
+        $registry->register('provider-1', 'sub', 'sid-old', 'admin', self::USER_ID, 'jti-old', null, 'old-id-token');
+        $current = $registry->register('provider-1', 'sub', 'sid-cur', 'admin', self::USER_ID, 'jti-current', null, 'current-id-token');
+        $registry->register('provider-1', 'sub', 'sid-new', 'admin', self::USER_ID, 'jti-new', null, 'new-id-token');
+        $this->store->rememberForAdmin(self::USER_ID, 'provider-1', 'fallback-id-token');
+
+        $request = new Request();
+        $request->attributes->set(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID, 'jti-current');
+        $provider = $this->provider();
+        $provider->setEndSessionEndpoint('https://idp.example/oidc/end-session');
+
+        $body = $this->logout($provider, $registry, $request);
+
+        parse_str((string) parse_url((string) $body['logoutUrl'], PHP_URL_QUERY), $query);
+        self::assertSame('current-id-token', $query['id_token_hint']);
+        self::assertNull($registry->get($current->id), 'the ended session leaves the registry');
+        self::assertCount(2, $registry->resolveByUser('admin', self::USER_ID));
+        self::assertNull($this->store->consumeForAdmin(self::USER_ID), 'fallback store is consumed too');
+    }
+
+    public function testNewestRegistrySessionIsUsedWhenTheTokenWasRefreshed(): void
+    {
+        $registry = new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger());
+        $registry->register('provider-1', 'sub', 'sid-old', 'admin', self::USER_ID, 'jti-old', null, 'old-id-token');
+        $registry->register('provider-1', 'sub', 'sid-new', 'admin', self::USER_ID, 'jti-new', null, 'new-id-token');
+        $provider = $this->provider();
+        $provider->setEndSessionEndpoint('https://idp.example/oidc/end-session');
+
+        $body = $this->logout($provider, $registry, new Request());
+
+        parse_str((string) parse_url((string) $body['logoutUrl'], PHP_URL_QUERY), $query);
+        self::assertSame('new-id-token', $query['id_token_hint']);
+    }
+
     public function testReturnsNullWithoutLogoutContext(): void
     {
         self::assertSame(['logoutUrl' => null], $this->logout($this->provider()));
@@ -53,7 +94,7 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function logout(?Sw6OidcProviderEntity $provider): array
+    private function logout(?Sw6OidcProviderEntity $provider, ?Sw6OidcSessionRegistry $registry = null, ?Request $request = null): array
     {
         $resolver = $this->createMock(ProviderResolver::class);
         if ($provider === null) {
@@ -62,12 +103,13 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
             $resolver->method('getActiveById')->willReturn($provider);
         }
 
-        $controller = $this->buildAdminAuthController([
+        $controller = $this->buildAdminAuthController(array_filter([
             'providerResolver' => $resolver,
             'logoutContextStore' => $this->store,
-        ]);
+            'sessionRegistry' => $registry,
+        ]));
 
-        $response = $controller->logout(new Context(new AdminApiSource(self::USER_ID)));
+        $response = $controller->logout($request ?? new Request(), new Context(new AdminApiSource(self::USER_ID)));
 
         self::assertSame(200, $response->getStatusCode());
 

@@ -60,6 +60,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new StringField('access_token_endpoint', 'accessTokenEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('user_info_endpoint', 'userInfoEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('end_session_endpoint', 'endSessionEndpoint', 1024))->addFlags(new ApiAware()),
+            (new StringField('post_logout_url', 'postLogoutUrl', 1024))->addFlags(new ApiAware()),
             (new StringField('revocation_endpoint', 'revocationEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('jwks_endpoint', 'jwksEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('issuer', 'issuer', 1024))->addFlags(new ApiAware()),

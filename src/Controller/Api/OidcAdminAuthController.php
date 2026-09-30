@@ -14,6 +14,7 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
+use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
 use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
@@ -30,6 +31,7 @@ use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\PlatformRequest;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -402,12 +404,12 @@ class OidcAdminAuthController extends AbstractController
         defaults: ['auth_required' => true],
         methods: ['POST'],
     )]
-    public function logout(Context $context): JsonResponse
+    public function logout(Request $request, Context $context): JsonResponse
     {
         $source = $context->getSource();
         $userId = $source instanceof AdminApiSource ? $source->getUserId() : null;
 
-        $logoutContext = $userId !== null ? $this->logoutContextStore->consumeForAdmin($userId) : null;
+        $logoutContext = $userId !== null ? $this->consumeAdminLogoutContext($userId, $request) : null;
 
         if (!$logoutContext instanceof LogoutContext) {
             $this->logger->debug('sw6oidc: no OIDC logout context for this admin session, skipping RP-initiated logout.', [
@@ -434,7 +436,7 @@ class OidcAdminAuthController extends AbstractController
             $provider,
             $logoutContext->idToken,
             rtrim($this->administrationBaseUrl, '/') . '/',
-            'admin:',
+            PostLogoutState::TARGET_ADMIN,
         );
 
         $this->logger->debug('sw6oidc: resolved admin RP-initiated logout URL.', [
@@ -478,6 +480,37 @@ class OidcAdminAuthController extends AbstractController
             null,
             $loginNonce->idToken,
         );
+    }
+
+    /**
+     * The session registry is the primary source: the entry whose jti is the
+     * current access token (still true in the first ~10 minutes of a login),
+     * else the admin's newest OIDC session. LogoutContextStore is kept as the
+     * fallback for logins registered before the registry existed, and is
+     * consumed either way so both stay in sync.
+     */
+    private function consumeAdminLogoutContext(string $userId, Request $request): ?LogoutContext
+    {
+        $fallback = $this->logoutContextStore->consumeForAdmin($userId);
+        $sessions = $this->sessionRegistry->resolveByUser(Sw6OidcSession::USER_TYPE_ADMIN, $userId);
+
+        if ($sessions === []) {
+            return $fallback;
+        }
+
+        $currentJti = $request->attributes->get(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID);
+        $current = null;
+
+        foreach ($sessions as $session) {
+            if ($session->sessionKey === $currentJti) {
+                $current = $session;
+            }
+        }
+
+        $current ??= $sessions[\count($sessions) - 1];
+        $this->sessionRegistry->remove($current);
+
+        return new LogoutContext($current->providerId, $current->idToken);
     }
 
     private function isSsoProvisioned(string $userId, Context $context): bool

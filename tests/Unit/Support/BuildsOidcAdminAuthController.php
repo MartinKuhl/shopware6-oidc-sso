@@ -10,6 +10,7 @@ use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
+use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
 use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
@@ -54,7 +55,7 @@ trait BuildsOidcAdminAuthController
             'bindingService' => $this->createMock(UserProviderBindingService::class),
             'passwordLoginPolicy' => $this->createMock(PasswordLoginPolicy::class),
             'logoutContextStore' => new LogoutContextStore(new InMemoryAtomicCache()),
-            'rpInitiatedLogoutService' => new RpInitiatedLogoutService($this->createMock(OidcHttpClient::class), new NullLogger()),
+            'rpInitiatedLogoutService' => new RpInitiatedLogoutService($this->createMock(OidcHttpClient::class), new NullLogger(), new PostLogoutState('app-secret')),
             'loginErrorTicketStore' => new AdminLoginErrorTicketStore(new InMemoryAtomicCache()),
             'sessionRegistry' => new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger()),
             'rateLimiter' => new Sw6OidcRateLimiter(null, new ArrayAdapter()),
