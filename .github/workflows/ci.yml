@@ -132,13 +132,11 @@ jobs:
           retention-days: 14
 
   # Integration suite: a real Shopware 6.7 (fresh shopware/production project
-  # with this plugin as a path repository) + MySQL + Dex. Written without a
-  # Docker environment and not yet run — continue-on-error until it has
-  # passed once (see tests/Integration/README.md), then remove that line.
+  # with this plugin as a path repository) + MySQL + Dex, see
+  # tests/Integration/README.md.
   integration:
     name: Integration tests (Shopware 6.7 + Dex)
     runs-on: ubuntu-latest
-    continue-on-error: true
     services:
       mysql:
         image: mysql:8.0

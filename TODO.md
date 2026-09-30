@@ -92,12 +92,6 @@ Recorded so nobody "fixes" them back:
 
 ## Still open
 
-- [ ] **Run the integration suite green once**: the CI job `integration`, or
-      locally per [tests/Integration/README.md](tests/Integration/README.md). It
-      was written without a Docker environment and has never been executed.
-      Fix whatever that run shows, then remove `continue-on-error` from the job.
-- [ ] After the first run: drop the "not yet proven" bullets from `README.md`
-      (Known Limitations) and `CLAUDE.md` (Known gaps).
 - [ ] Manual end-to-end pass of the security-critical flows (access-control
       rules, Back-/Front-Channel Logout, forced logout) against a real IdP that
       supports them (Keycloak or ZITADEL; Authelia and Dex support neither

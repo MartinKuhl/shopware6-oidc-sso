@@ -44,6 +44,7 @@ Tests that need Dex are skipped when it isn't reachable.
 `phpunit.integration.xml.dist` sets `SW6OIDC_ALLOW_INSECURE_IDP_URLS=1`,
 because Dex runs on plain HTTP on loopback — never set that in production.
 
-Status: the suite and the CI job (`integration` in `.github/workflows/ci.yml`)
-were written without a Docker environment and have not yet been run; the CI
-job is marked `continue-on-error` until it has passed once.
+The CI job `integration` in `.github/workflows/ci.yml` runs the suite on every
+push and pull request against a fresh `shopware/production` 6.7 project. It
+writes the shop's test settings to `.env.test.local`, because Dotenv ignores
+`.env.local` when `APP_ENV=test`.
