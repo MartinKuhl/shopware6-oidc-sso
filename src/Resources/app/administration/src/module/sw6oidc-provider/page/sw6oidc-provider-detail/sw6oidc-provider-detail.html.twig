@@ -650,6 +650,83 @@
                     {{ $tc('sw6oidc.provider.detail.superadminMappingActiveWarning') }}
                 </mt-banner>
             </sw-card>
+
+            {% block sw6oidc_provider_detail_health %}
+            <sw-card class="sw6oidc-bold-field-labels" :title="$tc('sw6oidc.provider.detail.cardHealth')">
+                <sw-container columns="1fr 1fr" gap="0 30px">
+                    <sw-number-field
+                        v-model="provider.healthAlertFailureThreshold"
+                        number-type="int"
+                        :min="0"
+                        :max="1000"
+                        :label="$tc('sw6oidc.provider.detail.healthAlertFailureThreshold')"
+                        :help-text="$tc('sw6oidc.provider.detail.healthAlertFailureThresholdHelp')"
+                    />
+                    <sw-switch-field
+                        v-model:value="provider.healthAlertNotifyOnRecovery"
+                        :label="$tc('sw6oidc.provider.detail.healthAlertNotifyOnRecovery')"
+                        :help-text="$tc('sw6oidc.provider.detail.healthAlertNotifyOnRecoveryHelp')"
+                    />
+                </sw-container>
+                <sw-password-field
+                    v-model="provider.healthAlertWebhookUrl"
+                    :error="providerHealthAlertWebhookUrlError"
+                    :label="$tc('sw6oidc.provider.detail.healthAlertWebhookUrl')"
+                    :help-text="$tc('sw6oidc.provider.detail.healthAlertWebhookUrlHelp')"
+                    :placeholder="diagnostics && diagnostics.alerting.webhookConfigured ? $tc('sw6oidc.provider.detail.clientSecretStoredPlaceholder') : 'https://hooks.example.com/…'"
+                />
+                <p
+                    v-if="provider.healthAlertLastCheckedAt"
+                    class="sw6oidc-health-state"
+                >
+                    {{ $t('sw6oidc.provider.detail.healthLastCheck', {
+                        date: formatDate(provider.healthAlertLastCheckedAt),
+                        status: $tc(`sw6oidc.provider.detail.healthStatus.${provider.healthAlertLastStatus || 'unknown'}`),
+                        failures: provider.healthAlertConsecutiveFailures,
+                    }) }}
+                </p>
+
+                <sw-button
+                    size="small"
+                    :is-loading="isRunningDiagnostics"
+                    :disabled="!canRunLiveTest"
+                    style="margin-top: 8px;"
+                    @click="onClickRunDiagnostics"
+                >
+                    {{ $tc('sw6oidc.provider.detail.buttonRunDiagnostics') }}
+                </sw-button>
+
+                <ul
+                    v-if="diagnostics"
+                    class="sw6oidc-test-result-list"
+                    style="margin-top: 16px;"
+                >
+                    <li class="sw6oidc-test-result-list__item">
+                        <strong>{{ $tc('sw6oidc.provider.detail.diagnosticsReachability') }}:</strong>
+                        <span>{{ diagnostics.reachability.detail }} ({{ diagnostics.reachability.durationMs }} ms)</span>
+                        <sw-label
+                            size="medium"
+                            appearance="pill"
+                            :variant="diagnostics.reachability.ok ? 'success' : 'danger'"
+                        >{{ $tc(`sw6oidc.provider.detail.testStatus.${diagnostics.reachability.ok ? 'pass' : 'fail'}`) }}</sw-label>
+                    </li>
+                    <li class="sw6oidc-test-result-list__item">
+                        <strong>{{ $tc('sw6oidc.provider.detail.diagnosticsConfig') }}:</strong>
+                        <span v-if="!diagnostics.configProblems.length">{{ $tc('sw6oidc.provider.detail.diagnosticsConfigComplete') }}</span>
+                        <span v-else>{{ diagnostics.configProblems.map((code) => $tc(`sw6oidc.provider.detail.configProblem.${code}`)).join(', ') }}</span>
+                        <sw-label
+                            size="medium"
+                            appearance="pill"
+                            :variant="diagnostics.configProblems.length ? 'danger' : 'success'"
+                        >{{ $tc(`sw6oidc.provider.detail.testStatus.${diagnostics.configProblems.length ? 'fail' : 'pass'}`) }}</sw-label>
+                    </li>
+                    <li class="sw6oidc-test-result-list__item">
+                        <strong>{{ $tc('sw6oidc.provider.detail.diagnosticsAlerting') }}:</strong>
+                        <span>{{ $tc(diagnostics.alerting.enabled ? 'sw6oidc.provider.detail.diagnosticsAlertingOn' : 'sw6oidc.provider.detail.diagnosticsAlertingOff') }}</span>
+                    </li>
+                </ul>
+            </sw-card>
+            {% endblock %}
         </sw-card-view>
     </template>
     {% endblock %}

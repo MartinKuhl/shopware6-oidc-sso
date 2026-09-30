@@ -73,6 +73,9 @@ Component.register('sw6oidc-provider-detail', () => {
                 connectionTestResult: null,
                 isRunningLiveTest: false,
                 liveTestReport: null,
+                isRunningDiagnostics: false,
+                /** OidcDiagnosticsController response for this provider */
+                diagnostics: null,
                 /** @type {Record<string, unknown>} claims received on the last live login test, keyed by claim name */
                 liveTestClaims: {},
                 // Fixed, not measured: an earlier version tried to measure each
@@ -106,6 +109,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 'jwksEndpoint',
                 'endSessionEndpoint',
                 'postLogoutUrl',
+                'healthAlertWebhookUrl',
                 'revocationEndpoint',
                 'disableNonOidcCustomerLogin',
                 'disableNonOidcAdminLogin',
@@ -363,6 +367,11 @@ Component.register('sw6oidc-provider-detail', () => {
                     this.provider.clientSecret = undefined;
                 }
 
+                // Same for the write-only webhook URL (blank = keep the stored one).
+                if (!this.provider.healthAlertWebhookUrl) {
+                    this.provider.healthAlertWebhookUrl = undefined;
+                }
+
                 return this.providerRepository.save(this.provider, Shopware.Context.api).then(() => {
                     this.isSaveSuccessful = true;
                     this.isLoading = false;
@@ -533,6 +542,30 @@ Component.register('sw6oidc-provider-detail', () => {
                         Object.fromEntries(Object.entries(bodyFields).filter(([, value]) => value !== null && value !== undefined)),
                     ),
                 });
+            },
+
+            formatDate(value) {
+                return value ? Shopware.Utils.format.date(value) : '';
+            },
+
+            async onClickRunDiagnostics() {
+                this.isRunningDiagnostics = true;
+
+                try {
+                    const response = await this.sw6oidcApiFetch(`/api/_action/sw6oidc/provider/${this.provider.id}/diagnostics`, {});
+
+                    if (!response.ok) {
+                        throw new Error(`Diagnostics failed with status ${response.status}`);
+                    }
+
+                    this.diagnostics = await response.json();
+                } catch (exception) {
+                    // eslint-disable-next-line no-console
+                    console.error('sw6oidc: diagnostics failed', exception);
+                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.diagnosticsError') });
+                } finally {
+                    this.isRunningDiagnostics = false;
+                }
             },
 
             onAddAttributeMapping() {

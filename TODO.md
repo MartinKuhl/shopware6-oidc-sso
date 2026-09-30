@@ -43,6 +43,7 @@ recorded so nobody "fixes" them back:
 - **Phase 8b:** `iss` + `sid` are both required (no cookie fallback: SameSite cookies aren't sent in a cross-site iframe); every provider sharing the issuer is tried. Unknown sids count as rate-limit failures. The GIF response sets `Content-Security-Policy: frame-ancestors *` so the iframe can render despite core's `X-Frame-Options: deny`.
 - **Phase 8c (rest):** `post_logout_url` *replaces* the default post-logout redirect URI (it is what gets registered at the IdP), so the shared `/sw6oidc/postlogout` landing is opt-in by setting it — no change for existing setups. The landing picks the target from an HMAC-signed `state` (`PostLogoutState`); Authelia's `rd` gets the state appended. Admin logout reads the registry first (current jti, else newest session) with `LogoutContextStore` as fallback.
 - **Phase 10:** two internal columns beyond the plan — `session_key_hash` (sha256; raw context tokens / jtis are credentials and never stored) and `registry_session_id` — to match logouts to logins. Force logout is exact only for customer OIDC sessions still in the registry; passkey logins and admins end all sessions of the account. Added a daily retention task (`SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS`, default 90) since the table holds IPs/user agents. Scheduled-task registration needs no extra DB row handling: core's `PluginLifecycleSubscriber` registers tagged tasks on install/update.
+- **Phase 11:** state columns are `WriteProtected` (the task writes via DBAL), which is what guarantees "no re-fire on edit mid-outage"; plus a `health_alert_last_checked_at` column. The health endpoint also reports the last scheduled probe (still no outbound calls) and returns only counts. An undeliverable alert is retried next round. `WebhookNotifier` uses the SSRF-guarded client directly because `OidcHttpClient` rejects non-JSON responses. Webhook URL and state are excluded from config export. No extra `scheduled_task` row handling is needed (see Phase 10).
 - **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
   `kernel.response` subscriber that only appends IdP origins to directives an
   existing policy already declares.
@@ -56,7 +57,7 @@ Phase 8  Rate limiting + Back-Channel Logout          (shipped)
 Phase 8b Front-Channel Logout                         (shipped)
 Phase 8c Admin-side RP-initiated logout               (shipped)
 Phase 10 Audit/session-activity log + admin UI         (shipped)
-Phase 11 Health-check/diagnostics + alerting           (deps 2, 3 shipped — ready)
+Phase 11 Health-check/diagnostics + alerting           (shipped)
 Phase 13 Integration test harness (Dex)                (stretch goal)
 Phase 14 Setup guides                                  (optional)
 ```
@@ -203,38 +204,38 @@ structurally incompatible with "one row per login").
 
 ---
 
-## Phase 11 — Health-check/diagnostics + proactive alerting
+## Phase 11 — Health-check/diagnostics + proactive alerting (shipped)
 
 **Depends on Phases 2 (webhook URL reuses the encrypted-field infra) and 3
 (SSRF re-validation).**
 
-- [ ] New migration adding to `sw6oidc_provider`: `health_alert_webhook_url`
+- [x] New migration adding to `sw6oidc_provider`: `health_alert_webhook_url`
       (`Sw6OidcEncryptedField`), `health_alert_failure_threshold` (int,
       default 0 = opt-out), `health_alert_notify_on_recovery` (bool), plus
       cron-owned runtime state: `health_alert_consecutive_failures`,
       `health_alert_last_status`, `health_alert_first_failure_at`,
       `health_alert_last_notified_at`.
-- [ ] New `src/Controller/HealthCheckController.php` (`GET /sw6oidc/health`,
+- [x] New `src/Controller/HealthCheckController.php` (`GET /sw6oidc/health`,
       unauthenticated, config-completeness-only — **no outbound HTTP calls**).
-- [ ] New `src/Service/Health/ProviderReachabilityChecker.php` — JWKS `keys`
+- [x] New `src/Service/Health/ProviderReachabilityChecker.php` — JWKS `keys`
       field check, fallback to discovery doc; re-validates SSRF immediately
       before every fetch.
-- [ ] New `src/Controller/Api/OidcDiagnosticsController.php` — authenticated
+- [x] New `src/Controller/Api/OidcDiagnosticsController.php` — authenticated
       on-demand probe.
-- [ ] New `src/ScheduledTask/HealthCheckAlertTask.php` +
+- [x] New `src/ScheduledTask/HealthCheckAlertTask.php` +
       `HealthCheckAlertTaskHandler.php` (Shopware's `ScheduledTask`/
       `ScheduledTaskHandler`, tagged `messenger.message_handler`) — queries
       providers with threshold+webhook configured, probes, posts JSON alert
       once per outage + optional recovery notice. *(verify whether a
       `ScheduledTask` needs a corresponding `scheduled_task` table row beyond
       the messenger tag)*
-- [ ] New `src/Service/Health/WebhookNotifier.php` — thin `OidcHttpClient`
+- [x] New `src/Service/Health/WebhookNotifier.php` — thin `OidcHttpClient`
       wrapper.
-- [ ] Admin Vue — diagnostics panel + new threshold/webhook form fields on
+- [x] Admin Vue — diagnostics panel + new threshold/webhook form fields on
       the provider detail page.
-- [ ] Tests: reachability checker, threshold-crossing/recovery/no-re-fire-on-
+- [x] Tests: reachability checker, threshold-crossing/recovery/no-re-fire-on-
       edit-mid-outage, health endpoint makes zero outbound calls.
-- [ ] Docs: `CLAUDE.md` — new "Health checks & alerting" section; `README.md`.
+- [x] Docs: `CLAUDE.md` — new "Health checks & alerting" section; `README.md`.
 
 ---
 

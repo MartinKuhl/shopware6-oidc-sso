@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Tests\Unit\Subscriber;
 use Doctrine\DBAL\Connection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 use MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcProviderWriteGuardSubscriber;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -21,6 +22,19 @@ use Shopware\Core\Framework\Validation\WriteConstraintViolationException;
 #[CoversClass(Sw6OidcProviderWriteGuardSubscriber::class)]
 final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
 {
+    private const APP_SECRET = 'test-app-secret';
+
+    public function testEncryptedWebhookUrlIsDecryptedAndSsrfChecked(): void
+    {
+        $encrypted = (new Sw6OidcEncryptor(self::APP_SECRET))->encrypt('https://hooks.internal.example/T000/B000/xyz');
+
+        $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, ['health_alert_webhook_url' => $encrypted])], privateIps: true));
+        self::assertSame('/healthAlertWebhookUrl', $violation->getPropertyPath());
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_URL_BLOCKED, $violation->getCode());
+
+        self::assertCount(0, $this->validateCommands([$this->command(UpdateCommand::class, ['health_alert_webhook_url' => $encrypted])])->getExceptions()->getExceptions());
+    }
+
     public function testBlockedEndpointAddsFieldScopedViolation(): void
     {
         $event = $this->validateCommands([$this->command(UpdateCommand::class, ['jwks_endpoint' => 'https://internal.example/jwks'])], privateIps: true);
@@ -112,7 +126,7 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
         $validator = new SsrfUrlValidator(false, static fn (): array => [$privateIps ? '10.0.0.1' : '93.184.215.14']);
         $event = new PreWriteValidationEvent(WriteContext::createFromContext(Context::createDefaultContext()), $commands);
 
-        (new Sw6OidcProviderWriteGuardSubscriber($validator, $connection))->validate($event);
+        (new Sw6OidcProviderWriteGuardSubscriber($validator, $connection, new Sw6OidcEncryptor(self::APP_SECRET)))->validate($event);
 
         return $event;
     }

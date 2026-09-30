@@ -108,6 +108,16 @@ Plumbing for Back-/Front-Channel Logout and forced logouts: which local sessions
 - **Retention** — `ScheduledTask/SessionActivityCleanupTask` (daily, `sw6oidc.session_activity_cleanup`) + handler (tagged `messenger.message_handler`) deletes rows older than `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` (default 90, 0 = keep). The `scheduled_task` row is created by core's `PluginLifecycleSubscriber` on install/update (or `bin/console scheduled-task:register`).
 - **Admin UI** — `module/sw6oidc-sessions/` (`sw6oidc-sessions-list`, `entity: sw6oidc_session_activity` → auto ACL privileges), newest first, "only active" switch, owner names resolved like `sw6oidc-passkey-list`, "Force logout" context action.
 
+## Architecture — Health checks & alerting
+
+- **Schema** — `sw6oidc_provider` gets admin settings `health_alert_webhook_url` (`Sw6OidcEncryptedField`, write-only like `client_secret`), `health_alert_failure_threshold` (0 = off), `health_alert_notify_on_recovery`, and task-owned state `health_alert_consecutive_failures`/`_last_status` (`ok`/`fail`)/`_last_checked_at`/`_first_failure_at`/`_last_notified_at` — `WriteProtected` for the API (admin edits can't reset an outage), written by `ProviderHealthMonitor` via DBAL. Excluded from config export (webhook = secret, state = instance-specific). The write guard decrypts the webhook URL (the payload is already encrypted at `PreWriteValidationEvent`) and SSRF-checks it.
+- **`Service/Health/ProviderConfigInspector`** — local completeness check (authorize/token/JWKS endpoints, issuer, client id, secret present and decryptable for confidential clients), problem codes. No HTTP.
+- **`Service/Health/ProviderReachabilityChecker`** — JWKS with non-empty `keys`, else discovery doc with `issuer`; `SsrfUrlValidator` re-check right before the fetch, on the SSRF-guarded `sw6oidc.http_client`. Returns `ReachabilityResult`.
+- **`Service/Health/HealthAlertState`** — pure transition function `next(healthy, threshold, notifyOnRecovery, now)`: an outage starts at the first failure; `unhealthy` is due once `failures >= threshold` and `lastNotifiedAt < firstFailureAt` (once per outage); `recovered` only if that outage was alerted and recovery notices are on. `ProviderHealthMonitor` marks an alert sent only when the webhook accepted it, so failures retry next round.
+- **`Service/Health/WebhookNotifier`** — JSON POST (`text` + structured `event`/`provider`/`check`…) on `sw6oidc.http_client`, SSRF re-check, never throws. (Not `OidcHttpClient`: that requires JSON responses.)
+- **`ScheduledTask/HealthCheckAlertTask`** (`sw6oidc.health_check_alert`, 300s) + handler → `ProviderHealthMonitor::run()` over active providers with threshold > 0 and a webhook.
+- **`Controller/HealthCheckController`** — `GET /sw6oidc/health` (storefront scope, unauthenticated), counts only, 503 when degraded; takes no HTTP client by construction. **`Controller/Api/OidcDiagnosticsController`** — `POST /api/_action/sw6oidc/provider/{id}/diagnostics` (`sw6oidc_provider:read`): config problems + live probe + alert state (`webhookConfigured` flag, never the URL).
+
 ## Architecture — Claims-based access control
 
 - **Schema** — `sw6oidc_access_control_rule` (`Core/Content/AccessControlRule/`, one-to-many `accessControlRules` on the provider, cascade delete): `claim_key`, `operator` (`Sw6OidcAccessControlRuleDefinition::OPERATORS`: `eq`/`neq`/`contains`/`not_contains`/`exists`/`not_exists`), nullable `value`/`error_message`, `sort_order`.
@@ -174,6 +184,7 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 **`Controller/Api/`**
 - `OidcAdminAuthController` — `login-options`, `login`, `callback`, `token` (nonce exchange), `login-error/{ticket}` under `/api/sw6oidc/admin/*`; `auth_required: false` at the class level (all actions are necessarily pre-auth).
 - `OidcUserProviderAdminController` — `POST /api/_action/sw6oidc/user-provider/info` (batch `{userType, userIds}` → bindings keyed by id) and `.../unlink`, backing the Administration "OIDC Provider" info (users listing column, user detail incl. the native-SSO `user.sso.detail` variant, own profile, customer base info; `extension/sw-users-permissions-user-*`, `extension/sw-sso-users-permission-user-detail`, `extension/sw-profile-index-general`, `extension/sw-customer-base-info`, shared `component/sw6oidc-user-provider-info`). Gated per request by the core `user:read|update` / `customer:read|update` privileges of the given userType (not by any `sw6oidc_user_provider` privilege, which ordinary roles lack); an admin may always read their own binding (profile). Unlink runs in system scope for the same reason.
+- `OidcDiagnosticsController` — on-demand provider diagnostics (see "Health checks & alerting").
 - `SessionActivityController` — force logout for the session activity module (see "Session activity log").
 - `PasskeyAdminController` — registration/`my-credentials`/delete (auth required) plus `login-options`/`login-verify` (route-level `auth_required: false` override) under `/api/sw6oidc/admin/passkey/*`.
 
@@ -188,10 +199,11 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 - `Migration1790800001CreateAccessControlRuleSchema` — creates `sw6oidc_access_control_rule`.
 - `Migration1790800002AddProviderPostLogoutUrl` — adds `sw6oidc_provider.post_logout_url`.
 - `Migration1790800003CreateSessionActivitySchema` — creates `sw6oidc_session_activity`.
+- `Migration1790800004AddProviderHealthAlerting` — adds the `sw6oidc_provider.health_alert_*` columns.
 
 **`Service/Security/`** — `OidcSecurityHelper` (state/PKCE/nonce), `Sw6OidcEncryptor`, `SsrfUrlValidator`, `PasswordLoginPolicy`, `Sw6OidcCspHostCollector`, `Sw6OidcAccessControlEvaluator`, `Sw6OidcRateLimiter`, exceptions (`ClientSecretUnavailableException`, `PasswordLoginDisabledException`, `InvalidStateException`, `AccessControlDeniedException`).
 
-**`Service/Session/`** — `Sw6OidcSession`, `Sw6OidcSessionRegistry`, `Sw6OidcSessionDestructionService` (see "Session/subject registry"), `Sw6OidcIdpLogoutHandler`, `Sw6OidcSessionActivityRecorder`. **`ScheduledTask/`** — `SessionActivityCleanupTask` + handler. **`Service/Jwt/JwtPayloadReader`** — unverified payload decode for tokens verified elsewhere.
+**`Service/Session/`** — `Sw6OidcSession`, `Sw6OidcSessionRegistry`, `Sw6OidcSessionDestructionService` (see "Session/subject registry"), `Sw6OidcIdpLogoutHandler`, `Sw6OidcSessionActivityRecorder`. **`ScheduledTask/`** — `SessionActivityCleanupTask`, `HealthCheckAlertTask` + handlers. **`Service/Health/`** — see "Health checks & alerting". **`Controller/HealthCheckController`** — `GET /sw6oidc/health`. **`Service/Jwt/JwtPayloadReader`** — unverified payload decode for tokens verified elsewhere.
 
 **`Service/Cache/`** — `AtomicCacheInterface`, `RedisAtomicCache` (always wired, runtime backend selection), `CachePoolAtomicCache`, `RedisConnectionFactory`. **`Service/Http/`** — `OidcHttpClient`, `Sw6OidcHttpClientFactory` (SSRF-guarded client). **`Service/Config/`** — `OidcConfigTransfer`, `ImportResult`. **`Console/`** — export/import commands. **`Event/`** — see Extension points.
 

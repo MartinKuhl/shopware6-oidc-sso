@@ -254,7 +254,37 @@
                     "not_exists": "existiert nicht"
                 },
                 "postLogoutUrl": "Weiterleitungs-URI nach dem Logout",
-                "postLogoutUrlHelp": "Wohin der IdP den Benutzer nach dem Logout dort schickt. Leer lassen für die Standardwerte (Kunden: Storefront-Login-Seite, Admins: die Administration). Für IdPs, die nur eine Post-Logout-URI akzeptieren, die angezeigte /sw6oidc/postlogout-URL eintragen und nur diese registrieren – sie leitet Kunden und Admins zur jeweils richtigen Login-Seite."
+                "postLogoutUrlHelp": "Wohin der IdP den Benutzer nach dem Logout dort schickt. Leer lassen für die Standardwerte (Kunden: Storefront-Login-Seite, Admins: die Administration). Für IdPs, die nur eine Post-Logout-URI akzeptieren, die angezeigte /sw6oidc/postlogout-URL eintragen und nur diese registrieren – sie leitet Kunden und Admins zur jeweils richtigen Login-Seite.",
+                "cardHealth": "Health-Checks & Alarmierung",
+                "healthAlertFailureThreshold": "Alarm nach aufeinanderfolgenden Fehlschlägen",
+                "healthAlertFailureThresholdHelp": "Eine geplante Aufgabe prüft diesen Provider alle 5 Minuten (JWKS, sonst das Discovery-Dokument). Nach so vielen Fehlschlägen in Folge wird pro Ausfall ein Alarm gesendet. 0 = Alarmierung aus.",
+                "healthAlertWebhookUrl": "Alarm-Webhook-URL",
+                "healthAlertWebhookUrlHelp": "Empfängt einen JSON-POST mit einem lesbaren \"text\"-Feld (funktioniert mit Slack, Mattermost, Teams-Workflows und den meisten Chat-Webhooks) plus strukturierten Details. Wird verschlüsselt gespeichert und nicht wieder angezeigt; leer lassen, um die gespeicherte URL zu behalten.",
+                "healthAlertNotifyOnRecovery": "Bei Wiederherstellung benachrichtigen",
+                "healthAlertNotifyOnRecoveryHelp": "Zusätzlich eine Nachricht senden, wenn der Provider nach einem alarmierten Ausfall wieder erreichbar ist.",
+                "healthLastCheck": "Letzte geplante Prüfung: {date} — {status}, {failures} Fehlschlag/Fehlschläge in Folge.",
+                "healthStatus": {
+                    "ok": "erreichbar",
+                    "fail": "nicht erreichbar",
+                    "unknown": "unbekannt"
+                },
+                "buttonRunDiagnostics": "Diagnose ausführen",
+                "diagnosticsReachability": "Erreichbarkeit",
+                "diagnosticsConfig": "Konfiguration",
+                "diagnosticsConfigComplete": "Vollständig",
+                "diagnosticsAlerting": "Alarmierung",
+                "diagnosticsAlertingOn": "An (Schwellwert und Webhook konfiguriert)",
+                "diagnosticsAlertingOff": "Aus (benötigt einen Schwellwert über 0 und eine Webhook-URL)",
+                "diagnosticsError": "Die Diagnose konnte nicht ausgeführt werden. Bitte versuchen Sie es erneut.",
+                "configProblem": {
+                    "authorize_endpoint_missing": "Authorize-Endpunkt fehlt",
+                    "token_endpoint_missing": "Token-Endpunkt fehlt",
+                    "jwks_endpoint_missing": "JWKS-Endpunkt fehlt",
+                    "issuer_missing": "Issuer fehlt",
+                    "client_id_missing": "Client-ID fehlt",
+                    "client_secret_missing": "Client-Secret fehlt",
+                    "client_secret_undecryptable": "Client-Secret kann nicht entschlüsselt werden (APP_SECRET geändert?) — bitte neu eingeben"
+                }
             }
         },
         "userProvider": {

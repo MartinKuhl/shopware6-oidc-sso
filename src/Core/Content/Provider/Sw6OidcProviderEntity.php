@@ -64,6 +64,16 @@ class Sw6OidcProviderEntity extends Entity
     protected ?\DateTimeInterface $lastTestAt = null;
     /** @var array<string, mixed>|null flattened claims received on the last live login test, keyed by claim name */
     protected ?array $lastTestClaims = null;
+    protected ?string $healthAlertWebhookUrl = null;
+    /** 0 = alerting off */
+    protected int $healthAlertFailureThreshold = 0;
+    protected bool $healthAlertNotifyOnRecovery = false;
+    protected int $healthAlertConsecutiveFailures = 0;
+    /** 'ok' | 'fail' | null (never probed) */
+    protected ?string $healthAlertLastStatus = null;
+    protected ?\DateTimeInterface $healthAlertLastCheckedAt = null;
+    protected ?\DateTimeInterface $healthAlertFirstFailureAt = null;
+    protected ?\DateTimeInterface $healthAlertLastNotifiedAt = null;
     protected ?string $defaultCustomerGroupId = null;
     protected ?string $defaultAclRoleId = null;
 
@@ -151,6 +161,61 @@ class Sw6OidcProviderEntity extends Entity
     public function setEndSessionEndpoint(?string $endSessionEndpoint): void
     {
         $this->endSessionEndpoint = $endSessionEndpoint;
+    }
+
+    public function getHealthAlertWebhookUrl(): ?string
+    {
+        return $this->healthAlertWebhookUrl;
+    }
+
+    public function setHealthAlertWebhookUrl(?string $healthAlertWebhookUrl): void
+    {
+        $this->healthAlertWebhookUrl = $healthAlertWebhookUrl;
+    }
+
+    public function getHealthAlertFailureThreshold(): int
+    {
+        return $this->healthAlertFailureThreshold;
+    }
+
+    public function setHealthAlertFailureThreshold(int $healthAlertFailureThreshold): void
+    {
+        $this->healthAlertFailureThreshold = $healthAlertFailureThreshold;
+    }
+
+    public function isHealthAlertNotifyOnRecovery(): bool
+    {
+        return $this->healthAlertNotifyOnRecovery;
+    }
+
+    public function setHealthAlertNotifyOnRecovery(bool $healthAlertNotifyOnRecovery): void
+    {
+        $this->healthAlertNotifyOnRecovery = $healthAlertNotifyOnRecovery;
+    }
+
+    public function getHealthAlertConsecutiveFailures(): int
+    {
+        return $this->healthAlertConsecutiveFailures;
+    }
+
+    public function getHealthAlertLastStatus(): ?string
+    {
+        return $this->healthAlertLastStatus;
+    }
+
+    public function getHealthAlertLastCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->healthAlertLastCheckedAt;
+    }
+
+    public function getHealthAlertFirstFailureAt(): ?\DateTimeInterface
+    {
+        return $this->healthAlertFirstFailureAt;
+    }
+
+    public function getHealthAlertLastNotifiedAt(): ?\DateTimeInterface
+    {
+        return $this->healthAlertLastNotifiedAt;
     }
 
     public function getPostLogoutUrl(): ?string

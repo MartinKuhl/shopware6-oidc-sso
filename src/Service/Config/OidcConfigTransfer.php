@@ -52,6 +52,14 @@ class OidcConfigTransfer
         'lastTestStatus',
         'lastTestAt',
         'lastTestClaims',
+        // Encrypted like the client secret; usually embeds a token.
+        'healthAlertWebhookUrl',
+        // Runtime state of the health-alert task, instance-specific.
+        'healthAlertConsecutiveFailures',
+        'healthAlertLastStatus',
+        'healthAlertLastCheckedAt',
+        'healthAlertFirstFailureAt',
+        'healthAlertLastNotifiedAt',
         'createdAt',
         'updatedAt',
     ];

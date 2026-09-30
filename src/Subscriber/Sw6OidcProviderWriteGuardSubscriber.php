@@ -6,6 +6,7 @@ use Doctrine\DBAL\Connection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\InsertCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\UpdateCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\WriteCommand;
@@ -24,6 +25,9 @@ use Symfony\Component\Validator\ConstraintViolationList;
  *    never fetched, so it isn't checked. Outbound calls are additionally
  *    guarded at request time (Sw6OidcHttpClientFactory), since DNS can change
  *    after save.
+ *  - The health-alert webhook URL is fetched too, so it is SSRF-checked as
+ *    well; it is encrypted by the time this event runs, so it is decrypted
+ *    here first.
  *  - Redirect URLs the browser is sent to (post_logout_url) must be absolute
  *    http(s) URLs — never fetched server-side, so no SSRF check, but no
  *    javascript:/data: or relative values either.
@@ -63,9 +67,15 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface
         'disable_non_oidc_customer_login' => ['disableNonOidcCustomerLogin', Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER],
     ];
 
+    /** Encrypted fetched URLs: storage name => property name */
+    private const ENCRYPTED_FETCHED_URL_FIELDS = [
+        'health_alert_webhook_url' => 'healthAlertWebhookUrl',
+    ];
+
     public function __construct(
         private readonly SsrfUrlValidator $urlValidator,
         private readonly Connection $connection,
+        private readonly Sw6OidcEncryptor $encryptor,
     ) {
     }
 
@@ -96,9 +106,18 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface
     {
         $payload = $command->getPayload();
 
-        foreach (self::FETCHED_URL_FIELDS as $storageName => $propertyName) {
-            $url = $payload[$storageName] ?? null;
+        $urls = [];
 
+        foreach (self::FETCHED_URL_FIELDS as $storageName => $propertyName) {
+            $urls[$propertyName] = $payload[$storageName] ?? null;
+        }
+
+        foreach (self::ENCRYPTED_FETCHED_URL_FIELDS as $storageName => $propertyName) {
+            $value = $payload[$storageName] ?? null;
+            $urls[$propertyName] = \is_string($value) ? $this->encryptor->decrypt($value) : null;
+        }
+
+        foreach ($urls as $propertyName => $url) {
             if (!\is_string($url) || $url === '') {
                 continue;
             }

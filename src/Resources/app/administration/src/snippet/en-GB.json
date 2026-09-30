@@ -254,7 +254,37 @@
                     "not_exists": "does not exist"
                 },
                 "postLogoutUrl": "Post-logout redirect URI",
-                "postLogoutUrlHelp": "Where the IdP sends the user after logging out there. Leave empty for the defaults (customers: the Storefront login page, admins: the Administration). For IdPs that accept only one post-logout URI, enter the shown /sw6oidc/postlogout URL and register just that one — it sends customers and admins to the right login page."
+                "postLogoutUrlHelp": "Where the IdP sends the user after logging out there. Leave empty for the defaults (customers: the Storefront login page, admins: the Administration). For IdPs that accept only one post-logout URI, enter the shown /sw6oidc/postlogout URL and register just that one — it sends customers and admins to the right login page.",
+                "cardHealth": "Health checks & alerting",
+                "healthAlertFailureThreshold": "Alert after consecutive failed checks",
+                "healthAlertFailureThresholdHelp": "A scheduled task checks this provider every 5 minutes (JWKS, else the discovery document). After this many failed checks in a row, one alert is sent per outage. 0 = alerting off.",
+                "healthAlertWebhookUrl": "Alert webhook URL",
+                "healthAlertWebhookUrlHelp": "Receives a JSON POST with a human-readable \"text\" field (works with Slack, Mattermost, Teams workflows and most chat webhooks) plus structured details. Stored encrypted and never shown again; leave empty to keep the stored URL.",
+                "healthAlertNotifyOnRecovery": "Notify on recovery",
+                "healthAlertNotifyOnRecoveryHelp": "Also send a message when the provider is reachable again after an alerted outage.",
+                "healthLastCheck": "Last scheduled check: {date} — {status}, {failures} consecutive failure(s).",
+                "healthStatus": {
+                    "ok": "reachable",
+                    "fail": "unreachable",
+                    "unknown": "unknown"
+                },
+                "buttonRunDiagnostics": "Run diagnostics",
+                "diagnosticsReachability": "Reachability",
+                "diagnosticsConfig": "Configuration",
+                "diagnosticsConfigComplete": "Complete",
+                "diagnosticsAlerting": "Alerting",
+                "diagnosticsAlertingOn": "On (threshold and webhook configured)",
+                "diagnosticsAlertingOff": "Off (needs a threshold above 0 and a webhook URL)",
+                "diagnosticsError": "Diagnostics could not be run. Please try again.",
+                "configProblem": {
+                    "authorize_endpoint_missing": "authorize endpoint missing",
+                    "token_endpoint_missing": "token endpoint missing",
+                    "jwks_endpoint_missing": "JWKS endpoint missing",
+                    "issuer_missing": "issuer missing",
+                    "client_id_missing": "client ID missing",
+                    "client_secret_missing": "client secret missing",
+                    "client_secret_undecryptable": "client secret cannot be decrypted (APP_SECRET changed?) — re-enter it"
+                }
             }
         },
         "userProvider": {

@@ -26,6 +26,7 @@ Shopware's built-in authentication is password-based. This plugin bridges Shopwa
 - **PKCE + Nonce**: always-on PKCE (S256 or plain, configurable) and single-use state/nonce for every authorization request
 - **JWT Verification**: RS256/384/512 signature verification with JWKS caching
 - **Base64 Claim Encoding**: supports Zitadel-style Base64-encoded claim values and nested role objects
+- **Health Checks & Alerting**: an unauthenticated `/sw6oidc/health` endpoint for uptime monitors, on-demand diagnostics per provider, and a scheduled reachability check that posts a webhook alert (Slack/Teams/…) once per outage
 - **Session Activity Log**: every OIDC/Passkey login with IP, user agent, logout time and reason in *Settings > Plugins > OIDC & Passkey sessions*, with a "Force logout" action
 - **Passkey (WebAuthn/FIDO2) Login**: independent passwordless sign-in for both Administration and Storefront, self-service registration and login, bridged into native authentication the same way OIDC is
 - **Public Client Support**: PKCE-only flows without a client secret (RFC 6749 §2.1)
@@ -192,6 +193,13 @@ Passkeys are configured independently of OIDC — no external IdP involved. Foun
 **Requirements**: HTTPS (WebAuthn requires a secure context; `localhost` is exempt for local development) and a browser with WebAuthn support.
 
 ---
+
+### Health checks & alerting
+
+- **`GET /sw6oidc/health`** (unauthenticated, for uptime monitors): `{"status": "ok" | "degraded" | "unconfigured", "activeProviders", "incompleteProviders", "unreachableProviders"}` — HTTP 503 when `degraded` (an active provider is missing required configuration, has an undecryptable client secret, or failed its last scheduled check), else 200. It never contacts an IdP itself and exposes only counts, no provider names or URLs.
+- **Run diagnostics** (provider detail page, *Health checks & alerting* card): configuration problems, a live reachability probe (the JWKS must contain keys; without a JWKS endpoint the discovery document must have an `issuer`), and the alerting state.
+- **Alerting**: set **Alert after consecutive failed checks** (0 = off) and an **Alert webhook URL**. A scheduled task (every 5 minutes) probes each such provider; once the threshold is reached, **one** JSON message is POSTed per outage (with a `text` field for Slack, Mattermost, Teams workflows and similar), optionally followed by a recovery message. An alert that can't be delivered is retried on the next run. Changing the provider during an outage does not trigger a second alert.
+- The webhook URL is stored encrypted, never shown again after saving, SSRF-checked on save and before every call, and not included in `sw6oidc:config:export` (enter it again after an import). The scheduled task needs Shopware's scheduled-task runner / message queue worker to be running.
 
 ### Session activity log
 

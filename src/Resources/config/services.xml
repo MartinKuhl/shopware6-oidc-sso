@@ -536,6 +536,7 @@
         <service id="MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcProviderWriteGuardSubscriber">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
             <tag name="kernel.event_subscriber" />
         </service>
 
@@ -619,6 +620,60 @@
         <service id="MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcCspSubscriber">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcCspHostCollector" />
             <tag name="kernel.event_subscriber" />
+        </service>
+
+        <!-- Health checks, diagnostics and proactive alerting -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Health\ProviderConfigInspector">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Health\ProviderReachabilityChecker">
+            <argument type="service" id="sw6oidc.http_client" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Health\WebhookNotifier">
+            <argument type="service" id="sw6oidc.http_client" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Health\ProviderHealthMonitor">
+            <argument type="service" id="sw6oidc_provider.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\ProviderReachabilityChecker" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\WebhookNotifier" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument>%env(APP_URL)%</argument>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\ScheduledTask\HealthCheckAlertTask">
+            <tag name="shopware.scheduled.task" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\ScheduledTask\HealthCheckAlertTaskHandler">
+            <argument type="service" id="scheduled_task.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\ProviderHealthMonitor" />
+            <tag name="messenger.message_handler" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Controller\HealthCheckController" public="true">
+            <argument type="service" id="sw6oidc_provider.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\ProviderConfigInspector" />
+            <call method="setContainer">
+                <argument type="service" id="service_container" />
+            </call>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcDiagnosticsController" public="true">
+            <argument type="service" id="sw6oidc_provider.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\ProviderConfigInspector" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\ProviderReachabilityChecker" />
+            <call method="setContainer">
+                <argument type="service" id="service_container" />
+            </call>
         </service>
 
         <!-- CLI config export/import -->
