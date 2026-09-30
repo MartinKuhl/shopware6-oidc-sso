@@ -40,6 +40,7 @@ recorded so nobody "fixes" them back:
 - **Phase 6:** matching is list-aware (`groups` matches `groups.0`, `groups.1`, …; Zitadel role-object names count as entries), case-insensitive, and treats `true`/`1`/`false`/`0` as booleans; unknown operators fail closed. The admin callback passes the denial message through a one-time error ticket (`AdminLoginErrorTicketStore`) instead of the URL. Rules are part of config export/import (not in the original plan).
 - **Phase 7:** the registry also indexes by local account (`resolveByUser()`, needed for admin logout once `jti`s rotate). Admin session destruction ends **all** of that admin's sessions (refresh tokens revoked + `last_updated_password_at` bumped): Shopware access tokens are stateless and `revokeAccessToken()` is a no-op, so a single admin session can't be targeted. Customer destruction is exact (`SalesChannelContextPersister::delete()`).
 - **Phase 8:** the rate limiter uses a *penalty model* — only failed requests consume the 10/60s budget, so a busy IdP or a NAT'd office is never throttled; applied to the back-channel endpoint and both callbacks. `cache.rate_limiter` exists on 6.7 (`on-invalid="null"` falls back to `cache.app`). Logout-token checks live in a dedicated `JwtVerifier::verifyLogoutToken()` (shares signature + `exp`/`iss`/`aud` checks with `verify()`, rejects `nonce`, requires `events`/`iat`/`sub`-or-`sid`) instead of `verify(expectedNonce: null)`, which would have logged a nonce warning and accepted id_tokens. `findByIssuer()` returns a list (providers sharing an IdP are told apart by `aud`). Added `jti` replay protection. The session fan-out lives in `Sw6OidcIdpLogoutHandler`, shared with Phase 8b.
+- **Phase 8b:** `iss` + `sid` are both required (no cookie fallback: SameSite cookies aren't sent in a cross-site iframe); every provider sharing the issuer is tried. Unknown sids count as rate-limit failures. The GIF response sets `Content-Security-Policy: frame-ancestors *` so the iframe can render despite core's `X-Frame-Options: deny`.
 - **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
   `kernel.response` subscriber that only appends IdP origins to directives an
   existing policy already declares.
@@ -50,7 +51,7 @@ recorded so nobody "fixes" them back:
 Phase 6  Claims-based access-control rules engine     (shipped)
 Phase 7  Session/subject registry (foundational)      (shipped)
 Phase 8  Rate limiting + Back-Channel Logout          (shipped)
-Phase 8b Front-Channel Logout                         (needs 7, 8)
+Phase 8b Front-Channel Logout                         (shipped)
 Phase 8c Admin-side RP-initiated logout               (needs 7, 8)
 Phase 10 Audit/session-activity log + admin UI         (needs 7, 8, 8b, 8c)
 Phase 11 Health-check/diagnostics + alerting           (deps 2, 3 shipped — ready)
@@ -146,15 +147,15 @@ Ships no user-visible behavior by itself — pure plumbing that Phases
 
 ---
 
-## Phase 8b — Front-Channel Logout
+## Phase 8b — Front-Channel Logout (shipped)
 
-- [ ] New `src/Controller/Oidc/FrontChannelLogoutController.php`
+- [x] New `src/Controller/Oidc/FrontChannelLogoutController.php`
       (`GET /sw6oidc/frontchannel-logout`, reads `sid`, rate-limited,
       resolves/destroys/revokes via Phase 7's registry). **Always** returns a
       1×1 GIF (HTTP 200) regardless of outcome.
-- [ ] Tests: valid sid destroys session; unknown sid and rate-limit-exceeded
+- [x] Tests: valid sid destroys session; unknown sid and rate-limit-exceeded
       both still return a 200 GIF.
-- [ ] Docs: `CLAUDE.md` subsection alongside Back-Channel Logout.
+- [x] Docs: `CLAUDE.md` subsection alongside Back-Channel Logout.
 
 ---
 

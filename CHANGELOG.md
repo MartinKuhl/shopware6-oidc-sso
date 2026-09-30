@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- OIDC Front-Channel Logout (`GET /sw6oidc/frontchannel-logout?iss=…&sid=…`): ends the shop sessions of an IdP session from the IdP's logout page iframe; always answers with a 1×1 GIF. Unknown `sid`s count toward the rate limit.
 - OIDC Back-Channel Logout (`POST /sw6oidc/backchannel-logout`): the IdP can end shop sessions server-to-server. Logout tokens are fully verified (signature, `iss`/`aud`/`exp`, `events`, no `nonce`, `jti` replay protection). Customers lose exactly the affected session; Administration users lose all their sessions (admin access tokens can't be revoked individually).
 - Rate limiting for the unauthenticated endpoints (OIDC callbacks, Back-Channel Logout): 10 failed requests per minute per client address, after which the address is refused until the window ends. Successful requests never count.
 - Session/subject registry: every OIDC login records which local session it created (Storefront context token / Administration access-token jti), indexed by the IdP subject, the IdP session id (`sid`) and the local account. Groundwork for Back-/Front-Channel Logout and forced logouts; no visible behavior on its own.
