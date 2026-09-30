@@ -2,9 +2,15 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
+use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
@@ -37,6 +43,9 @@ class OidcCallbackController extends StorefrontController
         private readonly SalesChannelContextService $salesChannelContextService,
         private readonly LogoutContextStore $logoutContextStore,
         private readonly LoggerInterface $logger,
+        private readonly Sw6OidcSessionRegistry $sessionRegistry,
+        private readonly Sw6OidcRateLimiter $rateLimiter,
+        private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
     ) {
     }
 
@@ -48,6 +57,13 @@ class OidcCallbackController extends StorefrontController
     )]
     public function callback(Request $request, SalesChannelContext $context): Response
     {
+        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp())) {
+            $this->logger->warning('sw6oidc: customer OIDC callback rate-limited.');
+            $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.failed'));
+
+            return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
+        }
+
         if ($request->query->get('error') !== null) {
             $this->logger->warning('sw6oidc: IdP returned an OAuth error on the customer callback.', [
                 'error' => $request->query->get('error'),
@@ -90,11 +106,43 @@ class OidcCallbackController extends StorefrontController
             $this->logoutContextStore->remember(
                 $tokenResponse->getToken(),
                 $result->provider->getId(),
-                \is_string($result->tokens['id_token'] ?? null) ? $result->tokens['id_token'] : null,
+                $result->idToken(),
+            );
+
+            $subject = $result->subject();
+            $registrySession = null;
+
+            if ($subject !== null) {
+                $registrySession = $this->sessionRegistry->register(
+                    $result->provider->getId(),
+                    $subject,
+                    $result->sessionId(),
+                    Sw6OidcSession::USER_TYPE_CUSTOMER,
+                    $customer->getId(),
+                    $tokenResponse->getToken(),
+                    $context->getSalesChannelId(),
+                    $result->idToken(),
+                );
+            }
+
+            $this->activityRecorder->recordLogin(
+                Sw6OidcSession::USER_TYPE_CUSTOMER,
+                $customer->getId(),
+                Sw6OidcSessionActivityDefinition::LOGIN_METHOD_OIDC,
+                $tokenResponse->getToken(),
+                $request,
+                $result->provider->getId(),
+                $registrySession,
             );
 
             return new RedirectResponse($this->resolveSafeRelayState($result->flow->relayState));
+        } catch (AccessControlDeniedException $exception) {
+            // Already logged by the evaluator. Plain text only: flash messages render through sw_sanitize.
+            $this->addFlash(self::DANGER, $exception->getDisplayMessage() ?? $this->trans('sw6oidc.login.accessDenied'));
+
+            return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
         } catch (\Throwable $exception) {
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp());
             $this->logger->warning('sw6oidc: customer OIDC callback failed.', [
                 'exceptionClass' => $exception::class,
                 'exception' => $exception->getMessage(),

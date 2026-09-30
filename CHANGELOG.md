@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Setup guides for Authelia, ZITADEL and Dex (`Docs/`).
+- Integration test suite (`tests/Integration/`, `composer test-integration`): a real Shopware 6.7 kernel and database plus Dex as the IdP — Back-Channel Logout, full Storefront and Administration OIDC logins, and access-control rules against real claims — and a fifth CI job running it. Not yet run; the CI job is non-blocking until it passes.
+- Health checks and alerting: `GET /sw6oidc/health` for uptime monitors (configuration and last scheduled check, no outbound calls, counts only, 503 when degraded); a **Run diagnostics** panel per provider (`POST /api/_action/sw6oidc/provider/{id}/diagnostics`); and a scheduled reachability check (every 5 minutes) that POSTs one webhook alert per outage after a configurable number of consecutive failures, with an optional recovery message. The webhook URL is stored encrypted and SSRF-checked.
+- Session activity log (`sw6oidc_session_activity`) and a new Administration module *OIDC & Passkey sessions*: every OIDC/Passkey login with provider, IP address, user agent, logout time and reason (logout, back-/front-channel, forced), an "only active" filter and a **Force logout** action (`POST /api/_action/sw6oidc/session-activity/{id}/force-logout`, ACL `sw6oidc_session_activity:update`). A daily scheduled task deletes entries after `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` (default 90).
+- Per-provider **Post-logout redirect URI** (`post_logout_url`) for RP-initiated logout, and a shared landing page `/sw6oidc/postlogout` for IdPs that accept only one post-logout URI: it sends customers to the Storefront login and admins to the Administration, based on a signed `state`.
+- Administration RP-initiated logout now takes the provider and id_token from the session registry (the current session, else the newest), with the previous per-user store as fallback. Storefront logout removes its session from the registry.
+- OIDC Front-Channel Logout (`GET /sw6oidc/frontchannel-logout?iss=…&sid=…`): ends the shop sessions of an IdP session from the IdP's logout page iframe; always answers with a 1×1 GIF. Unknown `sid`s count toward the rate limit.
+- OIDC Back-Channel Logout (`POST /sw6oidc/backchannel-logout`): the IdP can end shop sessions server-to-server. Logout tokens are fully verified (signature, `iss`/`aud`/`exp`, `events`, no `nonce`, `jti` replay protection). Customers lose exactly the affected session; Administration users lose all their sessions (admin access tokens can't be revoked individually).
+- Rate limiting for the unauthenticated endpoints (OIDC callbacks, Back- and Front-Channel Logout): 10 failed requests per minute per client address, after which the address is refused until the window ends. Successful requests never count.
+- Session/subject registry: every OIDC login records which local session it created (Storefront context token / Administration access-token jti), indexed by the IdP subject, the IdP session id (`sid`) and the local account. Groundwork for Back-/Front-Channel Logout and forced logouts; no visible behavior on its own.
+- Claims-based access control: per-provider rules (`eq`, `neq`, `contains`, `not_contains`, `exists`, `not_exists`) that all must pass before a login is accepted, evaluated before any account lookup or JIT provisioning. List claims are matched by entry, comparisons ignore case, and each rule carries its own denial message (shown on the Storefront and, via a one-time error ticket, on the Administration login screen). New table `sw6oidc_access_control_rule`, an **Access control** card on the provider detail page, and export/import support.
 - `client_secret` is encrypted at rest (libsodium secretbox, `sw6oidc_v1:` envelope). A migration encrypts existing rows.
 - Save-time SSRF validation for every fetched provider URL. A runtime `NoPrivateNetworkHttpClient` guard checks every connection and redirect.
 - Enforcement of the password-login flags, with a lockout guard. The password form is hidden on the Storefront and Administration login screens while password login is disabled.
@@ -31,11 +42,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The RP-initiated logout `state` parameter is now HMAC-signed (`customer.<random>.<sig>` / `admin.<random>.<sig>`) instead of `customer:<random>` / `admin:<random>`.
 - The live login test popup is translated (German/English, following the Administration UI language) and styled like the provider detail page's result card. It reads the Administration snippet files, so both use the same wording.
 - Test status labels are aligned across the plugin ("Erfolgreich"/"Fehlgeschlagen", "Passed"/"Failed"), and the provider list's "Test status" column uses the same pill style as the detail page.
 
 ### Fixed
 
+- The Administration's inactivity re-login modal ("Um sicherzugehen, haben wir dich abgemeldet") only offered password and passkey. It now shows one **Login with <provider>** button per admin SSO provider, and after the OIDC round trip the admin returns to the page they were on. With password login disabled for admins, the modal's password field and button are hidden.
+- The passkey ceremony unit test failed in ~1 of 128 runs (EC public-key coordinates with a leading zero byte were not padded to 32 bytes by the test authenticator).
 - Opening the OIDC provider settings failed with `TypeError: J is not a function`.
 - A group literally named `"0"` was dropped from a groups claim. Integer group ids are now kept.
 - The flattened-claims key limit accepted one key more than intended.

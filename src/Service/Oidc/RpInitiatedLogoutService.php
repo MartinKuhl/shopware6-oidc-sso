@@ -18,10 +18,15 @@ class RpInitiatedLogoutService
     public function __construct(
         private readonly OidcHttpClient $httpClient,
         private readonly LoggerInterface $logger,
+        private readonly PostLogoutState $postLogoutState,
     ) {
     }
 
-    public function buildLogoutUrl(Sw6OidcProviderEntity $provider, ?string $idToken, string $postLogoutRedirectUri, string $statePrefix): ?string
+    /**
+     * @param string $defaultPostLogoutRedirectUri used unless the provider sets its own `post_logout_url`
+     * @param PostLogoutState::TARGET_* $target which login page the shared `/sw6oidc/postlogout` landing picks
+     */
+    public function buildLogoutUrl(Sw6OidcProviderEntity $provider, ?string $idToken, string $defaultPostLogoutRedirectUri, string $target): ?string
     {
         $endSessionEndpoint = $provider->getEndSessionEndpoint();
 
@@ -29,7 +34,16 @@ class RpInitiatedLogoutService
             return null;
         }
 
+        $override = $provider->getPostLogoutUrl();
+        $postLogoutRedirectUri = $override !== null && $override !== '' ? $override : $defaultPostLogoutRedirectUri;
+        $state = $this->postLogoutState->create($target);
+
         if ($this->isAutheliaForwardAuthLogout($endSessionEndpoint)) {
+            // `rd` is followed verbatim, so the shared landing gets its state as a query parameter.
+            if (str_ends_with((string) parse_url($postLogoutRedirectUri, PHP_URL_PATH), '/sw6oidc/postlogout')) {
+                $postLogoutRedirectUri .= $this->querySeparator($postLogoutRedirectUri) . http_build_query(['state' => $state]);
+            }
+
             return $endSessionEndpoint . $this->querySeparator($endSessionEndpoint) . http_build_query([
                 'rd' => $postLogoutRedirectUri,
             ]);
@@ -37,7 +51,7 @@ class RpInitiatedLogoutService
 
         $params = [
             'post_logout_redirect_uri' => $postLogoutRedirectUri,
-            'state' => $statePrefix . bin2hex(random_bytes(8)),
+            'state' => $state,
         ];
 
         if ($idToken !== null) {

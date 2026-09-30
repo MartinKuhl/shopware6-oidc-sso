@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Core\Content\Provider;
 
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingCollection;
 use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupEntity;
@@ -21,6 +22,8 @@ class Sw6OidcProviderEntity extends Entity
     protected ?string $accessTokenEndpoint = null;
     protected ?string $userInfoEndpoint = null;
     protected ?string $endSessionEndpoint = null;
+    /** where the IdP sends the user after RP-initiated logout; null = the login page of the flow */
+    protected ?string $postLogoutUrl = null;
     protected ?string $revocationEndpoint = null;
     protected ?string $jwksEndpoint = null;
     protected ?string $issuer = null;
@@ -61,11 +64,22 @@ class Sw6OidcProviderEntity extends Entity
     protected ?\DateTimeInterface $lastTestAt = null;
     /** @var array<string, mixed>|null flattened claims received on the last live login test, keyed by claim name */
     protected ?array $lastTestClaims = null;
+    protected ?string $healthAlertWebhookUrl = null;
+    /** 0 = alerting off */
+    protected int $healthAlertFailureThreshold = 0;
+    protected bool $healthAlertNotifyOnRecovery = false;
+    protected int $healthAlertConsecutiveFailures = 0;
+    /** 'ok' | 'fail' | null (never probed) */
+    protected ?string $healthAlertLastStatus = null;
+    protected ?\DateTimeInterface $healthAlertLastCheckedAt = null;
+    protected ?\DateTimeInterface $healthAlertFirstFailureAt = null;
+    protected ?\DateTimeInterface $healthAlertLastNotifiedAt = null;
     protected ?string $defaultCustomerGroupId = null;
     protected ?string $defaultAclRoleId = null;
 
     protected ?Sw6OidcAttributeMappingCollection $attributeMappings = null;
     protected ?Sw6OidcRoleMappingCollection $roleMappings = null;
+    protected ?Sw6OidcAccessControlRuleCollection $accessControlRules = null;
     protected ?CustomerGroupEntity $defaultCustomerGroup = null;
     protected ?AclRoleEntity $defaultAclRole = null;
 
@@ -147,6 +161,71 @@ class Sw6OidcProviderEntity extends Entity
     public function setEndSessionEndpoint(?string $endSessionEndpoint): void
     {
         $this->endSessionEndpoint = $endSessionEndpoint;
+    }
+
+    public function getHealthAlertWebhookUrl(): ?string
+    {
+        return $this->healthAlertWebhookUrl;
+    }
+
+    public function setHealthAlertWebhookUrl(?string $healthAlertWebhookUrl): void
+    {
+        $this->healthAlertWebhookUrl = $healthAlertWebhookUrl;
+    }
+
+    public function getHealthAlertFailureThreshold(): int
+    {
+        return $this->healthAlertFailureThreshold;
+    }
+
+    public function setHealthAlertFailureThreshold(int $healthAlertFailureThreshold): void
+    {
+        $this->healthAlertFailureThreshold = $healthAlertFailureThreshold;
+    }
+
+    public function isHealthAlertNotifyOnRecovery(): bool
+    {
+        return $this->healthAlertNotifyOnRecovery;
+    }
+
+    public function setHealthAlertNotifyOnRecovery(bool $healthAlertNotifyOnRecovery): void
+    {
+        $this->healthAlertNotifyOnRecovery = $healthAlertNotifyOnRecovery;
+    }
+
+    public function getHealthAlertConsecutiveFailures(): int
+    {
+        return $this->healthAlertConsecutiveFailures;
+    }
+
+    public function getHealthAlertLastStatus(): ?string
+    {
+        return $this->healthAlertLastStatus;
+    }
+
+    public function getHealthAlertLastCheckedAt(): ?\DateTimeInterface
+    {
+        return $this->healthAlertLastCheckedAt;
+    }
+
+    public function getHealthAlertFirstFailureAt(): ?\DateTimeInterface
+    {
+        return $this->healthAlertFirstFailureAt;
+    }
+
+    public function getHealthAlertLastNotifiedAt(): ?\DateTimeInterface
+    {
+        return $this->healthAlertLastNotifiedAt;
+    }
+
+    public function getPostLogoutUrl(): ?string
+    {
+        return $this->postLogoutUrl;
+    }
+
+    public function setPostLogoutUrl(?string $postLogoutUrl): void
+    {
+        $this->postLogoutUrl = $postLogoutUrl;
     }
 
     public function getRevocationEndpoint(): ?string
@@ -503,6 +582,16 @@ class Sw6OidcProviderEntity extends Entity
     public function setRoleMappings(Sw6OidcRoleMappingCollection $roleMappings): void
     {
         $this->roleMappings = $roleMappings;
+    }
+
+    public function getAccessControlRules(): ?Sw6OidcAccessControlRuleCollection
+    {
+        return $this->accessControlRules;
+    }
+
+    public function setAccessControlRules(Sw6OidcAccessControlRuleCollection $accessControlRules): void
+    {
+        $this->accessControlRules = $accessControlRules;
     }
 
     public function getDefaultCustomerGroup(): ?CustomerGroupEntity

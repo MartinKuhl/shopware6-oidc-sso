@@ -36,6 +36,30 @@ class ProviderResolver
     }
 
     /**
+     * Active providers configured with exactly this issuer — several
+     * providers (one per client) may share an IdP, so callers pick by
+     * audience. Used by Back-/Front-Channel Logout, where only the token's
+     * `iss` identifies the provider.
+     *
+     * @return list<Sw6OidcProviderEntity>
+     */
+    public function findByIssuer(string $issuer, Context $context): array
+    {
+        if ($issuer === '') {
+            return [];
+        }
+
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('isActive', true));
+        $criteria->addFilter(new EqualsFilter('issuer', $issuer));
+
+        return array_values(array_filter(
+            iterator_to_array($this->providerRepository->search($criteria, $context)->getEntities()),
+            static fn (\Shopware\Core\Framework\DataAbstractionLayer\Entity $entity): bool => $entity instanceof Sw6OidcProviderEntity,
+        ));
+    }
+
+    /**
      * @return Sw6OidcProviderEntity[]
      */
     public function getActiveProviders(string $loginType, Context $context): array

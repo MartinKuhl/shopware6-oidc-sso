@@ -8,7 +8,8 @@
             "errorAutoCreateDisabled": "Automatic account creation is disabled for this login method. Please contact your administrator.",
             "passkeyButton": "Login with Passkey",
             "passkeyError": "Passkey login failed. Please try again or log in with your username and password.",
-            "passwordLoginDisabled": "Password login is disabled. Please sign in with single sign-on or a passkey."
+            "passwordLoginDisabled": "Password login is disabled. Please sign in with single sign-on or a passkey.",
+            "errorAccessDenied": "Access denied: your account does not meet the requirements for signing in to the Administration."
         },
         "provider": {
             "moduleTitle": "OIDC Providers",
@@ -117,7 +118,7 @@
                 "jwksEndpoint": "JWKS endpoint",
                 "jwksEndpointHelp": "The IdP's JSON Web Key Set endpoint, used to verify the ID token's signature.",
                 "endSessionEndpoint": "End-session (logout) endpoint",
-                "endSessionEndpointHelp": "The IdP's end-session endpoint, used to also log the user out at the IdP on Storefront logout. Leave blank if unsupported (see the Authelia note in the documentation).",
+                "endSessionEndpointHelp": "The IdP's end-session endpoint, used to also log the user out at the IdP on Storefront and Administration logout. Leave blank if unsupported (see the Authelia note in the documentation).",
                 "revocationEndpoint": "Token revocation endpoint",
                 "revocationEndpointHelp": "The IdP's token revocation endpoint (RFC 7009), used to revoke the access token on logout. Optional — a failed revocation never blocks the local logout.",
                 "issuer": "Issuer",
@@ -234,6 +235,55 @@
                     "columnValue": "Value",
                     "noClaims": "No claims received.",
                     "closeButton": "Close window"
+                },
+                "cardAccessControl": "Access control (claims-based rules)",
+                "accessControlHint": "Every rule must pass (AND, in sort order) for a login to succeed; the first failing rule denies the login with its message. Claim keys use the flattened dot notation (e.g. realm_access.roles). List claims such as groups are matched by membership. Comparisons ignore case; true/1 and false/0 are treated as equal. No rules = everyone may log in.",
+                "accessControlDiscoveredClaims": "Claims seen on the last live test: {claims}",
+                "claimKey": "Claim",
+                "operator": "Operator",
+                "ruleValue": "Value",
+                "ruleErrorMessage": "Message shown when denied",
+                "ruleErrorMessagePlaceholder": "Optional, plain text",
+                "addAccessControlRule": "Add rule",
+                "operators": {
+                    "eq": "equals",
+                    "neq": "does not equal",
+                    "contains": "contains",
+                    "not_contains": "does not contain",
+                    "exists": "exists",
+                    "not_exists": "does not exist"
+                },
+                "postLogoutUrl": "Post-logout redirect URI",
+                "postLogoutUrlHelp": "Where the IdP sends the user after logging out there. Leave empty for the defaults (customers: the Storefront login page, admins: the Administration). For IdPs that accept only one post-logout URI, enter the shown /sw6oidc/postlogout URL and register just that one — it sends customers and admins to the right login page.",
+                "cardHealth": "Health checks & alerting",
+                "healthAlertFailureThreshold": "Alert after consecutive failed checks",
+                "healthAlertFailureThresholdHelp": "A scheduled task checks this provider every 5 minutes (JWKS, else the discovery document). After this many failed checks in a row, one alert is sent per outage. 0 = alerting off.",
+                "healthAlertWebhookUrl": "Alert webhook URL",
+                "healthAlertWebhookUrlHelp": "Receives a JSON POST with a human-readable \"text\" field (works with Slack, Mattermost, Teams workflows and most chat webhooks) plus structured details. Stored encrypted and never shown again; leave empty to keep the stored URL.",
+                "healthAlertNotifyOnRecovery": "Notify on recovery",
+                "healthAlertNotifyOnRecoveryHelp": "Also send a message when the provider is reachable again after an alerted outage.",
+                "healthLastCheck": "Last scheduled check: {date} — {status}, {failures} consecutive failure(s).",
+                "healthStatus": {
+                    "ok": "reachable",
+                    "fail": "unreachable",
+                    "unknown": "unknown"
+                },
+                "buttonRunDiagnostics": "Run diagnostics",
+                "diagnosticsReachability": "Reachability",
+                "diagnosticsConfig": "Configuration",
+                "diagnosticsConfigComplete": "Complete",
+                "diagnosticsAlerting": "Alerting",
+                "diagnosticsAlertingOn": "On (threshold and webhook configured)",
+                "diagnosticsAlertingOff": "Off (needs a threshold above 0 and a webhook URL)",
+                "diagnosticsError": "Diagnostics could not be run. Please try again.",
+                "configProblem": {
+                    "authorize_endpoint_missing": "authorize endpoint missing",
+                    "token_endpoint_missing": "token endpoint missing",
+                    "jwks_endpoint_missing": "JWKS endpoint missing",
+                    "issuer_missing": "issuer missing",
+                    "client_id_missing": "client ID missing",
+                    "client_secret_missing": "client secret missing",
+                    "client_secret_undecryptable": "client secret cannot be decrypted (APP_SECRET changed?) — re-enter it"
                 }
             }
         },
@@ -267,6 +317,43 @@
                 "columnOwner": "Owner",
                 "columnNickname": "Nickname",
                 "columnCreatedAt": "Registered at"
+            }
+        },
+        "sessions": {
+            "moduleTitle": "OIDC & Passkey sessions",
+            "hint": "Every login through OIDC or a passkey, with its logout time and reason. Force logout ends a customer's OIDC session exactly; for passkey logins and for Administration users it ends all sessions of that account. Entries are deleted after the retention period (SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS, default 90 days).",
+            "onlyActive": "Only active sessions",
+            "refresh": "Refresh",
+            "active": "Active",
+            "forceLogout": "Force logout",
+            "forceLogoutConfirm": "End this session? The customer will have to log in again.",
+            "forceLogoutConfirmAdmin": "End all Administration sessions of this user? They will have to log in again.",
+            "forceLogoutSuccess": "The session was ended.",
+            "forceLogoutSuccessAll": "All sessions of this account were ended.",
+            "forceLogoutError": "The session could not be ended. Please try again.",
+            "list": {
+                "columnLoggedInAt": "Logged in",
+                "columnUserType": "Type",
+                "columnOwner": "Account",
+                "columnLoginMethod": "Method",
+                "columnProvider": "Provider",
+                "columnIpAddress": "IP address",
+                "columnLoggedOutAt": "Logged out",
+                "columnLogoutReason": "Logout reason"
+            },
+            "userType": {
+                "customer": "Customer",
+                "admin": "Administration"
+            },
+            "loginMethod": {
+                "oidc": "OIDC",
+                "passkey": "Passkey"
+            },
+            "logoutReason": {
+                "logout": "Logout",
+                "backchannel": "IdP (back-channel)",
+                "frontchannel": "IdP (front-channel)",
+                "forced": "Forced by an administrator"
             }
         }
     }

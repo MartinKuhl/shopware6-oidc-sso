@@ -10,12 +10,46 @@ final readonly class OidcCallbackResult
 {
     /**
      * @param array<string, mixed> $tokens raw token endpoint response (access_token, id_token, refresh_token, expires_in, ...)
+     * @param array<string, mixed> $idTokenClaims verified id_token claims ([] when the IdP sent no id_token)
+     * @param array<string, mixed> $claims id_token claims merged with userinfo claims (unflattened)
      */
     public function __construct(
         public Sw6OidcProviderEntity $provider,
         public AuthorizationFlowContext $flow,
         public MappedProfile $profile,
         public array $tokens,
+        public array $idTokenClaims = [],
+        public array $claims = [],
     ) {
+    }
+
+    public function idToken(): ?string
+    {
+        return \is_string($this->tokens['id_token'] ?? null) ? $this->tokens['id_token'] : null;
+    }
+
+    /**
+     * The IdP subject: from the verified id_token, else from userinfo.
+     */
+    public function subject(): ?string
+    {
+        foreach ([$this->idTokenClaims['sub'] ?? null, $this->claims['sub'] ?? null] as $sub) {
+            if (\is_string($sub) && $sub !== '') {
+                return $sub;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The IdP session id (`sid`, OIDC Front-/Back-Channel Logout), only
+     * trusted from the verified id_token.
+     */
+    public function sessionId(): ?string
+    {
+        $sid = $this->idTokenClaims['sid'] ?? null;
+
+        return \is_string($sid) && $sid !== '' ? $sid : null;
     }
 }

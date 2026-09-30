@@ -8,7 +8,8 @@
             "errorAutoCreateDisabled": "Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.",
             "passkeyButton": "Login mit Passkey",
             "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
-            "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an."
+            "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.",
+            "errorAccessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung an der Administration."
         },
         "provider": {
             "moduleTitle": "OIDC-Anbieter",
@@ -117,7 +118,7 @@
                 "jwksEndpoint": "JWKS-Endpunkt",
                 "jwksEndpointHelp": "Der JWKS-Endpunkt des IdP zur Prüfung der Signatur des ID-Tokens.",
                 "endSessionEndpoint": "End-Session-Endpunkt (Logout)",
-                "endSessionEndpointHelp": "Der End-Session-Endpunkt des IdP, über den beim Storefront-Logout auch beim IdP abgemeldet wird. Leer lassen, falls nicht unterstützt (siehe Authelia-Hinweis in der Dokumentation).",
+                "endSessionEndpointHelp": "Der End-Session-Endpunkt des IdP, über den beim Storefront- und Administration-Logout auch beim IdP abgemeldet wird. Leer lassen, falls nicht unterstützt (siehe Authelia-Hinweis in der Dokumentation).",
                 "revocationEndpoint": "Token-Revocation-Endpunkt",
                 "revocationEndpointHelp": "Der Token-Revocation-Endpunkt (RFC 7009) des IdP zum Widerruf des Access Tokens beim Logout. Optional – ein fehlgeschlagener Widerruf blockiert den lokalen Logout nie.",
                 "issuer": "Issuer",
@@ -234,6 +235,55 @@
                     "columnValue": "Wert",
                     "noClaims": "Keine Claims empfangen.",
                     "closeButton": "Fenster schließen"
+                },
+                "cardAccessControl": "Zugriffskontrolle (Claim-basierte Regeln)",
+                "accessControlHint": "Jede Regel muss erfüllt sein (UND-Verknüpfung, in Sortierreihenfolge), damit eine Anmeldung gelingt; die erste nicht erfüllte Regel lehnt die Anmeldung mit ihrer Meldung ab. Claim-Schlüssel verwenden die abgeflachte Punktnotation (z. B. realm_access.roles). Listen-Claims wie groups werden über ihre Einträge geprüft. Groß-/Kleinschreibung wird ignoriert; true/1 und false/0 gelten als gleich. Keine Regeln = jeder darf sich anmelden.",
+                "accessControlDiscoveredClaims": "Beim letzten Live-Test empfangene Claims: {claims}",
+                "claimKey": "Claim",
+                "operator": "Operator",
+                "ruleValue": "Wert",
+                "ruleErrorMessage": "Meldung bei Ablehnung",
+                "ruleErrorMessagePlaceholder": "Optional, reiner Text",
+                "addAccessControlRule": "Regel hinzufügen",
+                "operators": {
+                    "eq": "ist gleich",
+                    "neq": "ist ungleich",
+                    "contains": "enthält",
+                    "not_contains": "enthält nicht",
+                    "exists": "existiert",
+                    "not_exists": "existiert nicht"
+                },
+                "postLogoutUrl": "Weiterleitungs-URI nach dem Logout",
+                "postLogoutUrlHelp": "Wohin der IdP den Benutzer nach dem Logout dort schickt. Leer lassen für die Standardwerte (Kunden: Storefront-Login-Seite, Admins: die Administration). Für IdPs, die nur eine Post-Logout-URI akzeptieren, die angezeigte /sw6oidc/postlogout-URL eintragen und nur diese registrieren – sie leitet Kunden und Admins zur jeweils richtigen Login-Seite.",
+                "cardHealth": "Health-Checks & Alarmierung",
+                "healthAlertFailureThreshold": "Alarm nach aufeinanderfolgenden Fehlschlägen",
+                "healthAlertFailureThresholdHelp": "Eine geplante Aufgabe prüft diesen Provider alle 5 Minuten (JWKS, sonst das Discovery-Dokument). Nach so vielen Fehlschlägen in Folge wird pro Ausfall ein Alarm gesendet. 0 = Alarmierung aus.",
+                "healthAlertWebhookUrl": "Alarm-Webhook-URL",
+                "healthAlertWebhookUrlHelp": "Empfängt einen JSON-POST mit einem lesbaren \"text\"-Feld (funktioniert mit Slack, Mattermost, Teams-Workflows und den meisten Chat-Webhooks) plus strukturierten Details. Wird verschlüsselt gespeichert und nicht wieder angezeigt; leer lassen, um die gespeicherte URL zu behalten.",
+                "healthAlertNotifyOnRecovery": "Bei Wiederherstellung benachrichtigen",
+                "healthAlertNotifyOnRecoveryHelp": "Zusätzlich eine Nachricht senden, wenn der Provider nach einem alarmierten Ausfall wieder erreichbar ist.",
+                "healthLastCheck": "Letzte geplante Prüfung: {date} — {status}, {failures} Fehlschlag/Fehlschläge in Folge.",
+                "healthStatus": {
+                    "ok": "erreichbar",
+                    "fail": "nicht erreichbar",
+                    "unknown": "unbekannt"
+                },
+                "buttonRunDiagnostics": "Diagnose ausführen",
+                "diagnosticsReachability": "Erreichbarkeit",
+                "diagnosticsConfig": "Konfiguration",
+                "diagnosticsConfigComplete": "Vollständig",
+                "diagnosticsAlerting": "Alarmierung",
+                "diagnosticsAlertingOn": "An (Schwellwert und Webhook konfiguriert)",
+                "diagnosticsAlertingOff": "Aus (benötigt einen Schwellwert über 0 und eine Webhook-URL)",
+                "diagnosticsError": "Die Diagnose konnte nicht ausgeführt werden. Bitte versuchen Sie es erneut.",
+                "configProblem": {
+                    "authorize_endpoint_missing": "Authorize-Endpunkt fehlt",
+                    "token_endpoint_missing": "Token-Endpunkt fehlt",
+                    "jwks_endpoint_missing": "JWKS-Endpunkt fehlt",
+                    "issuer_missing": "Issuer fehlt",
+                    "client_id_missing": "Client-ID fehlt",
+                    "client_secret_missing": "Client-Secret fehlt",
+                    "client_secret_undecryptable": "Client-Secret kann nicht entschlüsselt werden (APP_SECRET geändert?) — bitte neu eingeben"
                 }
             }
         },
@@ -267,6 +317,43 @@
                 "columnOwner": "Besitzer",
                 "columnNickname": "Bezeichnung",
                 "columnCreatedAt": "Registriert am"
+            }
+        },
+        "sessions": {
+            "moduleTitle": "OIDC- & Passkey-Sitzungen",
+            "hint": "Jede Anmeldung über OIDC oder einen Passkey, mit Zeitpunkt und Grund der Abmeldung. „Abmelden erzwingen“ beendet die OIDC-Sitzung eines Kunden genau; bei Passkey-Anmeldungen und bei Administration-Benutzern werden alle Sitzungen dieses Kontos beendet. Einträge werden nach der Aufbewahrungsdauer gelöscht (SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS, Standard 90 Tage).",
+            "onlyActive": "Nur aktive Sitzungen",
+            "refresh": "Aktualisieren",
+            "active": "Aktiv",
+            "forceLogout": "Abmelden erzwingen",
+            "forceLogoutConfirm": "Diese Sitzung beenden? Der Kunde muss sich erneut anmelden.",
+            "forceLogoutConfirmAdmin": "Alle Administration-Sitzungen dieses Benutzers beenden? Er muss sich erneut anmelden.",
+            "forceLogoutSuccess": "Die Sitzung wurde beendet.",
+            "forceLogoutSuccessAll": "Alle Sitzungen dieses Kontos wurden beendet.",
+            "forceLogoutError": "Die Sitzung konnte nicht beendet werden. Bitte versuchen Sie es erneut.",
+            "list": {
+                "columnLoggedInAt": "Angemeldet",
+                "columnUserType": "Typ",
+                "columnOwner": "Konto",
+                "columnLoginMethod": "Methode",
+                "columnProvider": "Provider",
+                "columnIpAddress": "IP-Adresse",
+                "columnLoggedOutAt": "Abgemeldet",
+                "columnLogoutReason": "Abmeldegrund"
+            },
+            "userType": {
+                "customer": "Kunde",
+                "admin": "Administration"
+            },
+            "loginMethod": {
+                "oidc": "OIDC",
+                "passkey": "Passkey"
+            },
+            "logoutReason": {
+                "logout": "Abmeldung",
+                "backchannel": "IdP (Back-Channel)",
+                "frontchannel": "IdP (Front-Channel)",
+                "forced": "Durch Administrator erzwungen"
             }
         }
     }

@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Core\Content\Provider;
 
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Field\Sw6OidcEncryptedField;
 use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingDefinition;
@@ -17,6 +18,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ApiAware;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\CascadeDelete;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\PrimaryKey;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Required;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\WriteProtected;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IdField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IntField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\JsonField;
@@ -59,6 +61,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new StringField('access_token_endpoint', 'accessTokenEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('user_info_endpoint', 'userInfoEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('end_session_endpoint', 'endSessionEndpoint', 1024))->addFlags(new ApiAware()),
+            (new StringField('post_logout_url', 'postLogoutUrl', 1024))->addFlags(new ApiAware()),
             (new StringField('revocation_endpoint', 'revocationEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('jwks_endpoint', 'jwksEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('issuer', 'issuer', 1024))->addFlags(new ApiAware()),
@@ -90,6 +93,17 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new StringField('last_test_status', 'lastTestStatus', 16))->addFlags(new ApiAware()),
             (new DateTimeField('last_test_at', 'lastTestAt'))->addFlags(new ApiAware()),
             (new JsonField('last_test_claims', 'lastTestClaims'))->addFlags(new ApiAware()),
+            // Health alerting: the webhook URL usually embeds a token, so it is
+            // encrypted and write-only like the client secret. The runtime
+            // state is owned by HealthCheckAlertTaskHandler (written via DBAL).
+            (new Sw6OidcEncryptedField('health_alert_webhook_url', 'healthAlertWebhookUrl', 1024))->addFlags(new AllowHtml(false)),
+            (new IntField('health_alert_failure_threshold', 'healthAlertFailureThreshold', 0, 1000))->addFlags(new ApiAware()),
+            (new BoolField('health_alert_notify_on_recovery', 'healthAlertNotifyOnRecovery'))->addFlags(new ApiAware()),
+            (new IntField('health_alert_consecutive_failures', 'healthAlertConsecutiveFailures'))->addFlags(new ApiAware(), new WriteProtected()),
+            (new StringField('health_alert_last_status', 'healthAlertLastStatus', 16))->addFlags(new ApiAware(), new WriteProtected()),
+            (new DateTimeField('health_alert_last_checked_at', 'healthAlertLastCheckedAt'))->addFlags(new ApiAware(), new WriteProtected()),
+            (new DateTimeField('health_alert_first_failure_at', 'healthAlertFirstFailureAt'))->addFlags(new ApiAware(), new WriteProtected()),
+            (new DateTimeField('health_alert_last_notified_at', 'healthAlertLastNotifiedAt'))->addFlags(new ApiAware(), new WriteProtected()),
             (new FkField('default_customer_group_id', 'defaultCustomerGroupId', CustomerGroupDefinition::class))->addFlags(new ApiAware()),
             (new FkField('default_acl_role_id', 'defaultAclRoleId', AclRoleDefinition::class))->addFlags(new ApiAware()),
             new CreatedAtField(),
@@ -98,6 +112,8 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new OneToManyAssociationField('attributeMappings', Sw6OidcAttributeMappingDefinition::class, 'provider_id'))
                 ->addFlags(new ApiAware(), new CascadeDelete()),
             (new OneToManyAssociationField('roleMappings', Sw6OidcRoleMappingDefinition::class, 'provider_id'))
+                ->addFlags(new ApiAware(), new CascadeDelete()),
+            (new OneToManyAssociationField('accessControlRules', Sw6OidcAccessControlRuleDefinition::class, 'provider_id'))
                 ->addFlags(new ApiAware(), new CascadeDelete()),
             (new ManyToOneAssociationField('defaultCustomerGroup', 'default_customer_group_id', CustomerGroupDefinition::class, 'id'))
                 ->addFlags(new ApiAware()),

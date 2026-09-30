@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Oidc;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeMapper;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcAccessControlEvaluator;
 use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
 use MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier;
 use Psr\Log\LoggerInterface;
@@ -29,6 +30,7 @@ class OidcCallbackProcessor
         private readonly ClaimsNormalizer $claimsNormalizer,
         private readonly AttributeMapper $attributeMapper,
         private readonly LoggerInterface $logger,
+        private readonly Sw6OidcAccessControlEvaluator $accessControlEvaluator,
     ) {
     }
 
@@ -37,6 +39,7 @@ class OidcCallbackProcessor
      * @throws \MartinKuhl\Sw6Oidc\Service\Jwt\Exception\InvalidJwtException
      * @throws \MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\MissingEmailClaimException
      * @throws \MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException
      */
     public function process(?string $code, ?string $state, string $redirectUri, Context $context): OidcCallbackResult
     {
@@ -114,6 +117,10 @@ class OidcCallbackProcessor
         $groups = $this->claimsNormalizer->normalizeGroups($rawGroupsClaim);
 
         $flattenedClaims = $this->claimsNormalizer->flatten($mergedClaims, $provider->getClaimEncoding());
+
+        // Before mapping, so a denied login never reaches lookup/JIT-create/sync.
+        $this->accessControlEvaluator->evaluate($provider->getId(), $flattenedClaims, $context);
+
         $profile = $this->attributeMapper->map($provider, $flattenedClaims, $groups, $context);
 
         $this->logger->debug('sw6oidc: claims mapped to profile.', [
@@ -122,6 +129,6 @@ class OidcCallbackProcessor
             'groups' => $groups,
         ]);
 
-        return new OidcCallbackResult($provider, $flow, $profile, $tokens);
+        return new OidcCallbackResult($provider, $flow, $profile, $tokens, $idTokenClaims, $mergedClaims);
     }
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Integration suite: a real Shopware kernel + database, and Dex as a real IdP
+    (tests/Integration/docker-compose.yml). Separate from phpunit.xml.dist
+    because it needs a different bootstrap (Shopware's TestBootstrapper) and a
+    running Shopware installation; see tests/Integration/README.md.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/Integration/bootstrap.php"
+         colors="true"
+         failOnWarning="true"
+         failOnDeprecation="false"
+         cacheDirectory="var/cache/phpunit-integration"
+>
+    <php>
+        <env name="APP_ENV" value="test" force="true"/>
+        <env name="KERNEL_CLASS" value="Shopware\Core\Kernel"/>
+        <!-- Dex runs on plain HTTP on loopback. -->
+        <env name="SW6OIDC_ALLOW_INSECURE_IDP_URLS" value="1" force="true"/>
+        <env name="SW6OIDC_IT_DEX_ISSUER" value="http://127.0.0.1:5556/dex"/>
+        <server name="MAILER_DSN" value="null://null"/>
+    </php>
+
+    <testsuites>
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

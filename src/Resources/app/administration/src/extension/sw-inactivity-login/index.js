@@ -4,11 +4,13 @@ import {
     preparePublicKeyRequestOptions,
     serializeAssertionCredential,
 } from '../../service/webauthn-codec';
+import { rememberSsoReturnRoute } from '../../service/sso-return-route';
 
 const { Component } = Shopware;
 
 /**
- * Adds a "Login with Passkey" option to Shopware's own inactivity/session-
+ * Adds "Login with <provider>" (OIDC) buttons and a "Login with Passkey"
+ * option to Shopware's own inactivity/session-
  * timeout re-login modal (core module/sw-inactivity-login) - the SPA
  * navigates here in-place (no full page reload) whenever a background token
  * refresh fails while the admin is actively using the app, so - unlike the
@@ -22,6 +24,12 @@ const { Component } = Shopware;
  * via PasskeyAdminController::loginOptions()'s optional `email` parameter -
  * tighter/faster than a fully discoverable-credential flow, since we already
  * know exactly which admin is re-authenticating.
+ *
+ * The SSO buttons start the normal admin OIDC login (full-page redirect);
+ * the page the admin was on is carried over in sessionStorage
+ * (service/sso-return-route) and restored by the sw-login override after the
+ * nonce exchange. With password login disabled for admins, the password
+ * field and the "Log in" button are hidden, as on the main login screen.
  */
 Component.override('sw-inactivity-login', {
     template,
@@ -31,6 +39,10 @@ Component.override('sw-inactivity-login', {
     data() {
         return {
             sw6oidcPasskeyAvailable: false,
+            /** @type {Array<{id: string, label: string|null}>} visible admin-scoped providers */
+            sw6oidcSsoProviders: [],
+            /** disable_non_oidc_admin_login is on: hide the password field (the server rejects it anyway). */
+            sw6oidcPasswordLoginDisabled: false,
             sw6oidcPasskeyPending: false,
             sw6oidcPasskeyError: null,
         };
@@ -49,12 +61,37 @@ Component.override('sw-inactivity-login', {
                     return;
                 }
 
-                const { passkeyAvailable } = await response.json();
+                const { ssoProviders, passkeyAvailable, passwordLoginDisabled } = await response.json();
+                this.sw6oidcSsoProviders = Array.isArray(ssoProviders) ? ssoProviders : [];
                 this.sw6oidcPasskeyAvailable = Boolean(passkeyAvailable);
+                this.sw6oidcPasswordLoginDisabled = Boolean(passwordLoginDisabled);
             } catch (exception) {
                 // eslint-disable-next-line no-console
                 console.error('sw6oidc: failed to load admin login options', exception);
             }
+        },
+
+        sw6oidcSsoButtonLabel(provider) {
+            return provider.label
+                ? this.$t('sw6oidc.login.ssoButtonWithProvider', { name: provider.label })
+                : this.$t('sw6oidc.login.ssoButton');
+        },
+
+        /**
+         * OIDC re-login is a full-page round trip through the IdP (usually
+         * instant while the IdP session is still alive). Core keeps the page
+         * the admin was on under sw-admin-previous-route_<hash>; copy it so the
+         * sw-login override can return there after the nonce exchange.
+         */
+        sw6oidcStartSsoLogin(providerId) {
+            try {
+                const previousRoute = JSON.parse(sessionStorage.getItem(`sw-admin-previous-route_${this.hash}`) || '{}');
+                rememberSsoReturnRoute(previousRoute?.fullPath);
+            } catch {
+                // No previous route: land on the dashboard after re-login.
+            }
+
+            window.location.href = `/api/sw6oidc/admin/login?providerId=${encodeURIComponent(providerId)}`;
         },
 
         async sw6oidcStartPasskeyLogin() {

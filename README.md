@@ -6,7 +6,7 @@
 
 OpenID Connect (OIDC) and Passkey (WebAuthn) single sign-on for Shopware 6 Storefront customers and Administration users, with just-in-time (JIT) account provisioning and OIDC-group-to-Shopware-role/group mapping.
 
-> **Status**: v0.1.0 + unreleased changes (see [CHANGELOG.md](CHANGELOG.md)) — early-stage. Unit-tested, but not yet exercised against a live Shopware instance in an automated integration suite. Review [Known Limitations](#known-limitations) before relying on this in production.
+> **Status**: v0.1.0 + unreleased changes (see [CHANGELOG.md](CHANGELOG.md)) — early-stage. Unit-tested; an integration suite against a real Shopware kernel and Dex exists but has not run green yet. Review [Known Limitations](#known-limitations) before relying on this in production.
 
 ## Why This Plugin?
 
@@ -19,12 +19,15 @@ Shopware's built-in authentication is password-based. This plugin bridges Shopwa
 - **Auto-Discovery**: populate endpoints from an IdP's `.well-known/openid-configuration`
 - **JIT Provisioning**: auto-create Storefront customers and/or Administration users on first login
 - **Group/Role Mapping**: map OIDC group claims to Shopware customer groups and ACL roles, case-insensitively, first match wins, with configurable defaults
+- **Claims-Based Access Control**: per-provider rules (`equals`, `contains`, `exists`, …) on the IdP's claims that must all pass before anyone is logged in or provisioned, each with its own denial message
 - **Rich Attribute Mapping**: map claims to 19 Shopware fields — identity (email, username, name, birthday, gender, phone) plus full billing/shipping address
 - **Per-User IdP Binding**: the IdP that first authenticates an account is permanently bound to it; login via a different provider is rejected
 - **RP-Initiated Logout**: redirects to the IdP's end-session endpoint on logout and revokes the access token (RFC 7009), for both Storefront customers and Administration users
 - **PKCE + Nonce**: always-on PKCE (S256 or plain, configurable) and single-use state/nonce for every authorization request
 - **JWT Verification**: RS256/384/512 signature verification with JWKS caching
 - **Base64 Claim Encoding**: supports Zitadel-style Base64-encoded claim values and nested role objects
+- **Health Checks & Alerting**: an unauthenticated `/sw6oidc/health` endpoint for uptime monitors, on-demand diagnostics per provider, and a scheduled reachability check that posts a webhook alert (Slack/Teams/…) once per outage
+- **Session Activity Log**: every OIDC/Passkey login with IP, user agent, logout time and reason in *Settings > Plugins > OIDC & Passkey sessions*, with a "Force logout" action
 - **Passkey (WebAuthn/FIDO2) Login**: independent passwordless sign-in for both Administration and Storefront, self-service registration and login, bridged into native authentication the same way OIDC is
 - **Public Client Support**: PKCE-only flows without a client secret (RFC 6749 §2.1)
 
@@ -63,11 +66,13 @@ bin/console database:migrate Sw6Oidc --all
 | `https://your-shop.com/sw6oidc/callback` | Redirect URI (Storefront) | **Yes**, for customer SSO | Authorization code callback for Storefront login |
 | `https://your-shop.com/api/sw6oidc/admin/callback` | Redirect URI (Admin) | **Yes**, for admin SSO | Authorization code callback for Administration login |
 | `https://your-shop.com/api/sw6oidc/provider/test-callback` | Redirect URI | Optional | Only needed if you use the **Run live login test** button on a provider's detail page in the Administration — the IdP redirects back here with the same strict exact-match check as the other two URIs |
-| Your shop's account login page | Post Logout Redirect URI | Optional | Only the Storefront/customer flow redirects back from the IdP on logout today (see [Known Limitations](#known-limitations)) |
+| `https://your-shop.com/sw6oidc/backchannel-logout` | Back-Channel Logout URI | Optional | Lets the IdP end shop sessions when the user logs out at the IdP (see [Back-Channel Logout](#back-channel-logout)). Enable "session required" / `backchannel_logout_session_required` if the IdP offers it |
+| `https://your-shop.com/sw6oidc/frontchannel-logout` | Front-Channel Logout URI | Optional | Alternative to Back-Channel Logout for IdPs that only support the browser-based variant; enable "session required" (`frontchannel_logout_session_required`) — the plugin needs `iss` and `sid` |
+| Your shop's account login page and `https://your-shop.com/admin/` — **or** only `https://your-shop.com/sw6oidc/postlogout` | Post Logout Redirect URI | Optional | Where the IdP returns the user after RP-initiated logout. By default customers return to `/account/login` and admins to the Administration. If the IdP accepts only one URI, set the provider's **Post-logout redirect URI** to `https://your-shop.com/sw6oidc/postlogout` and register just that: it sends customers and admins to the right login page |
 
 Register only the redirect URI(s) for the flow(s) you intend to use — you don't need both if, say, only customer SSO is enabled for a given provider.
 
-> There is currently no Back-Channel or Front-Channel Logout URL to register — the plugin does not implement either (see [Known Limitations](#known-limitations)).
+> Prefer Back-Channel Logout where the IdP supports it: it does not depend on the user's browser still being open on the IdP's logout page.
 
 ---
 
@@ -144,6 +149,22 @@ If you specifically need that, it requires **two deliberate, independent steps**
 
 Only when *both* are true does a group match result in `admin = true`. Only grant this for a narrow, tightly controlled IdP group — everyone in it gets unrestricted access to the entire shop. Superadmin is only ever granted, never automatically revoked by a later login whose groups no longer match (to avoid a transient IdP claims issue silently locking out your only superadmin) — revoke it manually in the Administration if a person's access should be downgraded.
 
+### Claims-based access control
+
+The **Access control** card on a provider lets you restrict who may log in at all, based on the claims the IdP returns — for example "only members of the `staff` group" or "only verified email addresses". Rules are checked after the id_token/userinfo claims are verified and **before** any account is looked up, created or synced, so a denied login never provisions anything.
+
+| Operator | Passes when |
+|---|---|
+| equals / does not equal | The claim's value equals (does not equal) the rule value. A missing claim passes "does not equal". |
+| contains / does not contain | For a list claim (e.g. `groups`): the list has (does not have) an entry equal to the value. For a text claim: the text contains (does not contain) the value, e.g. `email` contains `@example.com`. A missing claim passes "does not contain". |
+| exists / does not exist | The claim is present (absent). No value needed. |
+
+- **All rules must pass** (AND), checked in sort order. The first failing rule denies the login and shows its **message** to the user (Storefront flash message, Administration login screen); without a message a generic "access denied" text is shown. Messages are plain text.
+- **Claim keys** use the flattened dot notation, e.g. `realm_access.roles` for Keycloak realm roles. List claims are matched by entry (`groups`, not `groups.0`); for Zitadel-style role objects (`{"Admins": {...}}`) the role names are the entries.
+- Comparisons ignore case and surrounding whitespace; `true`/`1` and `false`/`0` are treated as equal. An unknown operator denies (fails closed).
+- No rules = everyone who authenticates at the IdP may log in (the previous behavior).
+- Rules are included in `sw6oidc:config:export`/`import`.
+
 ### Sync on every login
 
 By default, a mapped claim is only ever applied once, at account creation — logging in again afterwards just authenticates the existing account, untouched. The **Sync on every login** card adds five independent, opt-in toggles that instead re-apply the current claims/mapping on every single login, for an account already bound to this provider:
@@ -172,6 +193,21 @@ Passkeys are configured independently of OIDC — no external IdP involved. Foun
 **Requirements**: HTTPS (WebAuthn requires a secure context; `localhost` is exempt for local development) and a browser with WebAuthn support.
 
 ---
+
+### Health checks & alerting
+
+- **`GET /sw6oidc/health`** (unauthenticated, for uptime monitors): `{"status": "ok" | "degraded" | "unconfigured", "activeProviders", "incompleteProviders", "unreachableProviders"}` — HTTP 503 when `degraded` (an active provider is missing required configuration, has an undecryptable client secret, or failed its last scheduled check), else 200. It never contacts an IdP itself and exposes only counts, no provider names or URLs.
+- **Run diagnostics** (provider detail page, *Health checks & alerting* card): configuration problems, a live reachability probe (the JWKS must contain keys; without a JWKS endpoint the discovery document must have an `issuer`), and the alerting state.
+- **Alerting**: set **Alert after consecutive failed checks** (0 = off) and an **Alert webhook URL**. A scheduled task (every 5 minutes) probes each such provider; once the threshold is reached, **one** JSON message is POSTed per outage (with a `text` field for Slack, Mattermost, Teams workflows and similar), optionally followed by a recovery message. An alert that can't be delivered is retried on the next run. Changing the provider during an outage does not trigger a second alert.
+- The webhook URL is stored encrypted, never shown again after saving, SSRF-checked on save and before every call, and not included in `sw6oidc:config:export` (enter it again after an import). The scheduled task needs Shopware's scheduled-task runner / message queue worker to be running.
+
+### Session activity log
+
+*Settings > Plugins > OIDC & Passkey sessions* lists every login made through OIDC or a passkey (Storefront and Administration): when, which account, which method and provider, the client IP address and user agent, and when and why the session ended (logout, IdP back-/front-channel logout, forced).
+
+- **Force logout** (requires the *editor* permission of this module): ends a customer's OIDC session exactly. For passkey logins and for Administration users it ends **all** sessions of that account — Shopware can't end a single one of those.
+- Entries are deleted by a daily scheduled task after `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` days (default 90, `0` keeps them forever). IP addresses and user agents are personal data — choose the retention to match your privacy policy.
+- Logins made with the password form are not recorded; neither are sessions that ended by simply expiring.
 
 ## Usage Examples
 
@@ -222,13 +258,34 @@ The first IdP to authenticate (or claim) an account is permanently bound to it. 
 
 ### RP-Initiated Logout
 
-On Storefront logout and on Administration logout (user menu → Log out), the plugin redirects to the IdP's end-session endpoint (if configured) and fire-and-forget revokes the access token via RFC 7009. A failed revocation call never blocks the user from logging out locally. After the IdP logout, customers land on `/account/login` and admins on the Administration login page. Inactivity/session-timeout logouts in the Administration stay local, so the admin can simply re-authenticate.
+On Storefront logout and on Administration logout (user menu → Log out), the plugin redirects to the IdP's end-session endpoint (if configured) and fire-and-forget revokes the access token via RFC 7009. A failed revocation call never blocks the user from logging out locally. After the IdP logout, customers land on `/account/login` and admins on the Administration login page — unless the provider's **Post-logout redirect URI** is set, which replaces both (use `https://your-shop.com/sw6oidc/postlogout` to keep the per-flow login pages with a single registered URI; its `state` parameter is signed, so a crafted link can't choose the destination). Inactivity/session-timeout logouts in the Administration stay local: the re-login dialog offers the SSO provider(s) and Passkey (plus the password, unless password login is disabled), and returns the admin to the page they were on.
 
 **Authelia note**: Authelia does not implement standards-based RP-Initiated Logout / OIDC Session Management — its discovery document has no `end_session_endpoint` at all, so **auto-discovery leaves this field blank** and it must be set manually to Authelia's own portal logout page:
 ```
 https://auth.your-domain.example/logout
 ```
 (the bare portal path, not anything under `/api/oidc/...`). The plugin auto-detects this shape — any End-Session Endpoint whose path ends in `/logout` and contains neither `/oauth2/` nor `/oidc/` is treated as Authelia-style forward-auth logout, and the plugin sends `?rd=<url>` instead of the standard `id_token_hint`/`state`/`post_logout_redirect_uri` params. No Post Logout Redirect URI needs registering with Authelia for this.
+
+### Back-Channel Logout
+
+With [OIDC Back-Channel Logout](https://openid.net/specs/openid-connect-backchannel-1_0.html), the IdP notifies the shop server-to-server when a user's IdP session ends (logout at the IdP or in another application, session revoked by an administrator). Register `https://your-shop.com/sw6oidc/backchannel-logout` as the client's Back-Channel Logout URI.
+
+- The logout token is verified like an id_token (signature against the provider's JWKS, `iss`, `aud`, `exp`) plus the logout-specific rules: a back-channel logout `events` claim, `sub` and/or `sid`, and **no** `nonce`. Replayed tokens (same `jti`) are ignored.
+- With a `sid`, only the shop sessions created from that IdP session end; with only a `sub`, all of that user's shop sessions from this provider end. This needs the IdP to put `sid` into the id_token (usually enabled together with "backchannel logout session required").
+- **Customers** are logged out of exactly that session. **Administration users** are logged out of *all* their Administration sessions: Shopware's admin access tokens can't be revoked one by one, so the plugin revokes the user's refresh tokens and invalidates every access token issued so far (the mechanism Shopware uses after a password change — the password itself is not changed).
+- Only logins made after this feature was installed are known to the plugin; older sessions are not affected.
+- Invalid requests are answered with HTTP 400; an address sending more than 10 invalid requests per minute gets HTTP 429 for the rest of the minute. Valid logout notifications are never rate-limited.
+
+### Front-Channel Logout
+
+With [OIDC Front-Channel Logout](https://openid.net/specs/openid-connect-frontchannel-1_0.html), the IdP's logout page loads `https://your-shop.com/sw6oidc/frontchannel-logout?iss=…&sid=…` in a hidden iframe. The plugin ends every shop session created from that IdP session (same customer/admin rules as Back-Channel Logout) and always answers with a 1×1 transparent GIF, whatever the outcome.
+
+- `iss` and `sid` are required ("session required" at the IdP, and `sid` in the id_token). Without them nothing happens: the shop's own cookies are not sent inside a cross-site iframe, so the browser alone can't identify the session.
+- The request is unauthenticated by design of the protocol — anyone who knows a `sid` can end that session. Unknown `sid`s count as failed requests for rate limiting, which prevents guessing.
+
+### Rate limiting
+
+The unauthenticated endpoints (OIDC callbacks, Back- and Front-Channel Logout) count **failed** requests per client IP address — invalid state, forged tokens, garbage. After 10 failures within 60 seconds, that address is refused for the rest of the window. Successful logins and valid logout notifications never count, so an office behind one NAT address or a busy IdP is not throttled. The counters live in Shopware's `cache.rate_limiter` pool (falls back to the app cache).
 
 ### Passkey (WebAuthn) Security
 
@@ -248,11 +305,11 @@ Client secrets are **encrypted at rest** (libsodium secretbox, key derived from 
 
 ## Known Limitations
 
-- **No OIDC Back-Channel Logout** — an IdP cannot push a server-side logout notification to this plugin.
+- **IdP-initiated logout ends all Administration sessions of the user** — not just the one created from the IdP session (Shopware admin access tokens cannot be revoked individually).
 - **"Sync on SSO" is per provider, not per attribute** — all five provider-level toggles (customer profile/address/group, admin profile/role) are applied on repeat logins, but there is no per-attribute sync control.
 - **The "Enable debug logging" toggle does not control log verbosity** — the plugin's log level is set via the `SW6OIDC_LOG_LEVEL` environment variable (default `debug`), not this UI toggle. Logs are written to a plugin-specific log file/channel and can contain claim data — handle with the same care as any log containing PII.
 - **Single-node atomic cache unless Redis is configured** — without `SW6OIDC_REDIS_DSN`, one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. Multi-node/HA deployments must set `SW6OIDC_REDIS_DSN` (e.g. `redis://:password@redis:6379/2`, or `rediss://` for TLS); it is picked up at runtime.
-- **No automated integration tests yet** — the unit suite covers the OIDC core, provisioning, WebAuthn ceremonies and every security component, but nothing runs the full login flows against a live Shopware instance and IdP in CI.
+- **Integration suite not yet proven** — an integration suite against a real Shopware kernel and Dex exists (`tests/Integration/`, CI job `integration`), but it has not run green yet; the CI job is non-blocking until it has.
 
 ---
 
@@ -316,13 +373,14 @@ Passkeys are bound to one Relying Party ID (domain). If the RP ID override chang
 | `SW6OIDC_REDIS_DSN` | *(unset)* | `redis://[[user]:password@]host:port[/db]` or `rediss://…` — truly atomic one-time tokens via Redis; **required for multi-node deployments**. Picked up at runtime. |
 | `SW6OIDC_ALLOW_INSECURE_IDP_URLS` | `0` | `1` allows plain-http IdP URLs and private/loopback addresses (local development IdPs only — disables SSRF protection). |
 | `SW6OIDC_ALLOW_PASSWORD_LOGIN` | `0` | `1` is a break-glass override that re-enables password login even when a provider disables it. |
+| `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` | `90` | Days after which session activity log entries are deleted (`0` = never). |
 | `SW6OIDC_LOG_LEVEL` | `debug` | Log level of the plugin's own log channel (`var/log/sw6oidc-<env>.log`). |
 | `APP_SECRET` | *(Shopware)* | The client-secret encryption key is derived from it — keep it stable. |
 
 ## Command-Line Tools
 
 ```bash
-# Export providers (incl. attribute/role mappings) as JSON — the client secret is omitted by default
+# Export providers (incl. attribute/role mappings and access-control rules) as JSON — the client secret is omitted by default
 bin/console sw6oidc:config:export -o providers.json [--provider-id=<id>] [--keep-encrypted|--plaintext]
 
 # Import on another installation — validate first, then apply
@@ -345,6 +403,8 @@ Subscribe to these (all `ShopwareEvent`s) to customize JIT provisioning:
 ## Documentation
 
 - **Developer Guide**: [CLAUDE.md](CLAUDE.md) — architecture, flow-by-flow internals, directory reference, and known implementation gaps
+- **IdP setup guides**: [Authelia](Docs/authelia-sw6oidc-setup.md), [ZITADEL](Docs/zitadel-sw6oidc-setup.md), [Dex](Docs/dex-sw6oidc-setup.md)
+- **Integration tests**: [tests/Integration/README.md](tests/Integration/README.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Roadmap**: [TODO.md](TODO.md) — remaining work
 
