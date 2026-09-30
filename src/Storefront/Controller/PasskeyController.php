@@ -2,6 +2,9 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
+use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
@@ -43,6 +46,7 @@ class PasskeyController extends StorefrontController
         private readonly OidcCustomerLoginRoute $loginRoute,
         private readonly SalesChannelContextService $salesChannelContextService,
         private readonly LoggerInterface $logger,
+        private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
     ) {
     }
 
@@ -145,6 +149,14 @@ class PasskeyController extends StorefrontController
             ));
 
             $request->attributes->set(PlatformRequest::ATTRIBUTE_SALES_CHANNEL_CONTEXT_OBJECT, $newContext);
+
+            $this->activityRecorder->recordLogin(
+                Sw6OidcSession::USER_TYPE_CUSTOMER,
+                $customer->getId(),
+                Sw6OidcSessionActivityDefinition::LOGIN_METHOD_PASSKEY,
+                $tokenResponse->getToken(),
+                $request,
+            );
 
             // Remembered for the lifetime of this browser session so
             // AccountPasskeyController::delete() can tell "the customer just

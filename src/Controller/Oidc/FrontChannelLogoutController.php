@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Controller\Oidc;
 
+use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler;
@@ -71,7 +72,7 @@ class FrontChannelLogoutController extends AbstractController
         $ended = 0;
 
         foreach ($this->providerResolver->findByIssuer($issuer, Context::createDefaultContext()) as $provider) {
-            $ended += \count($this->logoutHandler->logout($provider->getId(), null, $sid));
+            $ended += \count($this->logoutHandler->logout($provider->getId(), null, $sid, Sw6OidcSessionActivityDefinition::LOGOUT_REASON_FRONTCHANNEL));
         }
 
         if ($ended === 0) {

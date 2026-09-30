@@ -9,6 +9,7 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
 use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcLogoutRoute;
 use MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect;
@@ -138,6 +139,7 @@ final class OidcLogoutRouteTest extends TestCase
             $urlGenerator,
             new NullLogger(),
             $this->registry,
+            $this->createStub(Sw6OidcSessionActivityRecorder::class),
         );
     }
 

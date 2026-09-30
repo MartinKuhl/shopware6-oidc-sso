@@ -9,6 +9,7 @@ use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
@@ -116,7 +117,7 @@ final class FrontChannelLogoutControllerTest extends TestCase
 
         return new FrontChannelLogoutController(
             $resolver,
-            new Sw6OidcIdpLogoutHandler($this->registry, $destruction, new LogoutContextStore(new InMemoryAtomicCache()), new NullLogger()),
+            new Sw6OidcIdpLogoutHandler($this->registry, $destruction, new LogoutContextStore(new InMemoryAtomicCache()), new NullLogger(), $this->createStub(Sw6OidcSessionActivityRecorder::class)),
             $this->rateLimiter,
             new NullLogger(),
         );

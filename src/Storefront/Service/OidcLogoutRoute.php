@@ -8,7 +8,9 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
 use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
+use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Checkout\Customer\SalesChannel\AbstractLogoutRoute;
@@ -42,6 +44,7 @@ class OidcLogoutRoute extends AbstractLogoutRoute
         private readonly UrlGeneratorInterface $urlGenerator,
         private readonly LoggerInterface $logger,
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
+        private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
     ) {
     }
 
@@ -72,6 +75,12 @@ class OidcLogoutRoute extends AbstractLogoutRoute
 
         if ($customerId !== null) {
             $this->forgetRegisteredSession($customerId, $preLogoutToken);
+            $this->activityRecorder->recordLogout(
+                Sw6OidcSession::USER_TYPE_CUSTOMER,
+                $customerId,
+                Sw6OidcSessionActivityDefinition::LOGOUT_REASON_LOGOUT,
+                $preLogoutToken,
+            );
         }
 
         $logoutContext = $this->logoutContextStore->consume($preLogoutToken);

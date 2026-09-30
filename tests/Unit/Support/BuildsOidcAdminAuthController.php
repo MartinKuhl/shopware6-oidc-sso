@@ -19,6 +19,7 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Log\NullLogger;
@@ -59,6 +60,7 @@ trait BuildsOidcAdminAuthController
             'loginErrorTicketStore' => new AdminLoginErrorTicketStore(new InMemoryAtomicCache()),
             'sessionRegistry' => new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger()),
             'rateLimiter' => new Sw6OidcRateLimiter(null, new ArrayAdapter()),
+            'activityRecorder' => $this->createMock(Sw6OidcSessionActivityRecorder::class),
         ];
 
         $unknown = array_diff_key($overrides, $defaults);

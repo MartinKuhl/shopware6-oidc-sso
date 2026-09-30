@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
 use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonce;
@@ -27,6 +28,7 @@ use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
@@ -52,6 +54,9 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 #[Route(defaults: ['_routeScope' => ['api'], 'auth_required' => false])]
 class OidcAdminAuthController extends AbstractController
 {
+    /** Registry entry consumed by the current logout() call (for the activity log). */
+    private ?string $endedRegistrySessionId = null;
+
     public function __construct(
         private readonly ProviderResolver $providerResolver,
         private readonly AuthorizationRequestBuilder $requestBuilder,
@@ -71,6 +76,7 @@ class OidcAdminAuthController extends AbstractController
         private readonly AdminLoginErrorTicketStore $loginErrorTicketStore,
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
         private readonly Sw6OidcRateLimiter $rateLimiter,
+        private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
     ) {
     }
 
@@ -314,7 +320,20 @@ class OidcAdminAuthController extends AbstractController
         $this->logger->debug('sw6oidc: admin token exchange succeeded.', ['userId' => $userId]);
 
         $response = (new HttpFoundationFactory())->createResponse($tokenResponse);
-        $this->registerAdminSession($loginNonce, $response);
+        $jti = $this->accessTokenJti($response);
+        $registrySession = $jti !== null ? $this->registerAdminSession($loginNonce, $jti) : null;
+
+        if ($jti !== null) {
+            $this->activityRecorder->recordLogin(
+                Sw6OidcSession::USER_TYPE_ADMIN,
+                $userId,
+                Sw6OidcSessionActivityDefinition::LOGIN_METHOD_OIDC,
+                $jti,
+                $request,
+                $loginNonce->providerId,
+                $registrySession,
+            );
+        }
 
         return $response;
     }
@@ -411,6 +430,18 @@ class OidcAdminAuthController extends AbstractController
 
         $logoutContext = $userId !== null ? $this->consumeAdminLogoutContext($userId, $request) : null;
 
+        if ($userId !== null) {
+            $currentJti = $request->attributes->get(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID);
+            $this->activityRecorder->recordLogout(
+                Sw6OidcSession::USER_TYPE_ADMIN,
+                $userId,
+                Sw6OidcSessionActivityDefinition::LOGOUT_REASON_LOGOUT,
+                \is_string($currentJti) ? $currentJti : null,
+                $this->endedRegistrySessionId,
+                true,
+            );
+        }
+
         if (!$logoutContext instanceof LogoutContext) {
             $this->logger->debug('sw6oidc: no OIDC logout context for this admin session, skipping RP-initiated logout.', [
                 'userId' => $userId,
@@ -454,23 +485,13 @@ class OidcAdminAuthController extends AbstractController
      * login: without provider/sub (passkey-less legacy nonce, IdP without
      * sub) there is simply nothing to register.
      */
-    private function registerAdminSession(AdminLoginNonce $loginNonce, Response $tokenResponse): void
+    private function registerAdminSession(AdminLoginNonce $loginNonce, string $jti): ?Sw6OidcSession
     {
         if ($loginNonce->providerId === null || $loginNonce->sub === null) {
-            return;
+            return null;
         }
 
-        $payload = json_decode((string) $tokenResponse->getContent(), true);
-        $accessToken = \is_array($payload) ? ($payload['access_token'] ?? null) : null;
-        $jti = \is_string($accessToken) ? JwtPayloadReader::stringClaim($accessToken, 'jti') : null;
-
-        if ($jti === null) {
-            $this->logger->warning('sw6oidc: admin token response had no readable jti, session not registered.', ['userId' => $loginNonce->userId]);
-
-            return;
-        }
-
-        $this->sessionRegistry->register(
+        return $this->sessionRegistry->register(
             $loginNonce->providerId,
             $loginNonce->sub,
             $loginNonce->sid,
@@ -509,8 +530,22 @@ class OidcAdminAuthController extends AbstractController
 
         $current ??= $sessions[\count($sessions) - 1];
         $this->sessionRegistry->remove($current);
+        $this->endedRegistrySessionId = $current->id;
 
         return new LogoutContext($current->providerId, $current->idToken);
+    }
+
+    private function accessTokenJti(Response $tokenResponse): ?string
+    {
+        $payload = json_decode((string) $tokenResponse->getContent(), true);
+        $accessToken = \is_array($payload) ? ($payload['access_token'] ?? null) : null;
+        $jti = \is_string($accessToken) ? JwtPayloadReader::stringClaim($accessToken, 'jti') : null;
+
+        if ($jti === null) {
+            $this->logger->warning('sw6oidc: admin token response had no readable jti, session not registered.');
+        }
+
+        return $jti;
     }
 
     private function isSsoProvisioned(string $userId, Context $context): bool

@@ -6,7 +6,10 @@ use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
+use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Service\Jwt\JwtPayloadReader;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Passkey\AdminPasskeyLoginTokenTracker;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
@@ -51,6 +54,7 @@ class PasskeyAdminController extends AbstractController
         private readonly PsrHttpFactory $psrHttpFactory,
         private readonly LoggerInterface $logger,
         private readonly AdminPasskeyLoginTokenTracker $tokenTracker,
+        private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
     ) {
     }
 
@@ -188,6 +192,7 @@ class PasskeyAdminController extends AbstractController
             $httpResponse = (new HttpFoundationFactory())->createResponse($tokenResponse);
 
             $this->rememberLoginCredential($httpResponse, $resolved['credentialId']);
+            $this->recordLogin($httpResponse, $resolved['userId'], $request);
 
             return $httpResponse;
         } catch (OAuthServerException $exception) {
@@ -205,6 +210,17 @@ class PasskeyAdminController extends AbstractController
      * it ourselves via our own AuthorizationServer earlier in this exact
      * request; this is purely reading back a claim we already trust.
      */
+    private function recordLogin(Response $response, string $userId, Request $request): void
+    {
+        $payload = json_decode((string) $response->getContent(), true);
+        $accessToken = \is_array($payload) ? ($payload['access_token'] ?? null) : null;
+        $jti = \is_string($accessToken) ? JwtPayloadReader::stringClaim($accessToken, 'jti') : null;
+
+        if ($jti !== null) {
+            $this->activityRecorder->recordLogin(Sw6OidcSession::USER_TYPE_ADMIN, $userId, Sw6OidcSessionActivityDefinition::LOGIN_METHOD_PASSKEY, $jti, $request);
+        }
+    }
+
     private function rememberLoginCredential(Response $response, string $credentialId): void
     {
         $payload = json_decode((string) $response->getContent(), true);

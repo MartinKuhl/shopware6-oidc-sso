@@ -288,6 +288,43 @@
                 "columnNickname": "Nickname",
                 "columnCreatedAt": "Registered at"
             }
+        },
+        "sessions": {
+            "moduleTitle": "OIDC & Passkey sessions",
+            "hint": "Every login through OIDC or a passkey, with its logout time and reason. Force logout ends a customer's OIDC session exactly; for passkey logins and for Administration users it ends all sessions of that account. Entries are deleted after the retention period (SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS, default 90 days).",
+            "onlyActive": "Only active sessions",
+            "refresh": "Refresh",
+            "active": "Active",
+            "forceLogout": "Force logout",
+            "forceLogoutConfirm": "End this session? The customer will have to log in again.",
+            "forceLogoutConfirmAdmin": "End all Administration sessions of this user? They will have to log in again.",
+            "forceLogoutSuccess": "The session was ended.",
+            "forceLogoutSuccessAll": "All sessions of this account were ended.",
+            "forceLogoutError": "The session could not be ended. Please try again.",
+            "list": {
+                "columnLoggedInAt": "Logged in",
+                "columnUserType": "Type",
+                "columnOwner": "Account",
+                "columnLoginMethod": "Method",
+                "columnProvider": "Provider",
+                "columnIpAddress": "IP address",
+                "columnLoggedOutAt": "Logged out",
+                "columnLogoutReason": "Logout reason"
+            },
+            "userType": {
+                "customer": "Customer",
+                "admin": "Administration"
+            },
+            "loginMethod": {
+                "oidc": "OIDC",
+                "passkey": "Passkey"
+            },
+            "logoutReason": {
+                "logout": "Logout",
+                "backchannel": "IdP (back-channel)",
+                "frontchannel": "IdP (front-channel)",
+                "forced": "Forced by an administrator"
+            }
         }
     }
 }

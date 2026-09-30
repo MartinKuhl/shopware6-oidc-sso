@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Session activity log (`sw6oidc_session_activity`) and a new Administration module *OIDC & Passkey sessions*: every OIDC/Passkey login with provider, IP address, user agent, logout time and reason (logout, back-/front-channel, forced), an "only active" filter and a **Force logout** action (`POST /api/_action/sw6oidc/session-activity/{id}/force-logout`, ACL `sw6oidc_session_activity:update`). A daily scheduled task deletes entries after `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` (default 90).
 - Per-provider **Post-logout redirect URI** (`post_logout_url`) for RP-initiated logout, and a shared landing page `/sw6oidc/postlogout` for IdPs that accept only one post-logout URI: it sends customers to the Storefront login and admins to the Administration, based on a signed `state`.
 - Administration RP-initiated logout now takes the provider and id_token from the session registry (the current session, else the newest), with the previous per-user store as fallback. Storefront logout removes its session from the registry.
 - OIDC Front-Channel Logout (`GET /sw6oidc/frontchannel-logout?iss=…&sid=…`): ends the shop sessions of an IdP session from the IdP's logout page iframe; always answers with a 1×1 GIF. Unknown `sid`s count toward the rate limit.
@@ -44,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The passkey ceremony unit test failed in ~1 of 128 runs (EC public-key coordinates with a leading zero byte were not padded to 32 bytes by the test authenticator).
 - Opening the OIDC provider settings failed with `TypeError: J is not a function`.
 - A group literally named `"0"` was dropped from a groups claim. Integer group ids are now kept.
 - The flattened-claims key limit accepted one key more than intended.

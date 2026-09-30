@@ -26,6 +26,7 @@ Shopware's built-in authentication is password-based. This plugin bridges Shopwa
 - **PKCE + Nonce**: always-on PKCE (S256 or plain, configurable) and single-use state/nonce for every authorization request
 - **JWT Verification**: RS256/384/512 signature verification with JWKS caching
 - **Base64 Claim Encoding**: supports Zitadel-style Base64-encoded claim values and nested role objects
+- **Session Activity Log**: every OIDC/Passkey login with IP, user agent, logout time and reason in *Settings > Plugins > OIDC & Passkey sessions*, with a "Force logout" action
 - **Passkey (WebAuthn/FIDO2) Login**: independent passwordless sign-in for both Administration and Storefront, self-service registration and login, bridged into native authentication the same way OIDC is
 - **Public Client Support**: PKCE-only flows without a client secret (RFC 6749 §2.1)
 
@@ -192,6 +193,14 @@ Passkeys are configured independently of OIDC — no external IdP involved. Foun
 
 ---
 
+### Session activity log
+
+*Settings > Plugins > OIDC & Passkey sessions* lists every login made through OIDC or a passkey (Storefront and Administration): when, which account, which method and provider, the client IP address and user agent, and when and why the session ended (logout, IdP back-/front-channel logout, forced).
+
+- **Force logout** (requires the *editor* permission of this module): ends a customer's OIDC session exactly. For passkey logins and for Administration users it ends **all** sessions of that account — Shopware can't end a single one of those.
+- Entries are deleted by a daily scheduled task after `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` days (default 90, `0` keeps them forever). IP addresses and user agents are personal data — choose the retention to match your privacy policy.
+- Logins made with the password form are not recorded; neither are sessions that ended by simply expiring.
+
 ## Usage Examples
 
 ### Customer Login Flow
@@ -356,6 +365,7 @@ Passkeys are bound to one Relying Party ID (domain). If the RP ID override chang
 | `SW6OIDC_REDIS_DSN` | *(unset)* | `redis://[[user]:password@]host:port[/db]` or `rediss://…` — truly atomic one-time tokens via Redis; **required for multi-node deployments**. Picked up at runtime. |
 | `SW6OIDC_ALLOW_INSECURE_IDP_URLS` | `0` | `1` allows plain-http IdP URLs and private/loopback addresses (local development IdPs only — disables SSRF protection). |
 | `SW6OIDC_ALLOW_PASSWORD_LOGIN` | `0` | `1` is a break-glass override that re-enables password login even when a provider disables it. |
+| `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` | `90` | Days after which session activity log entries are deleted (`0` = never). |
 | `SW6OIDC_LOG_LEVEL` | `debug` | Log level of the plugin's own log channel (`var/log/sw6oidc-<env>.log`). |
 | `APP_SECRET` | *(Shopware)* | The client-secret encryption key is derived from it — keep it stable. |
 

@@ -1,0 +1,82 @@
+{% block sw6oidc_sessions_list %}
+<sw-page class="sw6oidc-sessions-list">
+    {% block sw6oidc_sessions_list_smart_bar_actions %}
+    <template #smart-bar-actions>
+        <sw-switch-field
+            v-model:value="onlyActive"
+            :label="$tc('sw6oidc.sessions.onlyActive')"
+            style="margin: 0;"
+        />
+        <sw-button
+            :is-loading="isLoading"
+            @click="getList"
+        >
+            {{ $tc('sw6oidc.sessions.refresh') }}
+        </sw-button>
+    </template>
+    {% endblock %}
+
+    {% block sw6oidc_sessions_list_content %}
+    <template #content>
+        <mt-banner
+            variant="info"
+            style="margin: 16px;"
+        >
+            {{ $tc('sw6oidc.sessions.hint') }}
+        </mt-banner>
+        <sw-entity-listing
+            v-if="activities"
+            :data-source="activities"
+            :repository="activityRepository"
+            :columns="columns"
+            :is-loading="isLoading"
+            :disable-data-fetching="true"
+            :show-selection="false"
+            :allow-edit="false"
+            :allow-view="false"
+            :allow-delete="false"
+            @page-change="onPageChange"
+        >
+            <template #column-loggedInAt="{ item }">
+                {{ formatDate(item.loggedInAt) }}
+            </template>
+            <template #column-userType="{ item }">
+                {{ translated('userType', item.userType) }}
+            </template>
+            <template #column-owner="{ item }">
+                {{ ownerName(item) }}
+            </template>
+            <template #column-loginMethod="{ item }">
+                {{ translated('loginMethod', item.loginMethod) }}
+            </template>
+            <template #column-provider="{ item }">
+                {{ providerName(item) }}
+            </template>
+            <template #column-loggedOutAt="{ item }">
+                <mt-badge
+                    v-if="!item.loggedOutAt"
+                    variant="success"
+                >
+                    {{ $tc('sw6oidc.sessions.active') }}
+                </mt-badge>
+                <template v-else>
+                    {{ formatDate(item.loggedOutAt) }}
+                </template>
+            </template>
+            <template #column-logoutReason="{ item }">
+                {{ translated('logoutReason', item.logoutReason) }}
+            </template>
+            <template #actions="{ item }">
+                <sw-context-menu-item
+                    variant="danger"
+                    :disabled="!canForceLogout || !!item.loggedOutAt || forceLogoutPendingId === item.id"
+                    @click="onForceLogout(item)"
+                >
+                    {{ $tc('sw6oidc.sessions.forceLogout') }}
+                </sw-context-menu-item>
+            </template>
+        </sw-entity-listing>
+    </template>
+    {% endblock %}
+</sw-page>
+{% endblock %}

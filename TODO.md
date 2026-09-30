@@ -42,6 +42,7 @@ recorded so nobody "fixes" them back:
 - **Phase 8:** the rate limiter uses a *penalty model* — only failed requests consume the 10/60s budget, so a busy IdP or a NAT'd office is never throttled; applied to the back-channel endpoint and both callbacks. `cache.rate_limiter` exists on 6.7 (`on-invalid="null"` falls back to `cache.app`). Logout-token checks live in a dedicated `JwtVerifier::verifyLogoutToken()` (shares signature + `exp`/`iss`/`aud` checks with `verify()`, rejects `nonce`, requires `events`/`iat`/`sub`-or-`sid`) instead of `verify(expectedNonce: null)`, which would have logged a nonce warning and accepted id_tokens. `findByIssuer()` returns a list (providers sharing an IdP are told apart by `aud`). Added `jti` replay protection. The session fan-out lives in `Sw6OidcIdpLogoutHandler`, shared with Phase 8b.
 - **Phase 8b:** `iss` + `sid` are both required (no cookie fallback: SameSite cookies aren't sent in a cross-site iframe); every provider sharing the issuer is tried. Unknown sids count as rate-limit failures. The GIF response sets `Content-Security-Policy: frame-ancestors *` so the iframe can render despite core's `X-Frame-Options: deny`.
 - **Phase 8c (rest):** `post_logout_url` *replaces* the default post-logout redirect URI (it is what gets registered at the IdP), so the shared `/sw6oidc/postlogout` landing is opt-in by setting it — no change for existing setups. The landing picks the target from an HMAC-signed `state` (`PostLogoutState`); Authelia's `rd` gets the state appended. Admin logout reads the registry first (current jti, else newest session) with `LogoutContextStore` as fallback.
+- **Phase 10:** two internal columns beyond the plan — `session_key_hash` (sha256; raw context tokens / jtis are credentials and never stored) and `registry_session_id` — to match logouts to logins. Force logout is exact only for customer OIDC sessions still in the registry; passkey logins and admins end all sessions of the account. Added a daily retention task (`SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS`, default 90) since the table holds IPs/user agents. Scheduled-task registration needs no extra DB row handling: core's `PluginLifecycleSubscriber` registers tagged tasks on install/update.
 - **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
   `kernel.response` subscriber that only appends IdP origins to directives an
   existing policy already declares.
@@ -54,7 +55,7 @@ Phase 7  Session/subject registry (foundational)      (shipped)
 Phase 8  Rate limiting + Back-Channel Logout          (shipped)
 Phase 8b Front-Channel Logout                         (shipped)
 Phase 8c Admin-side RP-initiated logout               (shipped)
-Phase 10 Audit/session-activity log + admin UI         (needs 7, 8, 8b, 8c)
+Phase 10 Audit/session-activity log + admin UI         (shipped)
 Phase 11 Health-check/diagnostics + alerting           (deps 2, 3 shipped — ready)
 Phase 13 Integration test harness (Dex)                (stretch goal)
 Phase 14 Setup guides                                  (optional)
@@ -178,26 +179,26 @@ Ships no user-visible behavior by itself — pure plumbing that Phases
 
 ---
 
-## Phase 10 — Audit/session-activity log + admin UI
+## Phase 10 — Audit/session-activity log + admin UI (shipped)
 
 **Depends on Phases 7, 8, 8b, 8c.** Decision: add a **new** table rather than
 repurposing `sw6oidc_user_provider` (permanent one-row-per-account binding,
 structurally incompatible with "one row per login").
 
-- [ ] New migration — `sw6oidc_session_activity`: `id`, `provider_id`
+- [x] New migration — `sw6oidc_session_activity`: `id`, `provider_id`
       (FK, `SET NULL` on delete), `user_type`, `user_id`, `sub`, `sid`,
       `login_method` (`oidc`/`passkey`), `ip_address`, `user_agent`,
       `logged_in_at`, `logged_out_at`, `logout_reason`.
-- [ ] New `Sw6OidcSessionActivityDefinition`/`Entity`/`Collection` triad.
-- [ ] New `src/Service/Session/Sw6OidcSessionActivityRecorder.php` —
+- [x] New `Sw6OidcSessionActivityDefinition`/`Entity`/`Collection` triad.
+- [x] New `src/Service/Session/Sw6OidcSessionActivityRecorder.php` —
       `recordLogin()` called from all four login-completing controllers,
       `recordLogout()` called from the three logout controllers.
-- [ ] New admin module `module/sw6oidc-sessions/` mirroring the existing
+- [x] New admin module `module/sw6oidc-sessions/` mirroring the existing
       `module/sw6oidc-passkey` structure (`entity`-driven auto-ACL grid,
       "Force logout" row action via a new `SessionActivityController::forceLogout()`
       endpoint).
-- [ ] Tests: recorder tests, force-logout controller test.
-- [ ] Docs: `CLAUDE.md` — new module reference entry; `README.md` — new admin
+- [x] Tests: recorder tests, force-logout controller test.
+- [x] Docs: `CLAUDE.md` — new module reference entry; `README.md` — new admin
       screen mention.
 
 ---

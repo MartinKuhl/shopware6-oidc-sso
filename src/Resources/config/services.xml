@@ -9,6 +9,7 @@
         <!-- Dev-only escape hatches, both off unless the env var is set to 1. -->
         <parameter key="env(SW6OIDC_ALLOW_INSECURE_IDP_URLS)">0</parameter>
         <parameter key="env(SW6OIDC_ALLOW_PASSWORD_LOGIN)">0</parameter>
+        <parameter key="env(SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS)">90</parameter>
     </parameters>
 
     <services>
@@ -27,6 +28,10 @@
 
         <service id="MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleDefinition">
             <tag name="shopware.entity.definition" entity="sw6oidc_access_control_rule" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition">
+            <tag name="shopware.entity.definition" entity="sw6oidc_session_activity" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderDefinition">
@@ -263,6 +268,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -290,6 +296,35 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
+        </service>
+
+        <!-- Session activity log (sw6oidc_session_activity) + admin force-logout + retention -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder">
+            <argument type="service" id="sw6oidc_session_activity.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Controller\Api\SessionActivityController" public="true">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <call method="setContainer">
+                <argument type="service" id="service_container" />
+            </call>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\ScheduledTask\SessionActivityCleanupTask">
+            <tag name="shopware.scheduled.task" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\ScheduledTask\SessionActivityCleanupTaskHandler">
+            <argument type="service" id="scheduled_task.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument>%env(int:SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS)%</argument>
+            <tag name="messenger.message_handler" />
         </service>
 
         <!--
@@ -363,6 +398,7 @@
             <argument type="service" id="router" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Storefront\EventSubscriber\CustomerLogoutSubscriber">
@@ -460,6 +496,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -525,6 +562,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute" />
             <argument type="service" id="Shopware\Core\System\SalesChannel\Context\SalesChannelContextService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -553,6 +591,7 @@
             <argument type="service" id="Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\AdminPasskeyLoginTokenTracker" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>

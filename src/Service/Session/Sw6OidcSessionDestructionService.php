@@ -49,6 +49,21 @@ class Sw6OidcSessionDestructionService
         ]);
     }
 
+    /**
+     * Ends every session of the account, OIDC or not (forced logout of a
+     * session the registry doesn't know, e.g. a Passkey login).
+     */
+    public function destroyAllForUser(string $userType, string $userId): void
+    {
+        if ($userType === Sw6OidcSession::USER_TYPE_ADMIN) {
+            $this->destroyAdminSessions($userId);
+
+            return;
+        }
+
+        $this->contextPersister->revokeAllCustomerTokens($userId);
+    }
+
     public function destroyCustomerSession(string $contextToken, string $salesChannelId, ?string $customerId = null): void
     {
         $this->contextPersister->delete($contextToken, $salesChannelId, $customerId);

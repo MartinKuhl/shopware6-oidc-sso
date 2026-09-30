@@ -27,3 +27,4 @@ import './extension/sw-profile-index-general';
 import './extension/sw-customer-base-info';
 import './module/sw6oidc-provider';
 import './module/sw6oidc-passkey';
+import './module/sw6oidc-sessions';

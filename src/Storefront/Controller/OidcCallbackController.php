@@ -2,12 +2,14 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
+use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
 use Psr\Log\LoggerInterface;
@@ -43,6 +45,7 @@ class OidcCallbackController extends StorefrontController
         private readonly LoggerInterface $logger,
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
         private readonly Sw6OidcRateLimiter $rateLimiter,
+        private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
     ) {
     }
 
@@ -107,9 +110,10 @@ class OidcCallbackController extends StorefrontController
             );
 
             $subject = $result->subject();
+            $registrySession = null;
 
             if ($subject !== null) {
-                $this->sessionRegistry->register(
+                $registrySession = $this->sessionRegistry->register(
                     $result->provider->getId(),
                     $subject,
                     $result->sessionId(),
@@ -120,6 +124,16 @@ class OidcCallbackController extends StorefrontController
                     $result->idToken(),
                 );
             }
+
+            $this->activityRecorder->recordLogin(
+                Sw6OidcSession::USER_TYPE_CUSTOMER,
+                $customer->getId(),
+                Sw6OidcSessionActivityDefinition::LOGIN_METHOD_OIDC,
+                $tokenResponse->getToken(),
+                $request,
+                $result->provider->getId(),
+                $registrySession,
+            );
 
             return new RedirectResponse($this->resolveSafeRelayState($result->flow->relayState));
         } catch (AccessControlDeniedException $exception) {

@@ -19,6 +19,7 @@ class Sw6OidcIdpLogoutHandler
         private readonly Sw6OidcSessionDestructionService $destructionService,
         private readonly LogoutContextStore $logoutContextStore,
         private readonly LoggerInterface $logger,
+        private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
     ) {
     }
 
@@ -27,9 +28,11 @@ class Sw6OidcIdpLogoutHandler
      * Idempotent: nothing registered (already logged out, unknown) is not an
      * error.
      *
+     * @param string $reason Sw6OidcSessionActivityDefinition::LOGOUT_REASON_* for the activity log
+     *
      * @return list<Sw6OidcSession> the sessions that were ended
      */
-    public function logout(string $providerId, ?string $sub, ?string $sid): array
+    public function logout(string $providerId, ?string $sub, ?string $sid, string $reason): array
     {
         if ($sid !== null && $sid !== '') {
             $sessions = $this->registry->resolveBySid($providerId, $sid);
@@ -58,8 +61,10 @@ class Sw6OidcIdpLogoutHandler
                 }
 
                 $destroyedAdmins[$session->userId] = true;
+                $this->activityRecorder->recordLogoutOfAllSessions($session->userType, $session->userId, $reason);
             } else {
                 $this->logoutContextStore->consume($session->sessionKey);
+                $this->activityRecorder->recordLogout($session->userType, $session->userId, $reason, $session->sessionKey, $session->id);
             }
 
             $this->destructionService->destroy($session);

@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Controller\Oidc;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Service\Jwt\Exception\InvalidJwtException;
 use MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
@@ -85,6 +86,7 @@ class BackChannelLogoutController extends AbstractController
             $provider->getId(),
             \is_string($claims['sub'] ?? null) ? $claims['sub'] : null,
             \is_string($claims['sid'] ?? null) ? $claims['sid'] : null,
+            Sw6OidcSessionActivityDefinition::LOGOUT_REASON_BACKCHANNEL,
         );
 
         return $this->respond(Response::HTTP_OK);
