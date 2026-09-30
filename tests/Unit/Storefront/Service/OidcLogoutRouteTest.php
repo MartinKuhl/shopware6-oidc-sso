@@ -109,7 +109,30 @@ final class OidcLogoutRouteTest extends TestCase
         self::assertNull($this->pending->pull());
     }
 
-    private function route(?Sw6OidcProviderEntity $provider, ?AbstractLogoutRoute $decorated = null): OidcLogoutRoute
+    public function testStoreApiClientsGetTheIdpLogoutUrlAndTheIdpTokensAreRevoked(): void
+    {
+        $this->registry->register('a1000000000000000000000000000001', 'sub', null, 'customer', self::CUSTOMER_ID, self::PRE_LOGOUT_TOKEN, null, 'id-token', 'idp-access', 'idp-refresh');
+        $provider = $this->provider('https://idp.example/oidc/end-session');
+        $provider->setRevocationEndpoint('https://idp.example/oidc/revoke');
+        $provider->setPublicClient(true);
+        $provider->setClientId('shop');
+
+        $revoked = [];
+        $httpClient = $this->createMock(OidcHttpClient::class);
+        $httpClient->method('postForm')->willReturnCallback(static function (string $url, array $params) use (&$revoked): array {
+            $revoked[] = [$params['token'], $params['token_type_hint']];
+
+            return [];
+        });
+
+        $response = $this->route($provider, null, $httpClient)->logout($this->context(), new RequestDataBag());
+
+        self::assertStringStartsWith('https://idp.example/oidc/end-session?', (string) $response->getRedirectUrl());
+        self::assertSame('fresh-token', $response->getToken());
+        self::assertSame([['idp-refresh', 'refresh_token'], ['idp-access', 'access_token']], $revoked);
+    }
+
+    private function route(?Sw6OidcProviderEntity $provider, ?AbstractLogoutRoute $decorated = null, ?OidcHttpClient $httpClient = null): OidcLogoutRoute
     {
         if ($decorated === null) {
             $decorated = $this->createMock(AbstractLogoutRoute::class);
@@ -129,7 +152,7 @@ final class OidcLogoutRouteTest extends TestCase
         return new OidcLogoutRoute(
             $decorated,
             $resolver,
-            new RpInitiatedLogoutService($this->createMock(OidcHttpClient::class), new NullLogger(), new PostLogoutState('app-secret')),
+            new RpInitiatedLogoutService($httpClient ?? $this->createMock(OidcHttpClient::class), new NullLogger(), new PostLogoutState('app-secret')),
             $this->pending,
             $urlGenerator,
             new NullLogger(),

@@ -58,7 +58,9 @@ final class JwtVerifierLogoutTokenTest extends TestCase
         yield 'nonce present (id_token substitution)' => [self::claims(['nonce' => 'n']), 'nonce'];
         yield 'neither sub nor sid' => [self::claims(['sub' => null, 'sid' => null]), 'neither'];
         yield 'no iat' => [self::claims(['iat' => null]), 'iat'];
-        yield 'expired' => [self::claims(['exp' => time() - 5]), 'expired'];
+        yield 'expired' => [self::claims(['exp' => time() - JwtVerifier::LEEWAY_SECONDS - 5]), 'expired'];
+        yield 'no jti' => [self::claims(['jti' => null]), 'jti'];
+        yield 'too old' => [self::claims(['iat' => time() - 3600]), 'too old'];
         yield 'wrong audience' => [self::claims(['aud' => 'other-client']), 'audience'];
         yield 'wrong issuer' => [self::claims(['iss' => 'https://evil.example']), 'issuer'];
     }

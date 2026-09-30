@@ -59,6 +59,7 @@ class Sw6OidcProviderEntity extends Entity
     protected bool $allowSuperadminGroupMapping = false;
     protected bool $requireEmailVerified = true;
     protected bool $linkExistingAccounts = false;
+    protected bool $frontchannelAdminLogout = false;
     protected int $httpTimeout = 30;
     protected int $jwksCacheTtl = 86400;
     /** 'pass'|'fail'|'warning'|null (never tested) — set only by the live login test */
@@ -634,5 +635,15 @@ class Sw6OidcProviderEntity extends Entity
     public function setLinkExistingAccounts(bool $linkExistingAccounts): void
     {
         $this->linkExistingAccounts = $linkExistingAccounts;
+    }
+
+    public function isFrontchannelAdminLogout(): bool
+    {
+        return $this->frontchannelAdminLogout;
+    }
+
+    public function setFrontchannelAdminLogout(bool $frontchannelAdminLogout): void
+    {
+        $this->frontchannelAdminLogout = $frontchannelAdminLogout;
     }
 }

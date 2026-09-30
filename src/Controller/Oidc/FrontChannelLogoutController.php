@@ -72,12 +72,20 @@ class FrontChannelLogoutController extends AbstractController
         $ended = 0;
 
         foreach ($this->providerResolver->findByIssuer($issuer, Context::createDefaultContext()) as $provider) {
-            $ended += \count($this->logoutHandler->logout($provider->getId(), null, $sid, Sw6OidcSessionActivityDefinition::LOGOUT_REASON_FRONTCHANNEL));
+            $ended += \count($this->logoutHandler->logout(
+                $provider->getId(),
+                null,
+                $sid,
+                Sw6OidcSessionActivityDefinition::LOGOUT_REASON_FRONTCHANNEL,
+                $provider->isFrontchannelAdminLogout(),
+            ));
         }
 
-        if ($ended === 0) {
-            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_FRONTCHANNEL_LOGOUT, $clientIp);
-        }
+        // Ending nothing is the normal case (RP-initiated or back-channel
+        // logout got there first, the session expired) and is not counted
+        // as a failure — only malformed requests are (N-M6). A `sid` is a
+        // high-entropy capability; guessing it is not practical.
+        $this->logger->info('sw6oidc: front-channel logout processed.', ['sessionsEnded' => $ended]);
 
         return $this->pixel();
     }

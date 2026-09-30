@@ -25,11 +25,13 @@ class Sw6OidcIdpLogoutHandler
      * Idempotent: nothing registered (already logged out, unknown) is not an
      * error.
      *
-     * @param string $reason Sw6OidcSessionActivityDefinition::LOGOUT_REASON_* for the activity log
+     * @param string $reason        Sw6OidcSessionActivityDefinition::LOGOUT_REASON_* for the activity log
+     * @param bool   $includeAdmins whether Administration sessions may be ended (they can only be
+     *                              ended all at once; front-channel requests only do it on opt-in)
      *
      * @return list<Sw6OidcSession> the sessions that were ended
      */
-    public function logout(string $providerId, ?string $sub, ?string $sid, string $reason): array
+    public function logout(string $providerId, ?string $sub, ?string $sid, string $reason, bool $includeAdmins = true): array
     {
         if ($sid !== null && $sid !== '') {
             $sessions = $this->registry->resolveBySid($providerId, $sid);
@@ -42,6 +44,17 @@ class Sw6OidcIdpLogoutHandler
             $sessions = $this->registry->resolve($providerId, $sub);
         } else {
             return [];
+        }
+
+        if (!$includeAdmins) {
+            $skipped = \count($sessions);
+            $sessions = array_values(array_filter($sessions, static fn (Sw6OidcSession $session): bool => $session->userType !== Sw6OidcSession::USER_TYPE_ADMIN));
+
+            if ($skipped !== \count($sessions)) {
+                $this->logger->info('sw6oidc: front-channel logout left Administration sessions alone (frontchannel_admin_logout is off).', [
+                    'providerId' => $providerId,
+                ]);
+            }
         }
 
         $destroyedAdmins = [];

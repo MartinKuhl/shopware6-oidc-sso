@@ -21,11 +21,12 @@ final readonly class AuthorizationFlowContext
     public const PURPOSE_STEP_UP = 'step_up';
 
     private const PURPOSES = [self::PURPOSE_LOGIN, self::PURPOSE_LINK, self::PURPOSE_STEP_UP];
-    private const LOGIN_TYPES = ['customer', 'admin'];
+    /** 'test' is the provider live login test (OidcProviderAdminController). */
+    private const LOGIN_TYPES = ['customer', 'admin', 'test'];
 
     public function __construct(
         public string $providerId,
-        /** 'customer' | 'admin' */
+        /** 'customer' | 'admin' | 'test' */
         public string $loginType,
         public string $relayState,
         public string $codeVerifier,

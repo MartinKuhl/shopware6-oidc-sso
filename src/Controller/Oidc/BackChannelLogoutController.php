@@ -4,12 +4,12 @@ namespace MartinKuhl\Sw6Oidc\Controller\Oidc;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
+use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
 use MartinKuhl\Sw6Oidc\Service\Jwt\Exception\InvalidJwtException;
 use MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler;
-use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -24,22 +24,22 @@ use Symfony\Component\Routing\Annotation\Route;
  * trust anchor.
  *
  * Responses follow §2.8: 200 (with `Cache-Control: no-store`) on success,
- * including "nothing to log out"; 400 for any invalid request; 429 once an
- * address has produced too many invalid requests (Sw6OidcRateLimiter).
+ * including "nothing to log out"; 400 for any invalid request; 429 for invalid
+ * tokens once an address has produced too many of them for that provider.
  */
 #[Route(defaults: ['_routeScope' => ['storefront']])]
 class BackChannelLogoutController extends AbstractController
 {
-    private const JTI_CACHE_PREFIX = 'sw6oidc_bcl_jti_';
-    /** Upper bound for remembering a jti; a token older than this is expired anyway at any sane IdP. */
-    private const MAX_JTI_TTL_SECONDS = 3600;
+    private const JTI_PREFIX = 'sw6oidc_bcl_jti_';
+    /** Upper bound for remembering a jti. */
+    private const MAX_JTI_TTL_SECONDS = 86400;
 
     public function __construct(
         private readonly JwtVerifier $jwtVerifier,
         private readonly ProviderResolver $providerResolver,
         private readonly Sw6OidcIdpLogoutHandler $logoutHandler,
         private readonly Sw6OidcRateLimiter $rateLimiter,
-        private readonly CacheItemPoolInterface $cache,
+        private readonly AtomicCacheInterface $replayMarkers,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -54,13 +54,24 @@ class BackChannelLogoutController extends AbstractController
     {
         $clientIp = $request->getClientIp();
 
-        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_BACKCHANNEL_LOGOUT, $clientIp)) {
-            return $this->respond(Response::HTTP_TOO_MANY_REQUESTS);
-        }
-
         try {
             $logoutToken = $this->logoutToken($request);
             $provider = $this->resolveProvider($logoutToken);
+        } catch (InvalidJwtException $exception) {
+            // Malformed or not addressed to any provider of this shop.
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_BACKCHANNEL_LOGOUT, $clientIp);
+            $this->logger->warning('sw6oidc: back-channel logout rejected.', ['reason' => $exception->getMessage()]);
+
+            return $this->respond(Response::HTTP_BAD_REQUEST, true);
+        }
+
+        // Failures count per provider and address, and a correctly signed
+        // token is never refused: SaaS IdPs share egress IPs across tenants,
+        // so someone else's garbage must not block this IdP's real logout
+        // tokens (N-M7).
+        $failureScope = Sw6OidcRateLimiter::SCOPE_BACKCHANNEL_LOGOUT . ':' . $provider->getId();
+
+        try {
             $claims = $this->jwtVerifier->verifyLogoutToken(
                 $logoutToken,
                 (string) $provider->getJwksEndpoint(),
@@ -70,10 +81,14 @@ class BackChannelLogoutController extends AbstractController
                 $provider->getHttpTimeout(),
             );
         } catch (InvalidJwtException $exception) {
-            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_BACKCHANNEL_LOGOUT, $clientIp);
-            $this->logger->warning('sw6oidc: back-channel logout rejected.', ['reason' => $exception->getMessage()]);
+            $blocked = $this->rateLimiter->isBlocked($failureScope, $clientIp);
+            $this->rateLimiter->recordFailure($failureScope, $clientIp);
+            $this->logger->warning('sw6oidc: back-channel logout token rejected.', [
+                'providerId' => $provider->getId(),
+                'reason' => $exception->getMessage(),
+            ]);
 
-            return $this->respond(Response::HTTP_BAD_REQUEST, $exception->getMessage());
+            return $this->respond($blocked ? Response::HTTP_TOO_MANY_REQUESTS : Response::HTTP_BAD_REQUEST, !$blocked);
         }
 
         if ($this->isReplay($claims)) {
@@ -129,37 +144,29 @@ class BackChannelLogoutController extends AbstractController
 
     /**
      * OIDC Back-Channel Logout §2.6 step 7: a jti seen before is a replay.
-     * Remembered until the token's own `exp` (capped).
+     * An atomic set-if-absent in the shared one-time-token store, remembered
+     * until the token's own `exp` (plus clock leeway).
      *
-     * @param array<string, mixed> $claims
+     * @param array<string, mixed> $claims verified; `jti` is guaranteed by the verifier
      */
     private function isReplay(array $claims): bool
     {
-        $jti = $claims['jti'] ?? null;
+        $key = self::JTI_PREFIX . hash('sha256', ($claims['iss'] ?? '') . "\0" . $claims['jti']);
+        $ttl = max(60, min(self::MAX_JTI_TTL_SECONDS, (int) ($claims['exp'] ?? 0) - time() + JwtVerifier::LEEWAY_SECONDS));
 
-        if (!\is_string($jti) || $jti === '') {
-            return false;
-        }
-
-        $item = $this->cache->getItem(self::JTI_CACHE_PREFIX . hash('sha256', ($claims['iss'] ?? '') . "\0" . $jti));
-
-        if ($item->isHit()) {
-            return true;
-        }
-
-        $ttl = max(60, min(self::MAX_JTI_TTL_SECONDS, (int) ($claims['exp'] ?? 0) - time()));
-        $item->set(true);
-        $item->expiresAfter($ttl);
-        $this->cache->save($item);
-
-        return false;
+        return !$this->replayMarkers->addIfAbsent($key, '1', $ttl);
     }
 
-    private function respond(int $status, ?string $error = null): Response
+    /**
+     * Invalid requests get a fixed `invalid_request` error: which check
+     * failed (unknown issuer, bad signature, JWKS trouble) is logged, never
+     * told to an anonymous caller (N-L1).
+     */
+    private function respond(int $status, bool $invalidRequest = false): Response
     {
-        $response = $error === null
-            ? new Response('', $status)
-            : new Response((string) json_encode(['error' => 'invalid_request', 'error_description' => $error]), $status, ['Content-Type' => 'application/json']);
+        $response = $invalidRequest
+            ? new Response((string) json_encode(['error' => 'invalid_request']), $status, ['Content-Type' => 'application/json'])
+            : new Response('', $status);
 
         $response->headers->set('Cache-Control', 'no-cache, no-store');
         $response->headers->set('Pragma', 'no-cache');

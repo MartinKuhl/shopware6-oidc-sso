@@ -113,6 +113,8 @@ class OidcLogoutRoute extends AbstractLogoutRoute
 
         $this->pendingLogoutRedirect->set($logoutUrl);
 
-        return $response;
+        // Store API clients (headless) get the IdP logout URL in the response
+        // body's redirectUrl, since they aren't redirected by the Storefront.
+        return $logoutUrl !== null ? new ContextTokenResponse($response->getToken(), $logoutUrl) : $response;
     }
 }

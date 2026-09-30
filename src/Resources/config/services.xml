@@ -369,7 +369,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
-            <argument type="service" id="cache.app" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />

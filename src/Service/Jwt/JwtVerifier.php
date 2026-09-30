@@ -15,13 +15,24 @@ use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
- * Verifies OIDC id_tokens / JWTs: RS256/384/512 signature against the provider's
- * JWKS (cached, per-provider TTL), plus exp/nbf/iss/aud/nonce claim checks.
- * Replaces the Magento module's Helper/JwtVerifier.php.
+ * Verifies OIDC id_tokens and back-channel logout tokens: RS256/384/512
+ * signature against the provider's JWKS (cached, per-provider TTL, key
+ * selected by kid/alg/use), plus exp/nbf/iat (with clock leeway), iss, aud,
+ * azp and nonce checks.
  */
 class JwtVerifier
 {
     private const JWKS_FAILURE_TTL_SECONDS = 60;
+
+    /** Tolerated clock difference between IdP and shop. */
+    public const LEEWAY_SECONDS = 60;
+
+    /** Logout tokens older than this are refused (replay window, N-L2). */
+    public const LOGOUT_TOKEN_MAX_AGE_SECONDS = 300;
+
+    /** Key-rotation refetch cooldown namespaces: logins vs. anonymous back-channel logout. */
+    private const SCOPE_LOGIN = 'login';
+    private const SCOPE_LOGOUT = 'logout';
 
     /** OIDC Back-Channel Logout 1.0 §2.4: the `events` member identifying a logout token. */
     public const BACKCHANNEL_LOGOUT_EVENT = 'http://schemas.openid.net/event/backchannel-logout';
@@ -47,16 +58,21 @@ class JwtVerifier
         int $jwksCacheTtlSeconds,
         int $httpTimeoutSeconds,
     ): array {
-        $payload = $this->verifySignedPayload($jwt, $jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds);
+        $payload = $this->verifySignedPayload($jwt, $jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, self::SCOPE_LOGIN);
 
         $this->assertClaims($payload, $issuer, $audience, $expectedNonce);
+
+        if (!isset($payload['iat']) || !is_numeric($payload['iat'])) {
+            throw new InvalidJwtException('JWT has no "iat" claim.');
+        }
 
         return $payload;
     }
 
     /**
      * Verifies an OIDC Back-Channel Logout token (§2.6): same signature and
-     * exp/nbf/iss/aud checks as an id_token, plus: `iat` present, an
+     * exp/nbf/iss/aud checks as an id_token, plus: `iat` present and recent,
+     * `jti` present (REQUIRED by §2.4, used for replay protection), an
      * `events` object containing the back-channel-logout member, `sub`
      * and/or `sid` present, and **no** `nonce` (which is what keeps an
      * id_token from being replayed as a logout token).
@@ -73,12 +89,20 @@ class JwtVerifier
         int $jwksCacheTtlSeconds,
         int $httpTimeoutSeconds,
     ): array {
-        $payload = $this->verifySignedPayload($jwt, $jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds);
+        $payload = $this->verifySignedPayload($jwt, $jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, self::SCOPE_LOGOUT);
 
         $this->assertStandardClaims($payload, $issuer, $audience);
 
         if (!isset($payload['iat']) || !is_numeric($payload['iat'])) {
             throw new InvalidJwtException('Logout token has no "iat" claim.');
+        }
+
+        if ((int) $payload['iat'] < time() - self::LOGOUT_TOKEN_MAX_AGE_SECONDS - self::LEEWAY_SECONDS) {
+            throw new InvalidJwtException('Logout token is too old.');
+        }
+
+        if (!\is_string($payload['jti'] ?? null) || $payload['jti'] === '') {
+            throw new InvalidJwtException('Logout token has no "jti" claim.');
         }
 
         $events = $payload['events'] ?? null;
@@ -113,29 +137,48 @@ class JwtVerifier
     }
 
     /**
+     * Signature check with key selection: only keys of the right type
+     * (RSA), usage (`use` absent or `sig`), algorithm (`alg` absent or the
+     * token's) and — when the token names one — `kid` are tried.
+     *
+     * A forced JWKS refetch happens only when the token's `kid` is not in
+     * the cached set (key rotation), at most once per endpoint, `kid` and
+     * scope per cooldown window. A token signed with a *known* key that
+     * doesn't verify is simply forged — it never costs a refetch, so an
+     * attacker can't use up the rotation refetch (N-H2). Back-channel
+     * logout (anonymous) has its own cooldown namespace and never refetches
+     * for tokens without a `kid`.
+     *
+     * @param string $refreshScope self::SCOPE_LOGIN | self::SCOPE_LOGOUT
+     *
      * @return array<string, mixed>
      *
      * @throws InvalidJwtException
      */
-    private function verifySignedPayload(string $jwt, string $jwksEndpoint, int $jwksCacheTtlSeconds, int $httpTimeoutSeconds): array
+    private function verifySignedPayload(string $jwt, string $jwksEndpoint, int $jwksCacheTtlSeconds, int $httpTimeoutSeconds, string $refreshScope): array
     {
         $jws = $this->deserialize($jwt);
-        $this->assertSupportedAlgorithm($jws);
+        $alg = $this->assertSupportedAlgorithm($jws);
+        $signature = $jws->getSignature(0);
+        $kid = $signature->hasProtectedHeaderParameter('kid') ? $signature->getProtectedHeaderParameter('kid') : null;
+        $kid = \is_string($kid) && $kid !== '' ? $kid : null;
 
         $jwsVerifier = new JWSVerifier(new AlgorithmManager([new RS256(), new RS384(), new RS512()]));
 
-        $jwkSet = $this->getJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, false);
+        $candidates = $this->candidateKeys($this->getJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, false), $alg, $kid);
+        $mayRefetch = $kid !== null ? $candidates->count() === 0 : $refreshScope === self::SCOPE_LOGIN;
 
-        if (!$jwsVerifier->verifyWithKeySet($jws, $jwkSet, 0)) {
-            // The IdP may have rotated its signing key since the JWKS was
-            // cached: refetch once (still circuit-breaker protected) instead
-            // of rejecting every login until the cache TTL runs out.
-            $this->logger->info('sw6oidc: JWT signature did not verify against the cached JWKS; refetching once.');
-            $jwkSet = $this->getJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, true);
+        if (($candidates->count() === 0 || !$jwsVerifier->verifyWithKeySet($jws, $candidates, 0)) && $mayRefetch) {
+            $this->logger->info('sw6oidc: JWT key not in the cached JWKS; refetching once (key rotation).', ['kid' => $kid]);
 
-            if (!$jwsVerifier->verifyWithKeySet($jws, $jwkSet, 0)) {
+            $refreshed = $this->refetchJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, $refreshScope, $kid);
+            $candidates = $this->candidateKeys($refreshed, $alg, $kid);
+
+            if ($candidates->count() === 0 || !$jwsVerifier->verifyWithKeySet($jws, $candidates, 0)) {
                 throw new InvalidJwtException('JWT signature verification failed against the provider JWKS.');
             }
+        } elseif ($candidates->count() === 0 || !$jwsVerifier->verifyWithKeySet($jws, $candidates, 0)) {
+            throw new InvalidJwtException('JWT signature verification failed against the provider JWKS.');
         }
 
         $payload = json_decode($jws->getPayload() ?? '', true);
@@ -147,6 +190,55 @@ class JwtVerifier
         return $payload;
     }
 
+    private function candidateKeys(JWKSet $keys, string $alg, ?string $kid): JWKSet
+    {
+        $candidates = [];
+
+        foreach ($keys->all() as $key) {
+            if ($key->get('kty') !== 'RSA') {
+                continue;
+            }
+
+            if ($key->has('use') && $key->get('use') !== 'sig') {
+                continue;
+            }
+
+            if ($key->has('alg') && $key->get('alg') !== $alg) {
+                continue;
+            }
+
+            if ($kid !== null && (!$key->has('kid') || $key->get('kid') !== $kid)) {
+                continue;
+            }
+
+            $candidates[] = $key;
+        }
+
+        return new JWKSet($candidates);
+    }
+
+    /**
+     * @throws InvalidJwtException when the cooldown for this endpoint/kid/scope is active
+     */
+    private function refetchJwks(string $jwksEndpoint, int $ttlSeconds, int $httpTimeoutSeconds, string $scope, ?string $kid): JWKSet
+    {
+        $cooldownItem = $this->cache->getItem(sprintf(
+            'sw6oidc_jwks_refreshed_%s_%s',
+            $scope,
+            hash('sha256', $jwksEndpoint . "\0" . ($kid ?? '')),
+        ));
+
+        if ($cooldownItem->isHit()) {
+            throw new InvalidJwtException('JWT signature verification failed against the provider JWKS.');
+        }
+
+        $cooldownItem->set(true);
+        $cooldownItem->expiresAfter(self::JWKS_FAILURE_TTL_SECONDS);
+        $this->cache->save($cooldownItem);
+
+        return $this->getJwks($jwksEndpoint, $ttlSeconds, $httpTimeoutSeconds, true);
+    }
+
     private function deserialize(string $jwt): \Jose\Component\Signature\JWS
     {
         try {
@@ -156,13 +248,15 @@ class JwtVerifier
         }
     }
 
-    private function assertSupportedAlgorithm(\Jose\Component\Signature\JWS $jws): void
+    private function assertSupportedAlgorithm(\Jose\Component\Signature\JWS $jws): string
     {
         $alg = $jws->getSignature(0)->getProtectedHeaderParameter('alg');
 
-        if (!\in_array($alg, ['RS256', 'RS384', 'RS512'], true)) {
-            throw new InvalidJwtException(sprintf('Unsupported JWT signature algorithm "%s".', (string) $alg));
+        if (!\is_string($alg) || !\in_array($alg, ['RS256', 'RS384', 'RS512'], true)) {
+            throw new InvalidJwtException(sprintf('Unsupported JWT signature algorithm "%s".', \is_scalar($alg) ? (string) $alg : ''));
         }
+
+        return $alg;
     }
 
     /**
@@ -190,12 +284,16 @@ class JwtVerifier
     {
         $now = time();
 
-        if (!isset($payload['exp']) || $now >= (int) $payload['exp']) {
+        if (!isset($payload['exp']) || !is_numeric($payload['exp']) || $now >= (int) $payload['exp'] + self::LEEWAY_SECONDS) {
             throw new InvalidJwtException('JWT has expired.');
         }
 
-        if (isset($payload['nbf']) && $now < (int) $payload['nbf']) {
+        if (isset($payload['nbf']) && $now + self::LEEWAY_SECONDS < (int) $payload['nbf']) {
             throw new InvalidJwtException('JWT is not yet valid.');
+        }
+
+        if (isset($payload['iat']) && is_numeric($payload['iat']) && $now + self::LEEWAY_SECONDS < (int) $payload['iat']) {
+            throw new InvalidJwtException('JWT was issued in the future.');
         }
 
         if (($payload['iss'] ?? null) !== $issuer) {
@@ -207,6 +305,14 @@ class JwtVerifier
 
         if (!$audienceMatches) {
             throw new InvalidJwtException("JWT audience does not match this provider's client id.");
+        }
+
+        // OIDC Core §3.1.3.7: with several audiences (or an azp at all), the
+        // authorized party must be this client.
+        $multipleAudiences = \is_array($aud) && \count($aud) > 1;
+
+        if (($multipleAudiences || \array_key_exists('azp', $payload)) && ($payload['azp'] ?? null) !== $audience) {
+            throw new InvalidJwtException('JWT authorized party (azp) is not this client.');
         }
     }
 
@@ -222,20 +328,8 @@ class JwtVerifier
         $endpointHash = hash('sha256', $jwksEndpoint);
         $item = $this->cache->getItem('sw6oidc_jwks_' . $endpointHash);
 
-        if ($forceRefresh) {
-            // At most one forced (key-rotation) refetch per endpoint per
-            // cooldown window, so a stream of badly signed tokens can't turn
-            // into a stream of requests against the IdP.
-            $refreshedItem = $this->cache->getItem('sw6oidc_jwks_refreshed_' . $endpointHash);
-
-            if ($refreshedItem->isHit()) {
-                throw new InvalidJwtException('JWT signature verification failed against the provider JWKS.');
-            }
-
-            $refreshedItem->set(true);
-            $refreshedItem->expiresAfter(self::JWKS_FAILURE_TTL_SECONDS);
-            $this->cache->save($refreshedItem);
-        } elseif ($item->isHit() && \is_string($item->get())) {
+        // Forced refetches are rate-limited by the caller (refetchJwks()).
+        if (!$forceRefresh && $item->isHit() && \is_string($item->get())) {
             try {
                 return JWKSet::createFromJson($item->get());
             } catch (\Throwable) {
@@ -265,10 +359,10 @@ class JwtVerifier
             $this->logger->warning('sw6oidc: JWKS fetch failed; pausing further fetches for this endpoint.', [
                 'jwksEndpoint' => $jwksEndpoint,
                 'pauseSeconds' => self::JWKS_FAILURE_TTL_SECONDS,
-                'exception' => $exception->getMessage(),
+                'exceptionClass' => $exception::class,
             ]);
 
-            throw new InvalidJwtException('Could not fetch the provider JWKS: ' . $exception->getMessage(), 0, $exception);
+            throw new InvalidJwtException('Could not fetch the provider JWKS.', 0, $exception);
         }
 
         $item->set($json);

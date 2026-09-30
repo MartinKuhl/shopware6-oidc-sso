@@ -60,8 +60,9 @@ class Sw6OidcSessionActivityDefinition extends EntityDefinition
             (new FkField('provider_id', 'providerId', Sw6OidcProviderDefinition::class))->addFlags(new ApiAware()),
             (new StringField('user_type', 'userType', 16))->addFlags(new ApiAware(), new Required()),
             (new IdField('user_id', 'userId'))->addFlags(new ApiAware(), new Required()),
-            (new StringField('sub', 'sub'))->addFlags(new ApiAware()),
-            (new StringField('sid', 'sid'))->addFlags(new ApiAware()),
+            // Internal: a `sid` ends sessions via front-channel logout, so it's a bearer capability (N-M5).
+            new StringField('sub', 'sub'),
+            new StringField('sid', 'sid'),
             (new StringField('login_method', 'loginMethod', 16))->addFlags(new ApiAware(), new Required()),
             new StringField('session_key_hash', 'sessionKeyHash', 64),
             new StringField('registry_session_id', 'registrySessionId', 64),

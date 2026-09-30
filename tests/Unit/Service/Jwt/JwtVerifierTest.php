@@ -43,7 +43,35 @@ final class JwtVerifierTest extends TestCase
 
     public function testExpiredTokenIsRejected(): void
     {
-        $this->expectVerifyFailure('JWT has expired.', $this->signer->sign($this->claims(['exp' => time() - 10])));
+        $this->expectVerifyFailure('JWT has expired.', $this->signer->sign($this->claims(['exp' => time() - JwtVerifier::LEEWAY_SECONDS - 5])));
+    }
+
+    public function testSmallClockSkewIsTolerated(): void
+    {
+        self::assertSame('user-1', $this->verify($this->signer->sign($this->claims(['exp' => time() - 10, 'iat' => time() + 20])))['sub']);
+    }
+
+    public function testMissingIatIsRejected(): void
+    {
+        $claims = $this->claims();
+        unset($claims['iat']);
+
+        $this->expectVerifyFailure('iat', $this->signer->sign($claims));
+    }
+
+    public function testIatInTheFutureIsRejected(): void
+    {
+        $this->expectVerifyFailure('issued in the future', $this->signer->sign($this->claims(['iat' => time() + 3600])));
+    }
+
+    public function testSeveralAudiencesRequireThisClientAsAuthorizedParty(): void
+    {
+        $this->expectVerifyFailure('azp', $this->signer->sign($this->claims(['aud' => ['other-client', self::AUDIENCE]])));
+    }
+
+    public function testForeignAuthorizedPartyIsRejected(): void
+    {
+        $this->expectVerifyFailure('azp', $this->signer->sign($this->claims(['azp' => 'other-client'])));
     }
 
     public function testMissingExpIsRejected(): void
@@ -93,7 +121,7 @@ final class JwtVerifierTest extends TestCase
 
     public function testAudienceArrayContainingClientIdIsAccepted(): void
     {
-        $claims = $this->verify($this->signer->sign($this->claims(['aud' => ['other-client', self::AUDIENCE]])));
+        $claims = $this->verify($this->signer->sign($this->claims(['aud' => ['other-client', self::AUDIENCE], 'azp' => self::AUDIENCE])));
 
         self::assertSame(['other-client', self::AUDIENCE], $claims['aud']);
     }
@@ -145,13 +173,13 @@ final class JwtVerifierTest extends TestCase
         self::assertSame(0, $this->client->getRequestsCount());
     }
 
-    public function testBadSignatureIsRejectedAfterOneRefetch(): void
+    public function testBadSignatureWithAKnownKeyIsRejectedWithoutRefetch(): void
     {
         $other = new JwtTestSigner('test-key');
 
         $this->expectVerifyFailure('signature verification failed', $other->sign($this->claims()));
-        // Initial JWKS fetch + one forced key-rotation refetch.
-        self::assertSame(2, $this->client->getRequestsCount());
+        // Only the initial JWKS fetch: a known kid can't be a key rotation.
+        self::assertSame(1, $this->client->getRequestsCount());
     }
 
     public function testTamperedPayloadIsRejected(): void

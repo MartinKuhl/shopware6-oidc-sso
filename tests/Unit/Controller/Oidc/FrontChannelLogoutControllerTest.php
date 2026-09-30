@@ -63,18 +63,44 @@ final class FrontChannelLogoutControllerTest extends TestCase
         self::assertSame([], $this->destroyed);
     }
 
-    public function testRateLimitedAddressGetsThePixelButNothingIsProcessed(): void
+    public function testLogoutsThatEndNothingDoNotBlockTheAddress(): void
+    {
+        $controller = $this->controller();
+
+        // Normal after RP-initiated or back-channel logout already ended the session (N-M6).
+        for ($i = 0; $i < 15; ++$i) {
+            $controller->logout($this->request(['iss' => self::ISSUER, 'sid' => 'already-gone-' . $i]));
+        }
+
+        $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'customer', 'c1000000000000000000000000000001', 'ctx-1', '5c000000000000000000000000000001');
+
+        $this->assertPixel($controller->logout($this->request(['iss' => self::ISSUER, 'sid' => 'sid-1'])));
+        self::assertCount(1, $this->destroyed);
+    }
+
+    public function testMalformedRequestsBlockTheAddress(): void
     {
         $controller = $this->controller();
 
         for ($i = 0; $i < 10; ++$i) {
-            $controller->logout($this->request(['iss' => self::ISSUER, 'sid' => 'guess-' . $i]));
+            $controller->logout($this->request(['iss' => self::ISSUER]));
         }
 
         $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'customer', 'c1000000000000000000000000000001', 'ctx-1', '5c000000000000000000000000000001');
 
         $this->assertPixel($controller->logout($this->request(['iss' => self::ISSUER, 'sid' => 'sid-1'])));
         self::assertSame([], $this->destroyed);
+    }
+
+    public function testAdminSessionsAreOnlyEndedWithTheProviderOptIn(): void
+    {
+        $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'admin', 'e1000000000000000000000000000001', 'jti-1');
+
+        $this->assertPixel($this->controller()->logout($this->request(['iss' => self::ISSUER, 'sid' => 'sid-1'])));
+        self::assertSame([], $this->destroyed, 'front-channel alone never ends admin sessions (N-M5)');
+
+        $this->assertPixel($this->controller(frontchannelAdminLogout: true)->logout($this->request(['iss' => self::ISSUER, 'sid' => 'sid-1'])));
+        self::assertCount(1, $this->destroyed);
     }
 
     private function assertPixel(Response $response): void
@@ -102,10 +128,11 @@ final class FrontChannelLogoutControllerTest extends TestCase
         return Request::create('https://shop.example/sw6oidc/frontchannel-logout', 'GET', $query, [], [], ['REMOTE_ADDR' => '203.0.113.9']);
     }
 
-    private function controller(): FrontChannelLogoutController
+    private function controller(bool $frontchannelAdminLogout = false): FrontChannelLogoutController
     {
         $provider = new Sw6OidcProviderEntity();
         $provider->setId('a1000000000000000000000000000001');
+        $provider->setFrontchannelAdminLogout($frontchannelAdminLogout);
 
         $resolver = $this->createStub(ProviderResolver::class);
         $resolver->method('findByIssuer')->willReturnCallback(static fn (string $issuer): array => $issuer === self::ISSUER ? [$provider] : []);

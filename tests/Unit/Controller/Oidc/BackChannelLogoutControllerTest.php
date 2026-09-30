@@ -39,11 +39,14 @@ final class BackChannelLogoutControllerTest extends TestCase
 
     private Sw6OidcRateLimiter $rateLimiter;
 
+    private InMemoryAtomicCache $replayMarkers;
+
     protected function setUp(): void
     {
         $this->signer = new JwtTestSigner();
         $this->registry = SqliteSessionRegistry::create();
         $this->rateLimiter = new Sw6OidcRateLimiter(null, new ArrayAdapter());
+        $this->replayMarkers = new InMemoryAtomicCache();
     }
 
     public function testValidTokenWithSidEndsExactlyThatSession(): void
@@ -136,15 +139,49 @@ final class BackChannelLogoutControllerTest extends TestCase
         self::assertSame(400, $this->post($this->token(['events' => null, 'nonce' => 'n']))->getStatusCode());
     }
 
-    public function testAddressIsRateLimitedAfterRepeatedFailures(): void
+    public function testRepeatedForgedTokensAreRateLimitedButAValidTokenStillWorks(): void
+    {
+        $controller = $this->controller();
+        $forged = (new JwtTestSigner('attacker'))->sign($this->claims([]));
+
+        for ($i = 0; $i < 10; ++$i) {
+            self::assertSame(400, $controller->logout($this->request($forged))->getStatusCode());
+        }
+
+        self::assertSame(429, $controller->logout($this->request($forged))->getStatusCode());
+        // SaaS IdPs share egress IPs: the real IdP's signed token is never refused (N-M7).
+        self::assertSame(200, $controller->logout($this->request($this->token([])))->getStatusCode());
+    }
+
+    public function testGarbageFromAnAddressDoesNotBlockValidLogoutTokens(): void
     {
         $controller = $this->controller();
 
-        for ($i = 0; $i < 10; ++$i) {
-            self::assertSame(400, $controller->logout($this->request('garbage'))->getStatusCode());
+        for ($i = 0; $i < 15; ++$i) {
+            $controller->logout($this->request('garbage'));
         }
 
-        self::assertSame(429, $controller->logout($this->request($this->token([])))->getStatusCode());
+        self::assertSame(200, $controller->logout($this->request($this->token([])))->getStatusCode());
+    }
+
+    public function testTokenWithoutJtiIsRejected(): void
+    {
+        $claims = $this->claims([]);
+        unset($claims['jti']);
+
+        self::assertSame(400, $this->post($this->signer->sign($claims))->getStatusCode());
+    }
+
+    public function testStaleTokenIsRejected(): void
+    {
+        self::assertSame(400, $this->post($this->token(['iat' => time() - 3600, 'exp' => time() + 60]))->getStatusCode());
+    }
+
+    public function testErrorsRevealNothingToTheCaller(): void
+    {
+        $body = (string) $this->post($this->token(['iss' => 'https://unknown.example']))->getContent();
+
+        self::assertSame('{"error":"invalid_request"}', $body);
     }
 
     public function testValidRequestsNeverTriggerTheRateLimit(): void
@@ -187,7 +224,7 @@ final class BackChannelLogoutControllerTest extends TestCase
             $resolver,
             new Sw6OidcIdpLogoutHandler($this->registry, $destruction, new NullLogger(), $this->createStub(Sw6OidcSessionActivityRecorder::class)),
             $this->rateLimiter,
-            new ArrayAdapter(),
+            $this->replayMarkers,
             new NullLogger(),
         );
     }

@@ -150,6 +150,11 @@
                         :label="$tc('sw6oidc.provider.detail.revocationEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.revocationEndpointHelp')"
                     />
+                    <sw-switch-field
+                        v-model:value="provider.frontchannelAdminLogout"
+                        :label="$tc('sw6oidc.provider.detail.frontchannelAdminLogout')"
+                        :help-text="$tc('sw6oidc.provider.detail.frontchannelAdminLogoutHelp')"
+                    />
                 </sw-container>
                 <sw-container columns="1fr 1fr 1fr" gap="0 30px">
                     <sw-text-field

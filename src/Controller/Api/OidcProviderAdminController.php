@@ -19,6 +19,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\PlatformRequest;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -82,9 +83,7 @@ class OidcProviderAdminController extends AbstractController
         try {
             $endpoints = $this->discoveryService->discover($wellKnownConfigUrl, $timeout);
         } catch (OidcHttpException $exception) {
-            $this->logger->warning('sw6oidc: discovery request failed.', ['exception' => $exception->getMessage()]);
-
-            return new JsonResponse(['error' => 'discovery_failed', 'message' => $exception->getMessage()], 400);
+            return PublicError::response($this->logger, 'sw6oidc: discovery request failed.', $exception, 'discovery_failed', Response::HTTP_BAD_REQUEST);
         }
 
         return new JsonResponse(array_merge($endpoints, ['warnings' => $violation['warnings']]));
@@ -185,12 +184,12 @@ class OidcProviderAdminController extends AbstractController
 
         try {
             $flow = $this->securityHelper->consumeAuthorizationFlow(\is_string($state) ? $state : null);
-        } catch (InvalidStateException $exception) {
+        } catch (InvalidStateException) {
             // No flow, so no stored admin locale: best effort from the browser.
             $locale = $this->translator->normalizeLocale($request->getPreferredLanguage());
 
             return $this->renderTestResultPage('fail', [
-                ['id' => 'callback', 'status' => 'fail', 'detail' => $exception->getMessage(), 'messageKey' => 'callbackInvalidState'],
+                ['id' => 'callback', 'status' => 'fail', 'detail' => 'Unknown, expired, or already-used test state.', 'messageKey' => 'callbackInvalidState'],
             ], [], $cspNonce, $locale);
         }
 
