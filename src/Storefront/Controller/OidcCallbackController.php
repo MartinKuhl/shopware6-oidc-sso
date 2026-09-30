@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
@@ -94,6 +95,11 @@ class OidcCallbackController extends StorefrontController
             );
 
             return new RedirectResponse($this->resolveSafeRelayState($result->flow->relayState));
+        } catch (AccessControlDeniedException $exception) {
+            // Already logged by the evaluator. Plain text only: flash messages render through sw_sanitize.
+            $this->addFlash(self::DANGER, $exception->getDisplayMessage() ?? $this->trans('sw6oidc.login.accessDenied'));
+
+            return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: customer OIDC callback failed.', [
                 'exceptionClass' => $exception::class,

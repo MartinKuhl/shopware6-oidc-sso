@@ -143,6 +143,30 @@ Component.register('sw6oidc-provider-detail', () => {
                 return this.repositoryFactory.create(this.provider.roleMappings.entity, this.provider.roleMappings.source);
             },
 
+            accessControlRuleRepository() {
+                return this.repositoryFactory.create(this.provider.accessControlRules.entity, this.provider.accessControlRules.source);
+            },
+
+            /** Sw6OidcAccessControlRuleDefinition::OPERATORS */
+            operatorOptions() {
+                return ['eq', 'neq', 'contains', 'not_contains', 'exists', 'not_exists'].map((value) => ({
+                    value,
+                    label: this.$tc(`sw6oidc.provider.detail.operators.${value}`),
+                }));
+            },
+
+            /**
+             * Claim keys from the last live test with list indexes collapsed
+             * (`groups.0`, `groups.1` → `groups`), since access rules match
+             * list claims by membership. Technical claims stay in: `iss`/`aud`/
+             * `amr` are legitimate things to gate on.
+             */
+            accessControlClaimKeys() {
+                const keys = Object.keys(this.liveTestClaims ?? {}).map((key) => key.replace(/\.\d+(?=\.|$).*$/, ''));
+
+                return [...new Set(keys)].sort();
+            },
+
             canRunLiveTest() {
                 return !!(this.provider && this.provider.id && this.$route.params.id !== undefined);
             },
@@ -292,6 +316,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 const criteria = new Criteria();
                 criteria.addAssociation('attributeMappings');
                 criteria.addAssociation('roleMappings');
+                criteria.addAssociation('accessControlRules');
 
                 return this.providerRepository.get(id, Shopware.Context.api, criteria).then((entity) => {
                     this.provider = entity;
@@ -545,6 +570,32 @@ Component.register('sw6oidc-provider-detail', () => {
 
             onRemoveRoleMapping(item) {
                 this.provider.roleMappings.remove(item.id);
+            },
+
+            onAddAccessControlRule() {
+                const rule = this.accessControlRuleRepository.create(Shopware.Context.api);
+                rule.providerId = this.provider.id;
+                rule.claimKey = '';
+                rule.operator = 'eq';
+                rule.value = '';
+                rule.errorMessage = null;
+                rule.sortOrder = this.provider.accessControlRules.length;
+                this.provider.accessControlRules.add(rule);
+            },
+
+            onRemoveAccessControlRule(item) {
+                this.provider.accessControlRules.remove(item.id);
+            },
+
+            /** exists/not_exists take no value; don't save a stale one. */
+            onOperatorChange(item) {
+                if (item.operator === 'exists' || item.operator === 'not_exists') {
+                    item.value = null;
+                }
+            },
+
+            isValuelessOperator(operator) {
+                return operator === 'exists' || operator === 'not_exists';
             },
 
             /**

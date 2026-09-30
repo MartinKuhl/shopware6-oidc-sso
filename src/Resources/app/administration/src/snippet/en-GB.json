@@ -8,7 +8,8 @@
             "errorAutoCreateDisabled": "Automatic account creation is disabled for this login method. Please contact your administrator.",
             "passkeyButton": "Login with Passkey",
             "passkeyError": "Passkey login failed. Please try again or log in with your username and password.",
-            "passwordLoginDisabled": "Password login is disabled. Please sign in with single sign-on or a passkey."
+            "passwordLoginDisabled": "Password login is disabled. Please sign in with single sign-on or a passkey.",
+            "errorAccessDenied": "Access denied: your account does not meet the requirements for signing in to the Administration."
         },
         "provider": {
             "moduleTitle": "OIDC Providers",
@@ -234,6 +235,23 @@
                     "columnValue": "Value",
                     "noClaims": "No claims received.",
                     "closeButton": "Close window"
+                },
+                "cardAccessControl": "Access control (claims-based rules)",
+                "accessControlHint": "Every rule must pass (AND, in sort order) for a login to succeed; the first failing rule denies the login with its message. Claim keys use the flattened dot notation (e.g. realm_access.roles). List claims such as groups are matched by membership. Comparisons ignore case; true/1 and false/0 are treated as equal. No rules = everyone may log in.",
+                "accessControlDiscoveredClaims": "Claims seen on the last live test: {claims}",
+                "claimKey": "Claim",
+                "operator": "Operator",
+                "ruleValue": "Value",
+                "ruleErrorMessage": "Message shown when denied",
+                "ruleErrorMessagePlaceholder": "Optional, plain text",
+                "addAccessControlRule": "Add rule",
+                "operators": {
+                    "eq": "equals",
+                    "neq": "does not equal",
+                    "contains": "contains",
+                    "not_contains": "does not contain",
+                    "exists": "exists",
+                    "not_exists": "does not exist"
                 }
             }
         },

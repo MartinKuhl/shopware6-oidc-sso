@@ -25,6 +25,10 @@
             <tag name="shopware.entity.definition" entity="sw6oidc_role_mapping" />
         </service>
 
+        <service id="MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleDefinition">
+            <tag name="shopware.entity.definition" entity="sw6oidc_access_control_rule" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderDefinition">
             <tag name="shopware.entity.definition" entity="sw6oidc_user_provider" />
         </service>
@@ -221,6 +225,17 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\ClaimsNormalizer" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeMapper" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcAccessControlEvaluator" />
+        </service>
+
+        <!-- Claims-based access control (evaluated inside OidcCallbackProcessor) -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcAccessControlEvaluator">
+            <argument type="service" id="sw6oidc_access_control_rule.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
         </service>
 
         <!-- Storefront -->
@@ -367,6 +382,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -494,6 +510,7 @@
             <argument type="service" id="sw6oidc_provider.repository" />
             <argument type="service" id="sw6oidc_attribute_mapping.repository" />
             <argument type="service" id="sw6oidc_role_mapping.repository" />
+            <argument type="service" id="sw6oidc_access_control_rule.repository" />
             <argument type="service" id="acl_role.repository" />
             <argument type="service" id="customer_group.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition" />

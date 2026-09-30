@@ -552,6 +552,82 @@
             </sw-card>
             {% endblock %}
 
+            {% block sw6oidc_provider_detail_access_control_rules %}
+            <sw-card
+                v-if="provider.accessControlRules"
+                :title="$tc('sw6oidc.provider.detail.cardAccessControl')"
+            >
+                <mt-banner
+                    variant="info"
+                    style="margin-bottom: 16px;"
+                >
+                    {{ $tc('sw6oidc.provider.detail.accessControlHint') }}
+                    <template v-if="accessControlClaimKeys.length">
+                        <br>
+                        {{ $t('sw6oidc.provider.detail.accessControlDiscoveredClaims', { claims: accessControlClaimKeys.join(', ') }) }}
+                    </template>
+                </mt-banner>
+                {#
+                    Free-text claim key (not a select like the attribute
+                    mapping): gating on a claim the last live test didn't
+                    see (e.g. one only some users carry) is legitimate here.
+                #}
+                <sw-data-grid
+                    :data-source="provider.accessControlRules"
+                    :columns="[
+                        { property: 'claimKey', label: $tc('sw6oidc.provider.detail.claimKey'), width: '220px' },
+                        { property: 'operator', label: $tc('sw6oidc.provider.detail.operator'), width: '200px' },
+                        { property: 'value', label: $tc('sw6oidc.provider.detail.ruleValue'), width: '200px' },
+                        { property: 'errorMessage', label: $tc('sw6oidc.provider.detail.ruleErrorMessage') },
+                        { property: 'sortOrder', label: $tc('sw6oidc.provider.detail.sortOrder'), width: '120px' },
+                    ]"
+                    :show-selection="false"
+                >
+                    <template #column-claimKey="{ item }">
+                        <sw-text-field v-model="item.claimKey" size="small" />
+                    </template>
+                    <template #column-operator="{ item }">
+                        <sw-single-select
+                            v-model:value="item.operator"
+                            :options="operatorOptions"
+                            size="small"
+                            @update:value="onOperatorChange(item)"
+                        />
+                    </template>
+                    <template #column-value="{ item }">
+                        <sw-text-field
+                            v-if="!isValuelessOperator(item.operator)"
+                            v-model="item.value"
+                            size="small"
+                        />
+                        <span v-else>—</span>
+                    </template>
+                    <template #column-errorMessage="{ item }">
+                        <sw-text-field
+                            v-model="item.errorMessage"
+                            :placeholder="$tc('sw6oidc.provider.detail.ruleErrorMessagePlaceholder')"
+                            size="small"
+                        />
+                    </template>
+                    <template #column-sortOrder="{ item }">
+                        <sw-number-field v-model="item.sortOrder" size="small" />
+                    </template>
+                    <template #actions="{ item }">
+                        <sw-context-menu-item variant="danger" @click="onRemoveAccessControlRule(item)">
+                            {{ $tc('sw6oidc.provider.detail.remove') }}
+                        </sw-context-menu-item>
+                    </template>
+                </sw-data-grid>
+                <sw-button
+                    size="small"
+                    style="margin-top: 16px;"
+                    @click="onAddAccessControlRule"
+                >
+                    {{ $tc('sw6oidc.provider.detail.addAccessControlRule') }}
+                </sw-button>
+            </sw-card>
+            {% endblock %}
+
             <sw-card :title="$tc('sw6oidc.provider.detail.cardProvisioningSuperadmin')">
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-switch-field

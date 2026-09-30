@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Core\Content\Provider;
 
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Field\Sw6OidcEncryptedField;
 use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingDefinition;
@@ -98,6 +99,8 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new OneToManyAssociationField('attributeMappings', Sw6OidcAttributeMappingDefinition::class, 'provider_id'))
                 ->addFlags(new ApiAware(), new CascadeDelete()),
             (new OneToManyAssociationField('roleMappings', Sw6OidcRoleMappingDefinition::class, 'provider_id'))
+                ->addFlags(new ApiAware(), new CascadeDelete()),
+            (new OneToManyAssociationField('accessControlRules', Sw6OidcAccessControlRuleDefinition::class, 'provider_id'))
                 ->addFlags(new ApiAware(), new CascadeDelete()),
             (new ManyToOneAssociationField('defaultCustomerGroup', 'default_customer_group_id', CustomerGroupDefinition::class, 'id'))
                 ->addFlags(new ApiAware()),

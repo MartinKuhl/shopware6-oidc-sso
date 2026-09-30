@@ -21,6 +21,7 @@ class Sw6Oidc extends Plugin
         $connection->executeStatement('
             DROP TABLE IF EXISTS `sw6oidc_passkey_credential`;
             DROP TABLE IF EXISTS `sw6oidc_user_provider`;
+            DROP TABLE IF EXISTS `sw6oidc_access_control_rule`;
             DROP TABLE IF EXISTS `sw6oidc_role_mapping`;
             DROP TABLE IF EXISTS `sw6oidc_attribute_mapping`;
             DROP TABLE IF EXISTS `sw6oidc_provider`;

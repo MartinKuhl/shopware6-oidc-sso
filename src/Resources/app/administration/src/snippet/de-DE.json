@@ -8,7 +8,8 @@
             "errorAutoCreateDisabled": "Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.",
             "passkeyButton": "Login mit Passkey",
             "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
-            "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an."
+            "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.",
+            "errorAccessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung an der Administration."
         },
         "provider": {
             "moduleTitle": "OIDC-Anbieter",
@@ -234,6 +235,23 @@
                     "columnValue": "Wert",
                     "noClaims": "Keine Claims empfangen.",
                     "closeButton": "Fenster schließen"
+                },
+                "cardAccessControl": "Zugriffskontrolle (Claim-basierte Regeln)",
+                "accessControlHint": "Jede Regel muss erfüllt sein (UND-Verknüpfung, in Sortierreihenfolge), damit eine Anmeldung gelingt; die erste nicht erfüllte Regel lehnt die Anmeldung mit ihrer Meldung ab. Claim-Schlüssel verwenden die abgeflachte Punktnotation (z. B. realm_access.roles). Listen-Claims wie groups werden über ihre Einträge geprüft. Groß-/Kleinschreibung wird ignoriert; true/1 und false/0 gelten als gleich. Keine Regeln = jeder darf sich anmelden.",
+                "accessControlDiscoveredClaims": "Beim letzten Live-Test empfangene Claims: {claims}",
+                "claimKey": "Claim",
+                "operator": "Operator",
+                "ruleValue": "Wert",
+                "ruleErrorMessage": "Meldung bei Ablehnung",
+                "ruleErrorMessagePlaceholder": "Optional, reiner Text",
+                "addAccessControlRule": "Regel hinzufügen",
+                "operators": {
+                    "eq": "ist gleich",
+                    "neq": "ist ungleich",
+                    "contains": "enthält",
+                    "not_contains": "enthält nicht",
+                    "exists": "existiert",
+                    "not_exists": "existiert nicht"
                 }
             }
         },

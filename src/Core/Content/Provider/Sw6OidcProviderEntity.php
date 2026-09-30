@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Core\Content\Provider;
 
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingCollection;
 use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupEntity;
@@ -66,6 +67,7 @@ class Sw6OidcProviderEntity extends Entity
 
     protected ?Sw6OidcAttributeMappingCollection $attributeMappings = null;
     protected ?Sw6OidcRoleMappingCollection $roleMappings = null;
+    protected ?Sw6OidcAccessControlRuleCollection $accessControlRules = null;
     protected ?CustomerGroupEntity $defaultCustomerGroup = null;
     protected ?AclRoleEntity $defaultAclRole = null;
 
@@ -503,6 +505,16 @@ class Sw6OidcProviderEntity extends Entity
     public function setRoleMappings(Sw6OidcRoleMappingCollection $roleMappings): void
     {
         $this->roleMappings = $roleMappings;
+    }
+
+    public function getAccessControlRules(): ?Sw6OidcAccessControlRuleCollection
+    {
+        return $this->accessControlRules;
+    }
+
+    public function setAccessControlRules(Sw6OidcAccessControlRuleCollection $accessControlRules): void
+    {
+        $this->accessControlRules = $accessControlRules;
     }
 
     public function getDefaultCustomerGroup(): ?CustomerGroupEntity

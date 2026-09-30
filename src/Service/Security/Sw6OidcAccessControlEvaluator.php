@@ -1,0 +1,206 @@
+<?php declare(strict_types=1);
+
+namespace MartinKuhl\Sw6Oidc\Service\Security;
+
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleDefinition;
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleEntity;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
+use Psr\Log\LoggerInterface;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
+
+/**
+ * Claims-based login gate: every sw6oidc_access_control_rule of the provider
+ * must pass (AND, in sort_order); the first failing rule denies the login
+ * with its own message. No rules configured = everyone allowed.
+ *
+ * Matching works on ClaimsNormalizer::flatten() output, list-aware:
+ * - the claim's *members* are the values of its numeric children
+ *   (`groups.0`, `groups.1`, ...) plus the names of its non-numeric children
+ *   (Zitadel-style role object `roles.Engineering.orgId` → member
+ *   `Engineering`);
+ * - `eq`/`neq` compare the claim's own scalar value, or — for a one-member
+ *   list — that member;
+ * - `contains`/`not_contains` test membership when the claim has members,
+ *   otherwise a substring of the scalar value (e.g. email contains
+ *   "@example.com");
+ * - `exists`/`not_exists` look at the key itself or any child key.
+ * All comparisons are case-insensitive and trimmed; booleans, "true"/"false"
+ * and 1/0 compare as equal. An unknown operator fails closed.
+ */
+class Sw6OidcAccessControlEvaluator
+{
+    public function __construct(
+        private readonly EntityRepository $ruleRepository,
+        private readonly LoggerInterface $logger,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $flattenedClaims
+     *
+     * @throws AccessControlDeniedException
+     */
+    public function evaluate(string $providerId, array $flattenedClaims, Context $context): void
+    {
+        $criteria = (new Criteria())
+            ->addFilter(new EqualsFilter('providerId', $providerId))
+            ->addSorting(new FieldSorting('sortOrder', FieldSorting::ASCENDING));
+
+        foreach ($this->ruleRepository->search($criteria, $context)->getEntities() as $rule) {
+            \assert($rule instanceof Sw6OidcAccessControlRuleEntity);
+
+            if ($this->matches($rule, $flattenedClaims)) {
+                continue;
+            }
+
+            $this->logger->warning('sw6oidc: login denied by access-control rule.', [
+                'providerId' => $providerId,
+                'ruleId' => $rule->getId(),
+                'claimKey' => $rule->getClaimKey(),
+                'operator' => $rule->getOperator(),
+            ]);
+
+            throw new AccessControlDeniedException($rule->getId(), $rule->getClaimKey(), $rule->getErrorMessage());
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $flattenedClaims
+     */
+    public function matches(Sw6OidcAccessControlRuleEntity $rule, array $flattenedClaims): bool
+    {
+        $key = trim($rule->getClaimKey());
+        $expected = $this->normalize($rule->getValue());
+        $scalar = \array_key_exists($key, $flattenedClaims) ? $this->normalize($flattenedClaims[$key]) : null;
+        $members = $this->members($key, $flattenedClaims);
+        $exists = $scalar !== null || $members !== [];
+
+        return match ($rule->getOperator()) {
+            Sw6OidcAccessControlRuleDefinition::OPERATOR_EXISTS => $exists,
+            Sw6OidcAccessControlRuleDefinition::OPERATOR_NOT_EXISTS => !$exists,
+            Sw6OidcAccessControlRuleDefinition::OPERATOR_EQ => $this->equalsClaim($scalar, $members, $expected),
+            Sw6OidcAccessControlRuleDefinition::OPERATOR_NEQ => !$this->equalsClaim($scalar, $members, $expected),
+            Sw6OidcAccessControlRuleDefinition::OPERATOR_CONTAINS => $this->containsClaim($scalar, $members, $expected),
+            Sw6OidcAccessControlRuleDefinition::OPERATOR_NOT_CONTAINS => !$this->containsClaim($scalar, $members, $expected),
+            default => $this->unknownOperator($rule),
+        };
+    }
+
+    /**
+     * @param list<string> $members
+     */
+    private function equalsClaim(?string $scalar, array $members, ?string $expected): bool
+    {
+        if ($expected === null) {
+            return false;
+        }
+
+        $actual = $scalar ?? (\count($members) === 1 ? $members[0] : null);
+
+        return $actual !== null && $this->sameValue($actual, $expected);
+    }
+
+    /**
+     * @param list<string> $members
+     */
+    private function containsClaim(?string $scalar, array $members, ?string $expected): bool
+    {
+        if ($expected === null || $expected === '') {
+            return false;
+        }
+
+        if ($members !== []) {
+            foreach ($members as $member) {
+                if ($this->sameValue($member, $expected)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return $scalar !== null && str_contains($scalar, $expected);
+    }
+
+    /**
+     * @param array<string, mixed> $flattenedClaims
+     *
+     * @return list<string>
+     */
+    private function members(string $key, array $flattenedClaims): array
+    {
+        $prefix = $key . '.';
+        $members = [];
+
+        foreach ($flattenedClaims as $flatKey => $value) {
+            $flatKey = (string) $flatKey;
+
+            if (!str_starts_with($flatKey, $prefix)) {
+                continue;
+            }
+
+            $child = explode('.', substr($flatKey, \strlen($prefix)), 2);
+
+            if (ctype_digit($child[0])) {
+                // A list entry: only its own scalar value, not a nested object's leaves.
+                if (!isset($child[1])) {
+                    $normalized = $this->normalize($value);
+
+                    if ($normalized !== null) {
+                        $members[] = $normalized;
+                    }
+                }
+
+                continue;
+            }
+
+            $members[] = mb_strtolower(trim($child[0]));
+        }
+
+        return array_values(array_unique($members));
+    }
+
+    private function unknownOperator(Sw6OidcAccessControlRuleEntity $rule): bool
+    {
+        $this->logger->error('sw6oidc: access-control rule has an unknown operator, denying (fail closed).', [
+            'ruleId' => $rule->getId(),
+            'operator' => $rule->getOperator(),
+        ]);
+
+        return false;
+    }
+
+    private function normalize(mixed $value): ?string
+    {
+        return match (true) {
+            \is_bool($value) => $value ? 'true' : 'false',
+            \is_int($value), \is_float($value) => (string) $value,
+            \is_string($value) => mb_strtolower(trim($value)),
+            default => null,
+        };
+    }
+
+    private function sameValue(string $actual, string $expected): bool
+    {
+        if ($actual === $expected) {
+            return true;
+        }
+
+        $actualBool = $this->booleanish($actual);
+
+        return $actualBool !== null && $actualBool === $this->booleanish($expected);
+    }
+
+    private function booleanish(string $value): ?bool
+    {
+        return match ($value) {
+            'true', '1' => true,
+            'false', '0' => false,
+            default => null,
+        };
+    }
+}

@@ -21,7 +21,10 @@ use Shopware\Core\Framework\Uuid\Uuid;
  *
  * Export format (version 1): {version, providers: [{...provider fields,
  * clientSecret?, defaultAclRole: {id, name}|null, defaultCustomerGroup:
- * {id, name}|null, attributeMappings: [...], roleMappings: [...]}]}.
+ * {id, name}|null, attributeMappings: [...], roleMappings: [...],
+ * accessControlRules: [...]}]}. Access-control rules travel with the
+ * provider on purpose: an import that silently dropped them would open the
+ * login up on the target installation.
  * Instance-specific bookkeeping (created/updated, last live test) is left out.
  *
  * ACL roles and customer groups are exported as {id, name} because their ids
@@ -57,6 +60,7 @@ class OidcConfigTransfer
         private readonly EntityRepository $providerRepository,
         private readonly EntityRepository $attributeMappingRepository,
         private readonly EntityRepository $roleMappingRepository,
+        private readonly EntityRepository $accessControlRuleRepository,
         private readonly EntityRepository $aclRoleRepository,
         private readonly EntityRepository $customerGroupRepository,
         private readonly Sw6OidcProviderDefinition $providerDefinition,
@@ -74,6 +78,7 @@ class OidcConfigTransfer
         $criteria->addAssociation('attributeMappings');
         $criteria->addAssociation('roleMappings.aclRole');
         $criteria->addAssociation('roleMappings.customerGroup');
+        $criteria->addAssociation('accessControlRules');
         $criteria->addAssociation('defaultAclRole');
         $criteria->addAssociation('defaultCustomerGroup');
 
@@ -179,6 +184,18 @@ class OidcConfigTransfer
             ];
         }
 
+        $out['accessControlRules'] = [];
+
+        foreach ($provider->getAccessControlRules() ?? [] as $rule) {
+            $out['accessControlRules'][] = [
+                'claimKey' => $rule->getClaimKey(),
+                'operator' => $rule->getOperator(),
+                'value' => $rule->getValue(),
+                'errorMessage' => $rule->getErrorMessage(),
+                'sortOrder' => $rule->getSortOrder(),
+            ];
+        }
+
         return $out;
     }
 
@@ -279,12 +296,30 @@ class OidcConfigTransfer
             ];
         }
 
+        $payload['accessControlRules'] = [];
+
+        foreach ($provider['accessControlRules'] ?? [] as $rule) {
+            if (!\is_array($rule)) {
+                continue;
+            }
+
+            $payload['accessControlRules'][] = [
+                'id' => Uuid::randomHex(),
+                'claimKey' => $rule['claimKey'] ?? null,
+                'operator' => $rule['operator'] ?? null,
+                'value' => $rule['value'] ?? null,
+                'errorMessage' => $rule['errorMessage'] ?? null,
+                'sortOrder' => $rule['sortOrder'] ?? 0,
+            ];
+        }
+
         // One transaction per provider: a rejected upsert (SSRF, lockout
         // guard, validation) must not leave its mappings deleted.
         $this->connection->transactional(function () use ($exists, $id, $payload, $context): void {
             if ($exists) {
                 $this->deleteChildren($this->attributeMappingRepository, $id, $context);
                 $this->deleteChildren($this->roleMappingRepository, $id, $context);
+                $this->deleteChildren($this->accessControlRuleRepository, $id, $context);
             }
 
             $this->providerRepository->upsert([$payload], $context);

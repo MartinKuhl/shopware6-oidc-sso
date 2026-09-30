@@ -38,6 +38,7 @@ const FALLBACK_LOCALE_DICTIONARY = {
         'sw6oidc.login.errorRoleMissing': 'Ihr Konto konnte nicht automatisch angelegt werden, da keine Administratorrolle zugewiesen werden konnte. Bitte wenden Sie sich an Ihren Administrator.',
         'sw6oidc.login.errorAutoCreateDisabled': 'Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.',
         'sw6oidc.login.passwordLoginDisabled': 'Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.',
+        'sw6oidc.login.errorAccessDenied': 'Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung an der Administration.',
     },
 };
 
@@ -49,6 +50,8 @@ Component.override('sw-login-login', {
     data() {
         return {
             sw6oidcExchangeError: null,
+            /** Admin-configured access-control message, redeemed from a one-time error ticket. */
+            sw6oidcErrorDetail: null,
             sw6oidcPasskeyError: null,
             sw6oidcPasskeyPending: false,
             /** @type {Array<{id: string, label: string|null}>} one entry per visible admin-scoped provider */
@@ -74,7 +77,15 @@ Component.override('sw-login-login', {
          * exchange_failed, unrecognized future codes).
          */
         sw6oidcErrorMessage() {
+            if (this.sw6oidcErrorDetail) {
+                return this.sw6oidcErrorDetail;
+            }
+
             const messages = {
+                access_denied: [
+                    'sw6oidc.login.errorAccessDenied',
+                    'Access denied: your account does not meet the requirements for signing in to the Administration.',
+                ],
                 admin_role_missing: [
                     'sw6oidc.login.errorRoleMissing',
                     'Your account could not be created automatically because no administrator role could be assigned. Please contact your administrator.',
@@ -250,8 +261,14 @@ Component.override('sw-login-login', {
             const error = params.get('sw6oidc_error');
 
             if (error) {
+                const ticket = params.get('sw6oidc_error_ticket');
+
                 this.sw6oidcExchangeError = error;
                 this.sw6oidcCleanUrl();
+
+                if (ticket) {
+                    await this.sw6oidcLoadErrorDetail(ticket);
+                }
 
                 return;
             }
@@ -302,6 +319,28 @@ Component.override('sw-login-login', {
         },
 
         /**
+         * Redeems the one-time error ticket an access-control denial carries
+         * (the message itself never travels in the URL). Any failure keeps
+         * the generic access-denied text.
+         */
+        async sw6oidcLoadErrorDetail(ticket) {
+            try {
+                const response = await fetch(`/api/sw6oidc/admin/login-error/${encodeURIComponent(ticket)}`);
+
+                if (!response.ok) {
+                    return;
+                }
+
+                const { message } = await response.json();
+
+                this.sw6oidcErrorDetail = typeof message === 'string' && message !== '' ? message : null;
+            } catch (exception) {
+                // eslint-disable-next-line no-console
+                console.error('sw6oidc: failed to load login error detail', exception);
+            }
+        },
+
+        /**
          * Parses the query string out of the hash fragment (window.location.hash,
          * e.g. "#/login?sw6oidc_nonce=...") rather than window.location.search,
          * which the Administration's hash-based router never touches.
@@ -314,6 +353,7 @@ Component.override('sw-login-login', {
             const hashUrl = this.sw6oidcHashUrl();
             hashUrl.searchParams.delete('sw6oidc_nonce');
             hashUrl.searchParams.delete('sw6oidc_error');
+            hashUrl.searchParams.delete('sw6oidc_error_ticket');
 
             const query = hashUrl.searchParams.toString();
             const newHash = `#${hashUrl.pathname}${query ? `?${query}` : ''}`;

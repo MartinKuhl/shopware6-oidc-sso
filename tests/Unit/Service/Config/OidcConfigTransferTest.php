@@ -3,6 +3,9 @@
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Config;
 
 use Doctrine\DBAL\Connection;
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleCollection;
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleDefinition;
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingEntity;
@@ -64,7 +67,7 @@ final class OidcConfigTransferTest extends TestCase
         $this->providerId = Uuid::randomHex();
 
         $registry = new StaticDefinitionInstanceRegistry(
-            [Sw6OidcProviderDefinition::class, Sw6OidcAttributeMappingDefinition::class, Sw6OidcRoleMappingDefinition::class, AclRoleDefinition::class, CustomerGroupDefinition::class],
+            [Sw6OidcProviderDefinition::class, Sw6OidcAttributeMappingDefinition::class, Sw6OidcRoleMappingDefinition::class, Sw6OidcAccessControlRuleDefinition::class, AclRoleDefinition::class, CustomerGroupDefinition::class],
             Validation::createValidator(),
             $this->createStub(EntityWriteGatewayInterface::class),
         );
@@ -87,6 +90,7 @@ final class OidcConfigTransferTest extends TestCase
         self::assertSame([['attributeType' => 'firstname', 'attributeName' => 'name', 'transformFunction' => 'split', 'transformParams' => ['separator' => ' ', 'index' => 0]]], $provider['attributeMappings']);
         self::assertSame('admins', $provider['roleMappings'][0]['oidcGroup']);
         self::assertSame(['id' => $this->aclRole()->getId(), 'name' => 'Editors'], $provider['roleMappings'][0]['aclRole']);
+        self::assertSame([['claimKey' => 'groups', 'operator' => 'contains', 'value' => 'staff', 'errorMessage' => 'Staff only.', 'sortOrder' => 0]], $provider['accessControlRules']);
     }
 
     public function testExportPlaintextUsesTheDecryptedEntityValue(): void
@@ -123,6 +127,13 @@ final class OidcConfigTransferTest extends TestCase
         self::assertSame($this->aclRole()->getId(), $payload['defaultAclRoleId']);
         self::assertTrue(Uuid::isValid($payload['attributeMappings'][0]['id']));
         self::assertSame($this->aclRole()->getId(), $payload['roleMappings'][0]['aclRoleId']);
+        self::assertTrue(Uuid::isValid($payload['accessControlRules'][0]['id']));
+        self::assertSame(['groups', 'contains', 'staff', 'Staff only.'], [
+            $payload['accessControlRules'][0]['claimKey'],
+            $payload['accessControlRules'][0]['operator'],
+            $payload['accessControlRules'][0]['value'],
+            $payload['accessControlRules'][0]['errorMessage'],
+        ]);
         self::assertArrayNotHasKey('lastTestStatus', $payload);
     }
 
@@ -178,7 +189,7 @@ final class OidcConfigTransferTest extends TestCase
 
         self::assertSame(['authelia'], $result->updated);
         self::assertArrayNotHasKey('clientSecret', $this->upserts[0]);
-        self::assertSame(['attribute', 'role'], $this->childDeletes);
+        self::assertSame(['attribute', 'role', 'rule'], $this->childDeletes);
         self::assertSame(['begin', 'commit'], $this->transactionLog);
     }
 
@@ -235,6 +246,7 @@ final class OidcConfigTransferTest extends TestCase
             $this->providerRepository(),
             $this->childRepository('attribute'),
             $this->childRepository('role'),
+            $this->childRepository('rule'),
             $this->referenceRepository('acl_role'),
             $this->referenceRepository('customer_group'),
             $this->definition,
@@ -339,6 +351,10 @@ final class OidcConfigTransferTest extends TestCase
         $role = new Sw6OidcRoleMappingEntity();
         $role->assign(['id' => Uuid::randomHex(), 'mappingType' => 'admin_role', 'oidcGroup' => 'admins', 'sortOrder' => 1, 'aclRole' => $this->aclRole()]);
         $provider->setRoleMappings(new Sw6OidcRoleMappingCollection([$role]));
+
+        $rule = new Sw6OidcAccessControlRuleEntity();
+        $rule->assign(['id' => Uuid::randomHex(), 'claimKey' => 'groups', 'operator' => 'contains', 'value' => 'staff', 'errorMessage' => 'Staff only.', 'sortOrder' => 0]);
+        $provider->setAccessControlRules(new Sw6OidcAccessControlRuleCollection([$rule]));
 
         return $provider;
     }

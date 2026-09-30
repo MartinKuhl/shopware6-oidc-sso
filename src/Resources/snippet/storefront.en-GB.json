@@ -5,7 +5,8 @@
             "buttonWithProvider": "Login with %name%",
             "providerUnavailable": "Single sign-on is currently unavailable. Please log in with your email and password.",
             "failed": "Single sign-on login failed. Please try again or log in with your email and password.",
-            "passwordLoginDisabled": "Password login is disabled for this shop. Please sign in with single sign-on or a passkey."
+            "passwordLoginDisabled": "Password login is disabled for this shop. Please sign in with single sign-on or a passkey.",
+            "accessDenied": "Access denied: your account does not meet the requirements for signing in to this shop."
         },
         "passkey": {
             "button": "Login with Passkey",

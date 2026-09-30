@@ -19,6 +19,7 @@ Shopware's built-in authentication is password-based. This plugin bridges Shopwa
 - **Auto-Discovery**: populate endpoints from an IdP's `.well-known/openid-configuration`
 - **JIT Provisioning**: auto-create Storefront customers and/or Administration users on first login
 - **Group/Role Mapping**: map OIDC group claims to Shopware customer groups and ACL roles, case-insensitively, first match wins, with configurable defaults
+- **Claims-Based Access Control**: per-provider rules (`equals`, `contains`, `exists`, …) on the IdP's claims that must all pass before anyone is logged in or provisioned, each with its own denial message
 - **Rich Attribute Mapping**: map claims to 19 Shopware fields — identity (email, username, name, birthday, gender, phone) plus full billing/shipping address
 - **Per-User IdP Binding**: the IdP that first authenticates an account is permanently bound to it; login via a different provider is rejected
 - **RP-Initiated Logout**: redirects to the IdP's end-session endpoint on logout and revokes the access token (RFC 7009), for both Storefront customers and Administration users
@@ -143,6 +144,22 @@ If you specifically need that, it requires **two deliberate, independent steps**
 2. Add a Group/Role Mapping row with mapping type **Grant superadmin**, with the OIDC group that should receive it.
 
 Only when *both* are true does a group match result in `admin = true`. Only grant this for a narrow, tightly controlled IdP group — everyone in it gets unrestricted access to the entire shop. Superadmin is only ever granted, never automatically revoked by a later login whose groups no longer match (to avoid a transient IdP claims issue silently locking out your only superadmin) — revoke it manually in the Administration if a person's access should be downgraded.
+
+### Claims-based access control
+
+The **Access control** card on a provider lets you restrict who may log in at all, based on the claims the IdP returns — for example "only members of the `staff` group" or "only verified email addresses". Rules are checked after the id_token/userinfo claims are verified and **before** any account is looked up, created or synced, so a denied login never provisions anything.
+
+| Operator | Passes when |
+|---|---|
+| equals / does not equal | The claim's value equals (does not equal) the rule value. A missing claim passes "does not equal". |
+| contains / does not contain | For a list claim (e.g. `groups`): the list has (does not have) an entry equal to the value. For a text claim: the text contains (does not contain) the value, e.g. `email` contains `@example.com`. A missing claim passes "does not contain". |
+| exists / does not exist | The claim is present (absent). No value needed. |
+
+- **All rules must pass** (AND), checked in sort order. The first failing rule denies the login and shows its **message** to the user (Storefront flash message, Administration login screen); without a message a generic "access denied" text is shown. Messages are plain text.
+- **Claim keys** use the flattened dot notation, e.g. `realm_access.roles` for Keycloak realm roles. List claims are matched by entry (`groups`, not `groups.0`); for Zitadel-style role objects (`{"Admins": {...}}`) the role names are the entries.
+- Comparisons ignore case and surrounding whitespace; `true`/`1` and `false`/`0` are treated as equal. An unknown operator denies (fails closed).
+- No rules = everyone who authenticates at the IdP may log in (the previous behavior).
+- Rules are included in `sw6oidc:config:export`/`import`.
 
 ### Sync on every login
 
@@ -322,7 +339,7 @@ Passkeys are bound to one Relying Party ID (domain). If the RP ID override chang
 ## Command-Line Tools
 
 ```bash
-# Export providers (incl. attribute/role mappings) as JSON — the client secret is omitted by default
+# Export providers (incl. attribute/role mappings and access-control rules) as JSON — the client secret is omitted by default
 bin/console sw6oidc:config:export -o providers.json [--provider-id=<id>] [--keep-encrypted|--plaintext]
 
 # Import on another installation — validate first, then apply

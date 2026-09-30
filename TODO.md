@@ -37,6 +37,7 @@ recorded so nobody "fixes" them back:
   the interception point is the `sw-admin-menu` `onLogoutUser()` override. Still
   open: `post_logout_url` override column and the shared `postlogout` landing
   action (see Phase 8c below).
+- **Phase 6:** matching is list-aware (`groups` matches `groups.0`, `groups.1`, …; Zitadel role-object names count as entries), case-insensitive, and treats `true`/`1`/`false`/`0` as booleans; unknown operators fail closed. The admin callback passes the denial message through a one-time error ticket (`AdminLoginErrorTicketStore`) instead of the URL. Rules are part of config export/import (not in the original plan).
 - **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
   `kernel.response` subscriber that only appends IdP origins to directives an
   existing policy already declares.
@@ -44,7 +45,7 @@ recorded so nobody "fixes" them back:
 ## Dependency graph (remaining)
 
 ```
-Phase 6  Claims-based access-control rules engine     (no deps, own entity)
+Phase 6  Claims-based access-control rules engine     (shipped)
 Phase 7  Session/subject registry (foundational)      (no deps, but nothing consumes it until 8)
 Phase 8  Rate limiting + Back-Channel Logout          (needs 7)
 Phase 8b Front-Channel Logout                         (needs 7, 8)
@@ -57,27 +58,27 @@ Phase 14 Setup guides                                  (optional)
 
 ---
 
-## Phase 6 — Claims-based access-control rules engine
+## Phase 6 — Claims-based access-control rules engine (shipped)
 
-- [ ] New migration `Migration<ts>CreateAccessControlRuleSchema` — table
+- [x] New migration `Migration<ts>CreateAccessControlRuleSchema` — table
       `sw6oidc_access_control_rule`: `id`, `provider_id` (FK, cascade),
       `claim_key`, `operator` (`eq`/`neq`/`contains`/`not_contains`/`exists`/
       `not_exists`), `value` (nullable), `error_message` (nullable),
       `sort_order`.
-- [ ] New `Sw6OidcAccessControlRuleDefinition`/`Entity`/`Collection` triad.
-- [ ] New `src/Service/Security/Sw6OidcAccessControlEvaluator.php` —
+- [x] New `Sw6OidcAccessControlRuleDefinition`/`Entity`/`Collection` triad.
+- [x] New `src/Service/Security/Sw6OidcAccessControlEvaluator.php` —
       `evaluate(providerId, flattenedClaims, Context)`, AND-combines rules
       ordered by `sort_order`, throws `AccessControlDeniedException` carrying
       the configured message.
-- [ ] Hook into `OidcCallbackProcessor::process()` right after
+- [x] Hook into `OidcCallbackProcessor::process()` right after
       `ClaimsNormalizer::flatten()` and before `AttributeMapper::map()`.
-- [ ] Controllers (`OidcCallbackController`, `OidcAdminAuthController::callback`)
+- [x] Controllers (`OidcCallbackController`, `OidcAdminAuthController::callback`)
       catch `AccessControlDeniedException` to surface the configured message.
-- [ ] Admin Vue — new nested one-to-many editor on `sw6oidc-provider-detail`,
+- [x] Admin Vue — new nested one-to-many editor on `sw6oidc-provider-detail`,
       following the existing `attributeMappings`/`roleMappings` pattern.
-- [ ] Tests: `Sw6OidcAccessControlEvaluatorTest.php` (all 6 operators,
+- [x] Tests: `Sw6OidcAccessControlEvaluatorTest.php` (all 6 operators,
       AND-combination, first-failure-wins), `OidcCallbackProcessorAccessControlTest.php`.
-- [ ] Docs: `README.md`/`CLAUDE.md` — new "Claims-based access control" section.
+- [x] Docs: `README.md`/`CLAUDE.md` — new "Claims-based access control" section.
 
 ---
 

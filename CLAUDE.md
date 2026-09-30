@@ -62,6 +62,7 @@ Two independent SP-initiated entry points share all downstream machinery:
    - Merges `id_token` claims with userinfo claims (userinfo wins on collision).
    - Extracts the **raw, unflattened** groups claim and normalizes it via `ClaimsNormalizer::normalizeGroups()` **before** flattening — this order matters, because flattening a Zitadel-style nested role object (`{"Engineering": {"orgId": "..."}}`) would turn group names into dotted leaf paths and lose them.
    - `ClaimsNormalizer::flatten()` — recursive dot-notation flattening (max depth 5, max 2000 keys, else `ClaimsTooComplexException`); base64-decodes leaf string values when `claim_encoding === 'base64'` (Zitadel-style).
+   - `Sw6OidcAccessControlEvaluator::evaluate()` — claims-based access-control rules (see below); throws `AccessControlDeniedException` before anything is looked up, created or synced.
    - `AttributeMapper::map()` → `MappedProfile` (see Provisioning below).
 
 3. **JWT verification (`JwtVerifier::verify`)** — via `web-token/jwt-framework`. Only `RS256`/`RS384`/`RS512` accepted. JWKS fetched and cached (Shopware's `cache.app`, keyed by sha256 of the JWKS URL, TTL = provider's `jwks_cache_ttl`). A failed fetch (HTTP error, unparsable or empty key set) sets a 60s `sw6oidc_jwks_fail_<sha256>` circuit-breaker flag that short-circuits further fetches; a signature that fails against the cached set triggers one forced refetch (key rotation), itself limited to once per 60s per endpoint via `sw6oidc_jwks_refreshed_<sha256>`. Checks: signature, `exp` (future), `nbf` (past, if present), `iss` (exact match), `aud` (string-or-array match), `nonce` (exact match against the expected nonce — if no nonce was expected, logs a warning and **skips** the check rather than failing).
@@ -81,6 +82,14 @@ Two independent SP-initiated entry points share all downstream machinery:
      - `CustomerLogoutSubscriber` (`KernelEvents::RESPONSE`) overwrites the response with that URL — only on route `frontend.account.logout.page`, so Store API logouts keep their JSON body.
    - Admin logout: the admin callback stores `{providerId, idToken}` via `LogoutContextStore::rememberForAdmin()`, keyed by **admin user id** (access-token `jti`s change on every silent refresh). The `sw-admin-menu` override's `onLogoutUser()` POSTs `/api/sw6oidc/admin/logout` (`OidcAdminAuthController::logout()`, auth required), which returns `{"logoutUrl": string|null}`. With a URL, the override revokes Shopware's token, clears local state and navigates to the IdP; with `null` or on any failure it falls through to core's stock logout. Inactivity logouts never reach it and stay local.
    - **Gaps**: no OIDC Back-Channel Logout support (no endpoint for an IdP to push server-side logout notifications).
+
+## Architecture — Claims-based access control
+
+- **Schema** — `sw6oidc_access_control_rule` (`Core/Content/AccessControlRule/`, one-to-many `accessControlRules` on the provider, cascade delete): `claim_key`, `operator` (`Sw6OidcAccessControlRuleDefinition::OPERATORS`: `eq`/`neq`/`contains`/`not_contains`/`exists`/`not_exists`), nullable `value`/`error_message`, `sort_order`.
+- **`Service/Security/Sw6OidcAccessControlEvaluator`** — loads the provider's rules (repository, ordered by `sortOrder`), AND-combines them, first failure throws `AccessControlDeniedException` (rule id, claim key, configured message). No rules = allow. Works on the **flattened** claims, list-aware: a claim's *members* are its numeric children's scalar values (`groups.0`, `groups.1`) plus its non-numeric child names (Zitadel role objects `roles.Admins.orgId` → `admins`); `contains` tests membership when there are members, else substring of the scalar; `eq` compares the scalar (or a one-member list's member). Case-insensitive, trimmed; `true`/`1`/`false`/`0` compare as booleans. Unknown operator → deny (fail closed, error log). `matches()` is public for tests.
+- **Hook** — `OidcCallbackProcessor::process()`, after `flatten()`, before `AttributeMapper::map()`. Not applied by the live login test (`OidcLiveLoginTestService`), which only reports claims.
+- **Surfacing the message** — `AccessControlDeniedException::getDisplayMessage()` returns the message as plain text (tags stripped, whitespace collapsed, 500 chars) or null. Storefront `OidcCallbackController` flashes it (fallback snippet `sw6oidc.login.accessDenied`). Admin `OidcAdminAuthController::callback` never puts free text into the URL: it stores the message via `Service/AdminAuth/AdminLoginErrorTicketStore` (`AtomicCacheInterface`, 60s, single-use) and redirects with `sw6oidc_error=access_denied&sw6oidc_error_ticket=…`; the `sw-login` override redeems it via `GET /api/sw6oidc/admin/login-error/{ticket}` (anonymous; the ticket is the capability).
+- **Config transfer** — rules are exported/imported with the provider (`accessControlRules`), and replaced on `--overwrite`, so an import can never silently drop a restriction.
 
 ## Architecture — Passkey (WebAuthn) flow
 
@@ -120,6 +129,7 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 
 **`Service/AdminAuth/`**
 - `AdminOidcGrant`, `AdminAuthorizationServerFactory`, `AdminLoginNonceService` — admin OIDC ↔ League OAuth2 bridge (see above).
+- `AdminLoginErrorTicketStore` — one-time error-message hand-off to the `sw-login` screen (access-control denials).
 
 **`Service/Passkey/`**
 - `WebauthnCeremonyFactory`, `PasskeyCredentialRepository`, `PasskeyRegistrationService`, `PasskeyAuthenticationService`, `AdminPasskeyLoginTokenTracker` — WebAuthn ceremony (see above).
@@ -133,20 +143,21 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 - `Storefront/Service/OidcCustomerLoginRoute` (`extends AbstractLoginRoute`) — a standalone passwordless login route, deliberately **not** a decorator (`getDecorated()` throws) so the real `AbstractLoginRoute` alias keeps doing normal password checks for everyone else; only ever invoked after OIDC/Passkey has already verified the customer for this request.
 
 **`Controller/Api/`**
-- `OidcAdminAuthController` — `login-options`, `login`, `callback`, `token` (nonce exchange) under `/api/sw6oidc/admin/*`; `auth_required: false` at the class level (all actions are necessarily pre-auth).
+- `OidcAdminAuthController` — `login-options`, `login`, `callback`, `token` (nonce exchange), `login-error/{ticket}` under `/api/sw6oidc/admin/*`; `auth_required: false` at the class level (all actions are necessarily pre-auth).
 - `OidcUserProviderAdminController` — `POST /api/_action/sw6oidc/user-provider/info` (batch `{userType, userIds}` → bindings keyed by id) and `.../unlink`, backing the Administration "OIDC Provider" info (users listing column, user detail incl. the native-SSO `user.sso.detail` variant, own profile, customer base info; `extension/sw-users-permissions-user-*`, `extension/sw-sso-users-permission-user-detail`, `extension/sw-profile-index-general`, `extension/sw-customer-base-info`, shared `component/sw6oidc-user-provider-info`). Gated per request by the core `user:read|update` / `customer:read|update` privileges of the given userType (not by any `sw6oidc_user_provider` privilege, which ordinary roles lack); an admin may always read their own binding (profile). Unlink runs in system scope for the same reason.
 - `PasskeyAdminController` — registration/`my-credentials`/delete (auth required) plus `login-options`/`login-verify` (route-level `auth_required: false` override) under `/api/sw6oidc/admin/passkey/*`.
 
 **`Migration/`**
-- `Migration1730000001CreateOidcSchema` — creates the 5 tables below; `updateDestructive()` is a no-op.
+- `Migration1730000001CreateOidcSchema` — creates the initial 5 tables below; `updateDestructive()` is a no-op.
 - `Migration1758000001AddProviderTestStatus` — adds `sw6oidc_provider.last_test_status`/`last_test_at` (live login test result).
 - `Migration1789383427AddSuperadminGroupMapping` — adds `sw6oidc_provider.allow_superadmin_group_mapping`.
 - `Migration1789390512AddLastTestClaims` — adds `sw6oidc_provider.last_test_claims` (JSON; the flattened claims from the last live login test, so the Attribute Mapping picker's discovered-claims list survives a page reload).
 - `Migration1789470000AddUserProviderUpdatedAt` — adds the missing `sw6oidc_user_provider.updated_at`.
 - `Migration1790685361EncryptProviderClientSecrets` — widens `client_secret` to 2048 and encrypts existing plaintext rows (idempotent; needs `APP_SECRET`).
 - `Migration1790686535DropAttributeMappingSyncOnSso` — destructive step drops `sw6oidc_attribute_mapping.sync_on_sso`.
+- `Migration1790800001CreateAccessControlRuleSchema` — creates `sw6oidc_access_control_rule`.
 
-**`Service/Security/`** — `OidcSecurityHelper` (state/PKCE/nonce), `Sw6OidcEncryptor`, `SsrfUrlValidator`, `PasswordLoginPolicy`, `Sw6OidcCspHostCollector`, exceptions (`ClientSecretUnavailableException`, `PasswordLoginDisabledException`, `InvalidStateException`).
+**`Service/Security/`** — `OidcSecurityHelper` (state/PKCE/nonce), `Sw6OidcEncryptor`, `SsrfUrlValidator`, `PasswordLoginPolicy`, `Sw6OidcCspHostCollector`, `Sw6OidcAccessControlEvaluator`, exceptions (`ClientSecretUnavailableException`, `PasswordLoginDisabledException`, `InvalidStateException`, `AccessControlDeniedException`).
 
 **`Service/Cache/`** — `AtomicCacheInterface`, `RedisAtomicCache` (always wired, runtime backend selection), `CachePoolAtomicCache`, `RedisConnectionFactory`. **`Service/Http/`** — `OidcHttpClient`, `Sw6OidcHttpClientFactory` (SSRF-guarded client). **`Service/Config/`** — `OidcConfigTransfer`, `ImportResult`. **`Console/`** — export/import commands. **`Event/`** — see Extension points.
 
@@ -156,12 +167,13 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 - `AdminEntrypointsExtension` — registers `sw6oidc_admin_scripts()`/`sw6oidc_admin_styles()`, reading the plugin's own Vite `entrypoints.json` directly (Pentatrion's helper only resolves Shopware's own pre-registered bundle name). Forces the plugin's admin JS to load on the pre-auth login screen, which Shopware's normal `loadPlugins()` boot path otherwise skips.
 - `StorefrontLoginOptionsExtension` — registers `sw6oidc_storefront_sso_providers(context)` (one `{id, label}` per visible customer-scoped provider, `label` falling back to a generic translated string only when a provider has no `displayName`) / `sw6oidc_storefront_passkey_available(context)`, used by the storefront login template override to render one SSO button per provider plus the Passkey button.
 
-**`Sw6Oidc.php`** — plugin bootstrap; no custom `install()`/`activate()`/`deactivate()`. `uninstall()` drops all 5 tables (FK-safe order) unless the admin checks "keep user data" in the uninstall dialog.
+**`Sw6Oidc.php`** — plugin bootstrap; no custom `install()`/`activate()`/`deactivate()`. `uninstall()` drops all plugin tables (FK-safe order) unless the admin checks "keep user data" in the uninstall dialog.
 
 ## Database schema (`Migration1730000001CreateOidcSchema` + follow-up migrations)
 
 - **`sw6oidc_provider`** — one row per configured IdP: identity/OAuth fields (`app_name`, `client_id`, `client_secret`, `public_client`), endpoints (auto-fillable via discovery), protocol knobs (`scope`, `pkce_flow`, `claim_encoding`, `group_attribute`), behavior flags (`auto_create_customer`/`auto_create_admin`, `disable_non_oidc_*_login`, `show_*_link`, `is_active`, `login_type`), sync-on-SSO toggles (all five wired, see Provisioning & mapping above), `allow_superadmin_group_mapping` (gates `superadmin`-type role mapping rows, see Provisioning & mapping above), ops settings (`http_timeout`, `jwks_cache_ttl`), live-test bookkeeping (`last_test_status`, `last_test_at`, `last_test_claims`), and FK defaults (`default_customer_group_id`, `default_acl_role_id`).
 - **`sw6oidc_attribute_mapping`** — per-provider claim → Shopware-field mapping (`attribute_type`, `attribute_name`, optional `transform_function`/`transform_params` applied by `AttributeTransformer`, see Provisioning above). The former per-attribute `sync_on_sso` column is dropped by `Migration1790686535DropAttributeMappingSyncOnSso` (destructive step); re-sync is gated only by the provider-level toggles.
+- **`sw6oidc_access_control_rule`** — per-provider claims-based login gate (`claim_key`, `operator`, `value`, `error_message`, `sort_order`), see "Claims-based access control" above.
 - **`sw6oidc_role_mapping`** — per-provider OIDC-group → ACL role / customer group / superadmin grant (`mapping_type`: `admin_role`|`customer_group`|`superadmin`, `oidc_group`, `acl_role_id`, `customer_group_id`, `sort_order`); `superadmin` rows leave both `acl_role_id`/`customer_group_id` null.
 - **`sw6oidc_user_provider`** — permanent IdP binding, polymorphic (`user_type`, `user_id`) → `provider_id`, unique per account.
 - **`sw6oidc_passkey_credential`** — one WebAuthn credential per user (polymorphic `user_type`/`user_id`, `credential_id`, `public_key`, `sign_count`, `user_handle`, `nickname`).

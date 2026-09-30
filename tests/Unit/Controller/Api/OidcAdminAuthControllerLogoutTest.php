@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Tests\Unit\Controller\Api;
 use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Controller\Api\OidcAdminAuthController;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
 use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
@@ -88,6 +89,7 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
             $this->createMock(PasswordLoginPolicy::class),
             $this->store,
             new RpInitiatedLogoutService($this->createMock(OidcHttpClient::class), new NullLogger()),
+            new AdminLoginErrorTicketStore(new InMemoryAtomicCache()),
         );
 
         $response = $controller->logout(new Context(new AdminApiSource(self::USER_ID)));

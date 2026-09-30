@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Controller\Api;
 use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
+use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
@@ -19,6 +20,7 @@ use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
@@ -59,7 +61,23 @@ class OidcAdminAuthController extends AbstractController
         private readonly PasswordLoginPolicy $passwordLoginPolicy,
         private readonly LogoutContextStore $logoutContextStore,
         private readonly RpInitiatedLogoutService $rpInitiatedLogoutService,
+        private readonly AdminLoginErrorTicketStore $loginErrorTicketStore,
     ) {
+    }
+
+    /**
+     * Redeems the one-time error ticket the callback attached to an
+     * access-control denial (see AdminLoginErrorTicketStore). Anonymous by
+     * necessity (pre-auth screen); the ticket itself is the capability.
+     */
+    #[Route(
+        path: '/api/sw6oidc/admin/login-error/{ticket}',
+        name: 'api.action.sw6oidc.admin.login-error',
+        methods: ['GET'],
+    )]
+    public function loginError(string $ticket): JsonResponse
+    {
+        return new JsonResponse(['message' => $this->loginErrorTicketStore->redeem($ticket)]);
     }
 
     /**
@@ -179,6 +197,15 @@ class OidcAdminAuthController extends AbstractController
             ]);
 
             return new RedirectResponse($redirectUrl);
+        } catch (AccessControlDeniedException $exception) {
+            $query = ['sw6oidc_error' => 'access_denied'];
+            $message = $exception->getDisplayMessage();
+
+            if ($message !== null) {
+                $query['sw6oidc_error_ticket'] = $this->loginErrorTicketStore->create($message);
+            }
+
+            return new RedirectResponse($this->administrationLoginUrl($query));
         } catch (AdminProvisioningDeniedException $exception) {
             $this->logger->warning('sw6oidc: admin OIDC callback failed.', [
                 'exception' => $exception->getMessage(),
