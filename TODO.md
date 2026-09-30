@@ -38,6 +38,7 @@ recorded so nobody "fixes" them back:
   open: `post_logout_url` override column and the shared `postlogout` landing
   action (see Phase 8c below).
 - **Phase 6:** matching is list-aware (`groups` matches `groups.0`, `groups.1`, …; Zitadel role-object names count as entries), case-insensitive, and treats `true`/`1`/`false`/`0` as booleans; unknown operators fail closed. The admin callback passes the denial message through a one-time error ticket (`AdminLoginErrorTicketStore`) instead of the URL. Rules are part of config export/import (not in the original plan).
+- **Phase 7:** the registry also indexes by local account (`resolveByUser()`, needed for admin logout once `jti`s rotate). Admin session destruction ends **all** of that admin's sessions (refresh tokens revoked + `last_updated_password_at` bumped): Shopware access tokens are stateless and `revokeAccessToken()` is a no-op, so a single admin session can't be targeted. Customer destruction is exact (`SalesChannelContextPersister::delete()`).
 - **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
   `kernel.response` subscriber that only appends IdP origins to directives an
   existing policy already declares.
@@ -46,7 +47,7 @@ recorded so nobody "fixes" them back:
 
 ```
 Phase 6  Claims-based access-control rules engine     (shipped)
-Phase 7  Session/subject registry (foundational)      (no deps, but nothing consumes it until 8)
+Phase 7  Session/subject registry (foundational)      (shipped)
 Phase 8  Rate limiting + Back-Channel Logout          (needs 7)
 Phase 8b Front-Channel Logout                         (needs 7, 8)
 Phase 8c Admin-side RP-initiated logout               (needs 7, 8)
@@ -82,31 +83,31 @@ Phase 14 Setup guides                                  (optional)
 
 ---
 
-## Phase 7 — Session/subject registry (foundational)
+## Phase 7 — Session/subject registry (foundational) (shipped)
 
 Ships no user-visible behavior by itself — pure plumbing that Phases
 8/8b/8c/10 build on.
 
-- [ ] New `src/Service/Session/Sw6OidcSessionRegistry.php` —
+- [x] New `src/Service/Session/Sw6OidcSessionRegistry.php` —
       `register(sub, sid, sessionKey, userType, userId, ttl=86400)`,
       `resolve()`, `resolveBySid()`, `revoke()`, `revokeBySid()`. Backed by
       plain `cache.app` (not `AtomicCacheInterface`). `sessionKey` = sales-
       channel context token (Storefront) or admin access-token `jti` (Admin).
-- [ ] New `src/Service/Session/Sw6OidcSessionDestructionService.php` —
+- [x] New `src/Service/Session/Sw6OidcSessionDestructionService.php` —
       Storefront: invalidate the sales-channel-context token via Shopware
       core's context-persister delete. *(verify exact class/method against the
       installed 6.7 version and that it forces re-auth)* Admin: revoke access +
       refresh token via the already-wired `AccessTokenRepository`/
       `RefreshTokenRepository` using the stored `jti`.
-- [ ] `AdminLoginNonceService::createNonce()` — extend signature to carry
+- [x] `AdminLoginNonceService::createNonce()` — extend signature to carry
       `providerId`/`idToken` forward so the registry entry can be written once
       the minted token's `jti` is known in `exchangeNonce()`.
-- [ ] `OidcAdminAuthController::exchangeNonce()` and `OidcCallbackController` —
+- [x] `OidcAdminAuthController::exchangeNonce()` and `OidcCallbackController` —
       each register a session-registry entry alongside existing logout-
       context/nonce bookkeeping.
-- [ ] Tests: `Sw6OidcSessionRegistryTest.php`, `Sw6OidcSessionDestructionServiceTest.php`,
+- [x] Tests: `Sw6OidcSessionRegistryTest.php`, `Sw6OidcSessionDestructionServiceTest.php`,
       `AdminLoginNonceServiceTest.php` (extended payload).
-- [ ] Docs: `CLAUDE.md` — new "Session/subject registry" subsection,
+- [x] Docs: `CLAUDE.md` — new "Session/subject registry" subsection,
       documenting the storefront-vs-admin destruction asymmetry.
 
 ---

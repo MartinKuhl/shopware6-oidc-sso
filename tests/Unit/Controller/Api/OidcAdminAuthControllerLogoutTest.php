@@ -2,34 +2,23 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Controller\Api;
 
-use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Controller\Api\OidcAdminAuthController;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
-use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore;
-use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
-use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
-use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
-use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
-use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
-use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
-use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
-use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
-use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
-use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
+use MartinKuhl\Sw6Oidc\Tests\Unit\Support\BuildsOidcAdminAuthController;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
-use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 
 #[CoversClass(OidcAdminAuthController::class)]
 final class OidcAdminAuthControllerLogoutTest extends TestCase
 {
+    use BuildsOidcAdminAuthController;
+
     private const USER_ID = '0190a1b2c3d4e5f60718293a4b5c6d7e';
 
     private LogoutContextStore $store;
@@ -73,24 +62,10 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
             $resolver->method('getActiveById')->willReturn($provider);
         }
 
-        $controller = new OidcAdminAuthController(
-            $resolver,
-            $this->createMock(AuthorizationRequestBuilder::class),
-            $this->createMock(OidcCallbackProcessor::class),
-            $this->createMock(AdminProvisioningService::class),
-            $this->createMock(AdminLoginNonceService::class),
-            $this->createMock(AuthorizationServer::class),
-            $this->createMock(PsrHttpFactory::class),
-            'https://shop.example/admin',
-            new NullLogger(),
-            $this->createMock(PasskeyConfig::class),
-            $this->createMock(PasskeyCredentialRepository::class),
-            $this->createMock(UserProviderBindingService::class),
-            $this->createMock(PasswordLoginPolicy::class),
-            $this->store,
-            new RpInitiatedLogoutService($this->createMock(OidcHttpClient::class), new NullLogger()),
-            new AdminLoginErrorTicketStore(new InMemoryAtomicCache()),
-        );
+        $controller = $this->buildAdminAuthController([
+            'providerResolver' => $resolver,
+            'logoutContextStore' => $this->store,
+        ]);
 
         $response = $controller->logout(new Context(new AdminApiSource(self::USER_ID)));
 

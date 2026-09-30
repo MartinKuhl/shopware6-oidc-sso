@@ -6,6 +6,7 @@ use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
+use MartinKuhl\Sw6Oidc\Service\Jwt\JwtPayloadReader;
 use MartinKuhl\Sw6Oidc\Service\Passkey\AdminPasskeyLoginTokenTracker;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
@@ -213,32 +214,11 @@ class PasskeyAdminController extends AbstractController
             return;
         }
 
-        $jti = $this->extractJti($accessToken);
+        $jti = JwtPayloadReader::stringClaim($accessToken, 'jti');
 
         if ($jti !== null) {
             $this->tokenTracker->remember($jti, $credentialId);
         }
-    }
-
-    private function extractJti(string $jwt): ?string
-    {
-        $segments = explode('.', $jwt);
-
-        if (\count($segments) !== 3) {
-            return null;
-        }
-
-        $payloadSegment = strtr($segments[1], '-_', '+/');
-        $payloadSegment .= str_repeat('=', (4 - \strlen($payloadSegment) % 4) % 4);
-        $decoded = base64_decode($payloadSegment, true);
-
-        if ($decoded === false) {
-            return null;
-        }
-
-        $payload = json_decode($decoded, true);
-
-        return \is_array($payload) && \is_string($payload['jti'] ?? null) ? $payload['jti'] : null;
     }
 
     private function currentUser(Context $context): UserEntity

@@ -6,6 +6,8 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
@@ -38,6 +40,7 @@ class OidcCallbackController extends StorefrontController
         private readonly SalesChannelContextService $salesChannelContextService,
         private readonly LogoutContextStore $logoutContextStore,
         private readonly LoggerInterface $logger,
+        private readonly Sw6OidcSessionRegistry $sessionRegistry,
     ) {
     }
 
@@ -91,8 +94,23 @@ class OidcCallbackController extends StorefrontController
             $this->logoutContextStore->remember(
                 $tokenResponse->getToken(),
                 $result->provider->getId(),
-                \is_string($result->tokens['id_token'] ?? null) ? $result->tokens['id_token'] : null,
+                $result->idToken(),
             );
+
+            $subject = $result->subject();
+
+            if ($subject !== null) {
+                $this->sessionRegistry->register(
+                    $result->provider->getId(),
+                    $subject,
+                    $result->sessionId(),
+                    Sw6OidcSession::USER_TYPE_CUSTOMER,
+                    $customer->getId(),
+                    $tokenResponse->getToken(),
+                    $context->getSalesChannelId(),
+                    $result->idToken(),
+                );
+            }
 
             return new RedirectResponse($this->resolveSafeRelayState($result->flow->relayState));
         } catch (AccessControlDeniedException $exception) {

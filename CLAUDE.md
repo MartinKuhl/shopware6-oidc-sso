@@ -83,6 +83,14 @@ Two independent SP-initiated entry points share all downstream machinery:
    - Admin logout: the admin callback stores `{providerId, idToken}` via `LogoutContextStore::rememberForAdmin()`, keyed by **admin user id** (access-token `jti`s change on every silent refresh). The `sw-admin-menu` override's `onLogoutUser()` POSTs `/api/sw6oidc/admin/logout` (`OidcAdminAuthController::logout()`, auth required), which returns `{"logoutUrl": string|null}`. With a URL, the override revokes Shopware's token, clears local state and navigates to the IdP; with `null` or on any failure it falls through to core's stock logout. Inactivity logouts never reach it and stay local.
    - **Gaps**: no OIDC Back-Channel Logout support (no endpoint for an IdP to push server-side logout notifications).
 
+## Architecture — Session/subject registry
+
+Plumbing for Back-/Front-Channel Logout and forced logouts: which local sessions did an OIDC login create, keyed by what an IdP logout notification carries.
+
+- **`Service/Session/Sw6OidcSessionRegistry`** — plain `cache.app` (PSR-6; not `AtomicCacheInterface`, nothing is one-time here). One entry per login (`Sw6OidcSession`: provider, `sub`, optional `sid`, user type/id, `sessionKey`, sales channel, id_token, created-at; 86400s TTL) plus three hashed index lists: by provider+`sid`, by provider+`sub` (both only unique per issuer), by local account. `register()`, `resolve(providerId, sub)`, `resolveBySid()`, `resolveByUser()`, `revoke(providerId, sub, ?sid)`, `revokeBySid()`, `remove()`. Index updates are unlocked read-modify-write (a race can only make a logout miss a session, never grant access); lists are capped at 50.
+- **`sessionKey`** — Storefront: the sales-channel context token minted by the login (`OidcCallbackController`). Admin: the jti of the access token minted by `OidcAdminAuthController::exchangeNonce()` — the callback can't know it yet, so `AdminLoginNonceService::createNonce()` carries provider/sub/sid/id_token forward in the nonce (`AdminLoginNonce`) and `exchangeNonce()` registers once the token exists (`JwtPayloadReader::stringClaim($accessToken, 'jti')`). `sub` comes from the verified id_token, else userinfo; `sid` only from the verified id_token (`OidcCallbackResult::subject()`/`sessionId()`). No `sub` → nothing registered. Passkey logins are not registered (no IdP session).
+- **`Service/Session/Sw6OidcSessionDestructionService`** — the storefront-vs-admin asymmetry: a **customer** session is destroyed exactly (`SalesChannelContextPersister::delete()` of the context token — the next request loads an anonymous context). An **admin** session cannot be targeted: Shopware admin access tokens are stateless JWTs (`AccessTokenRepository::revokeAccessToken()` is a no-op) and refresh-token ids rotate on each refresh. So it ends **all** of that admin's sessions: `RefreshTokenRepository::revokeRefreshTokensForUser()` plus bumping `user.last_updated_password_at`, which core's `SymfonyBearerTokenValidator` already uses to reject access tokens issued before it (the password-change mechanism; the password itself is untouched).
+
 ## Architecture — Claims-based access control
 
 - **Schema** — `sw6oidc_access_control_rule` (`Core/Content/AccessControlRule/`, one-to-many `accessControlRules` on the provider, cascade delete): `claim_key`, `operator` (`Sw6OidcAccessControlRuleDefinition::OPERATORS`: `eq`/`neq`/`contains`/`not_contains`/`exists`/`not_exists`), nullable `value`/`error_message`, `sort_order`.
@@ -129,6 +137,7 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 
 **`Service/AdminAuth/`**
 - `AdminOidcGrant`, `AdminAuthorizationServerFactory`, `AdminLoginNonceService` — admin OIDC ↔ League OAuth2 bridge (see above).
+- `AdminLoginNonce` — what a redeemed nonce carries (user id + the login's provider/sub/sid/id_token for the session registry).
 - `AdminLoginErrorTicketStore` — one-time error-message hand-off to the `sw-login` screen (access-control denials).
 
 **`Service/Passkey/`**
@@ -158,6 +167,8 @@ Independent of OIDC; uses `web-auth/webauthn-lib` **^5.3** (no repository contra
 - `Migration1790800001CreateAccessControlRuleSchema` — creates `sw6oidc_access_control_rule`.
 
 **`Service/Security/`** — `OidcSecurityHelper` (state/PKCE/nonce), `Sw6OidcEncryptor`, `SsrfUrlValidator`, `PasswordLoginPolicy`, `Sw6OidcCspHostCollector`, `Sw6OidcAccessControlEvaluator`, exceptions (`ClientSecretUnavailableException`, `PasswordLoginDisabledException`, `InvalidStateException`, `AccessControlDeniedException`).
+
+**`Service/Session/`** — `Sw6OidcSession`, `Sw6OidcSessionRegistry`, `Sw6OidcSessionDestructionService` (see "Session/subject registry"). **`Service/Jwt/JwtPayloadReader`** — unverified payload decode for tokens verified elsewhere.
 
 **`Service/Cache/`** — `AtomicCacheInterface`, `RedisAtomicCache` (always wired, runtime backend selection), `CachePoolAtomicCache`, `RedisConnectionFactory`. **`Service/Http/`** — `OidcHttpClient`, `Sw6OidcHttpClientFactory` (SSRF-guarded client). **`Service/Config/`** — `OidcConfigTransfer`, `ImportResult`. **`Console/`** — export/import commands. **`Event/`** — see Extension points.
 

@@ -129,6 +129,6 @@ class OidcCallbackProcessor
             'groups' => $groups,
         ]);
 
-        return new OidcCallbackResult($provider, $flow, $profile, $tokens);
+        return new OidcCallbackResult($provider, $flow, $profile, $tokens, $idTokenClaims, $mergedClaims);
     }
 }

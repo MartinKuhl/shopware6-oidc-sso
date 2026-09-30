@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Session/subject registry: every OIDC login records which local session it created (Storefront context token / Administration access-token jti), indexed by the IdP subject, the IdP session id (`sid`) and the local account. Groundwork for Back-/Front-Channel Logout and forced logouts; no visible behavior on its own.
 - Claims-based access control: per-provider rules (`eq`, `neq`, `contains`, `not_contains`, `exists`, `not_exists`) that all must pass before a login is accepted, evaluated before any account lookup or JIT provisioning. List claims are matched by entry, comparisons ignore case, and each rule carries its own denial message (shown on the Storefront and, via a one-time error ticket, on the Administration login screen). New table `sw6oidc_access_control_rule`, an **Access control** card on the provider detail page, and export/import support.
 - `client_secret` is encrypted at rest (libsodium secretbox, `sw6oidc_v1:` envelope). A migration encrypts existing rows.
 - Save-time SSRF validation for every fetched provider URL. A runtime `NoPrivateNetworkHttpClient` guard checks every connection and redirect.

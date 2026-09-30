@@ -6,8 +6,10 @@ use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore;
+use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonce;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
+use MartinKuhl\Sw6Oidc\Service\Jwt\JwtPayloadReader;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
@@ -22,6 +24,8 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedExc
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
@@ -62,6 +66,7 @@ class OidcAdminAuthController extends AbstractController
         private readonly LogoutContextStore $logoutContextStore,
         private readonly RpInitiatedLogoutService $rpInitiatedLogoutService,
         private readonly AdminLoginErrorTicketStore $loginErrorTicketStore,
+        private readonly Sw6OidcSessionRegistry $sessionRegistry,
     ) {
     }
 
@@ -188,7 +193,13 @@ class OidcAdminAuthController extends AbstractController
                 'userId' => $adminUser->getId(),
             ]);
 
-            $nonce = $this->loginNonceService->createNonce($adminUser->getId());
+            $nonce = $this->loginNonceService->createNonce(
+                $adminUser->getId(),
+                $result->provider->getId(),
+                $result->subject(),
+                $result->sessionId(),
+                $result->idToken(),
+            );
             $redirectUrl = $this->administrationLoginUrl(['sw6oidc_nonce' => $nonce]);
 
             $this->logger->debug('sw6oidc: admin OIDC callback succeeded, redirecting back into the Administration SPA.', [
@@ -249,9 +260,9 @@ class OidcAdminAuthController extends AbstractController
     public function exchangeNonce(Request $request): Response
     {
         $nonce = $request->request->get('sw6oidc_nonce');
-        $userId = $this->loginNonceService->redeemNonce(\is_string($nonce) ? $nonce : null);
+        $loginNonce = $this->loginNonceService->redeemNonce(\is_string($nonce) ? $nonce : null);
 
-        if ($userId === null) {
+        if (!$loginNonce instanceof AdminLoginNonce) {
             // Was silent before - a redirect back from the IdP that looks
             // clean in the logs above (provisioning succeeded, nonce
             // minted, redirect issued) can still end here if the SPA calls
@@ -263,6 +274,8 @@ class OidcAdminAuthController extends AbstractController
 
             return $this->json(['error' => 'invalid_grant', 'error_description' => 'Unknown, expired, or already-used login nonce.'], 400);
         }
+
+        $userId = $loginNonce->userId;
 
         $this->logger->debug('sw6oidc: admin login nonce redeemed, exchanging for an access token.', [
             'userId' => $userId,
@@ -289,7 +302,10 @@ class OidcAdminAuthController extends AbstractController
 
         $this->logger->debug('sw6oidc: admin token exchange succeeded.', ['userId' => $userId]);
 
-        return (new HttpFoundationFactory())->createResponse($tokenResponse);
+        $response = (new HttpFoundationFactory())->createResponse($tokenResponse);
+        $this->registerAdminSession($loginNonce, $response);
+
+        return $response;
     }
 
     /**
@@ -419,6 +435,40 @@ class OidcAdminAuthController extends AbstractController
         ]);
 
         return new JsonResponse(['logoutUrl' => $logoutUrl]);
+    }
+
+    /**
+     * Writes the session-registry entry for an OIDC admin login, keyed by the
+     * jti of the access token just minted in this request. Never fails the
+     * login: without provider/sub (passkey-less legacy nonce, IdP without
+     * sub) there is simply nothing to register.
+     */
+    private function registerAdminSession(AdminLoginNonce $loginNonce, Response $tokenResponse): void
+    {
+        if ($loginNonce->providerId === null || $loginNonce->sub === null) {
+            return;
+        }
+
+        $payload = json_decode((string) $tokenResponse->getContent(), true);
+        $accessToken = \is_array($payload) ? ($payload['access_token'] ?? null) : null;
+        $jti = \is_string($accessToken) ? JwtPayloadReader::stringClaim($accessToken, 'jti') : null;
+
+        if ($jti === null) {
+            $this->logger->warning('sw6oidc: admin token response had no readable jti, session not registered.', ['userId' => $loginNonce->userId]);
+
+            return;
+        }
+
+        $this->sessionRegistry->register(
+            $loginNonce->providerId,
+            $loginNonce->sub,
+            $loginNonce->sid,
+            Sw6OidcSession::USER_TYPE_ADMIN,
+            $loginNonce->userId,
+            $jti,
+            null,
+            $loginNonce->idToken,
+        );
     }
 
     private function isSsoProvisioned(string $userId, Context $context): bool
