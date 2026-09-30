@@ -6,7 +6,7 @@
 
 OpenID Connect (OIDC) and Passkey (WebAuthn) single sign-on for Shopware 6 Storefront customers and Administration users, with just-in-time (JIT) account provisioning and OIDC-group-to-Shopware-role/group mapping.
 
-> **Status**: v0.1.0 + unreleased changes (see [CHANGELOG.md](CHANGELOG.md)) — early-stage. Unit-tested, but not yet exercised against a live Shopware instance in an automated integration suite. Review [Known Limitations](#known-limitations) before relying on this in production.
+> **Status**: v0.1.0 + unreleased changes (see [CHANGELOG.md](CHANGELOG.md)) — early-stage. Unit-tested; an integration suite against a real Shopware kernel and Dex exists but has not run green yet. Review [Known Limitations](#known-limitations) before relying on this in production.
 
 ## Why This Plugin?
 
@@ -403,6 +403,8 @@ Subscribe to these (all `ShopwareEvent`s) to customize JIT provisioning:
 ## Documentation
 
 - **Developer Guide**: [CLAUDE.md](CLAUDE.md) — architecture, flow-by-flow internals, directory reference, and known implementation gaps
+- **IdP setup guides**: [Authelia](Docs/authelia-sw6oidc-setup.md), [ZITADEL](Docs/zitadel-sw6oidc-setup.md), [Dex](Docs/dex-sw6oidc-setup.md)
+- **Integration tests**: [tests/Integration/README.md](tests/Integration/README.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Roadmap**: [TODO.md](TODO.md) — remaining work
 

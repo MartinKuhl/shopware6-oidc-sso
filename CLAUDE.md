@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Shopware 6 plugin (`MartinKuhl\Sw6Oidc`, composer package `martinkuhl/shopware6-oidc-sso`, currently v0.1.0) that provides OpenID Connect (OIDC) and Passkey (WebAuthn/FIDO2) single sign-on for both Storefront customers and Administration users. It mirrors the architecture of the sibling `magento2-oidc-sso` module: multi-provider OIDC with JIT provisioning and group/role mapping, plus a second, independent passwordless login method (Passkey) that bridges into native authentication the same way OIDC does.
 
-The plugin is early-stage (v0.1.0, MIT license, a unit-test suite covering the OIDC core, provisioning, WebAuthn and all security components, no integration tests against a live Shopware instance yet). See "Known gaps / implementation notes" below before assuming any given feature is fully wired end to end, and see `TODO.md` for the remaining roadmap.
+The plugin is early-stage (v0.1.0, MIT license, a unit-test suite covering the OIDC core, provisioning, WebAuthn and all security components; an integration suite against a real Shopware kernel and Dex is written but has not run yet). See "Known gaps / implementation notes" below before assuming any given feature is fully wired end to end, and see `TODO.md` for the remaining roadmap.
 
 ## Development commands
 
