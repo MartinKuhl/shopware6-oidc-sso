@@ -51,7 +51,8 @@
             "@psalm",
             "@rector",
             "@test"
-        ]
+        ],
+        "test-integration": "\"$SHOPWARE_PROJECT_ROOT/vendor/bin/phpunit\" -c phpunit.integration.xml.dist"
     },
     "extra": {
         "shopware-plugin-class": "MartinKuhl\\Sw6Oidc\\Sw6Oidc",

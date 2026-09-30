@@ -1,0 +1,16 @@
+# Dex as a real OIDC provider for the integration suite (see tests/Integration/README.md).
+# Listens on http://127.0.0.1:5556/dex — plain HTTP on loopback, so the suite
+# runs with SW6OIDC_ALLOW_INSECURE_IDP_URLS=1 (set in phpunit.integration.xml.dist).
+services:
+  dex:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    ports:
+      - "5556:5556"
+    volumes:
+      - ./dex/config.yaml:/etc/dex/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5556/dex/.well-known/openid-configuration"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

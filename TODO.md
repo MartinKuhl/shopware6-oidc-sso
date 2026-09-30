@@ -44,6 +44,7 @@ recorded so nobody "fixes" them back:
 - **Phase 8c (rest):** `post_logout_url` *replaces* the default post-logout redirect URI (it is what gets registered at the IdP), so the shared `/sw6oidc/postlogout` landing is opt-in by setting it — no change for existing setups. The landing picks the target from an HMAC-signed `state` (`PostLogoutState`); Authelia's `rd` gets the state appended. Admin logout reads the registry first (current jti, else newest session) with `LogoutContextStore` as fallback.
 - **Phase 10:** two internal columns beyond the plan — `session_key_hash` (sha256; raw context tokens / jtis are credentials and never stored) and `registry_session_id` — to match logouts to logins. Force logout is exact only for customer OIDC sessions still in the registry; passkey logins and admins end all sessions of the account. Added a daily retention task (`SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS`, default 90) since the table holds IPs/user agents. Scheduled-task registration needs no extra DB row handling: core's `PluginLifecycleSubscriber` registers tagged tasks on install/update.
 - **Phase 11:** state columns are `WriteProtected` (the task writes via DBAL), which is what guarantees "no re-fire on edit mid-outage"; plus a `health_alert_last_checked_at` column. The health endpoint also reports the last scheduled probe (still no outbound calls) and returns only counts. An undeliverable alert is retried next round. `WebhookNotifier` uses the SSRF-guarded client directly because `OidcHttpClient` rejects non-JSON responses. Webhook URL and state are excluded from config export. No extra `scheduled_task` row handling is needed (see Phase 10).
+- **Phase 13:** the integration suite has its own `phpunit.integration.xml.dist` instead of a second suite in `phpunit.xml.dist` (different bootstrap: Shopware's `TestBootstrapper`), and must run with the shop's PHPUnit. The Back-Channel Logout test needs no Dex (Dex can't send logout tokens; the JWKS is seeded into `cache.app`). **Written without Docker and never run** — the `integration` CI job is `continue-on-error` until it passes once.
 - **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
   `kernel.response` subscriber that only appends IdP origins to directives an
   existing policy already declares.
@@ -58,7 +59,7 @@ Phase 8b Front-Channel Logout                         (shipped)
 Phase 8c Admin-side RP-initiated logout               (shipped)
 Phase 10 Audit/session-activity log + admin UI         (shipped)
 Phase 11 Health-check/diagnostics + alerting           (shipped)
-Phase 13 Integration test harness (Dex)                (stretch goal)
+Phase 13 Integration test harness (Dex)                (written, not yet run)
 Phase 14 Setup guides                                  (optional)
 ```
 
@@ -239,19 +240,23 @@ structurally incompatible with "one row per login").
 
 ---
 
-## Phase 13 — Integration test harness (remaining part)
+## Phase 13 — Integration test harness (written, not yet run)
 
 The unit suite is in place (OIDC core, provisioning, WebAuthn ceremonies,
-every security component). Still open:
+every security component). The harness below is written; what's left is
+running it once (CI job `integration`, or locally per
+`tests/Integration/README.md`), fixing whatever that shows, and removing the
+job's `continue-on-error`.
 
-- [ ] Integration test harness against a real IdP (Dex, docker-compose-based,
+- [x] Integration test harness against a real IdP (Dex, docker-compose-based,
       matching Magento's approach) — stretch goal, not a hard gate; requires a
       full Shopware kernel-bootstrap test skeleton that doesn't exist yet.
       Priority order: (1) Back-Channel Logout (once Phase 8 exists), (2) full
       Storefront OIDC login E2E, (3) full Admin OIDC login E2E, (4) access-control
       rules engine against real claims (once Phase 6 exists).
-- [ ] CI: add a 5th job + `phpunit.xml.dist` `integration` testsuite split if
-      the Dex harness lands.
+- [x] CI: add a 5th job + `phpunit.xml.dist` `integration` testsuite split if
+      the Dex harness lands. (Separate `phpunit.integration.xml.dist` instead.)
+- [ ] Run the suite green once and make the `integration` CI job blocking.
 
 ---
 

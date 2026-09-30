@@ -309,7 +309,7 @@ Client secrets are **encrypted at rest** (libsodium secretbox, key derived from 
 - **"Sync on SSO" is per provider, not per attribute** — all five provider-level toggles (customer profile/address/group, admin profile/role) are applied on repeat logins, but there is no per-attribute sync control.
 - **The "Enable debug logging" toggle does not control log verbosity** — the plugin's log level is set via the `SW6OIDC_LOG_LEVEL` environment variable (default `debug`), not this UI toggle. Logs are written to a plugin-specific log file/channel and can contain claim data — handle with the same care as any log containing PII.
 - **Single-node atomic cache unless Redis is configured** — without `SW6OIDC_REDIS_DSN`, one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. Multi-node/HA deployments must set `SW6OIDC_REDIS_DSN` (e.g. `redis://:password@redis:6379/2`, or `rediss://` for TLS); it is picked up at runtime.
-- **No automated integration tests yet** — the unit suite covers the OIDC core, provisioning, WebAuthn ceremonies and every security component, but nothing runs the full login flows against a live Shopware instance and IdP in CI.
+- **Integration suite not yet proven** — an integration suite against a real Shopware kernel and Dex exists (`tests/Integration/`, CI job `integration`), but it has not run green yet; the CI job is non-blocking until it has.
 
 ---
 

@@ -1,0 +1,36 @@
+# Test-only Dex configuration. Credentials here are fixtures, never real ones.
+issuer: http://127.0.0.1:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  responseTypes: ["code"]
+  # The suite drives the login form over HTTP; an approval screen would be one more form.
+  skipApprovalScreen: true
+
+enablePasswordDB: true
+
+# The redirect URIs must match exactly what the shop generates from APP_URL.
+# The suite expects APP_URL=http://localhost:8000 (see README.md).
+staticClients:
+  - id: shopware
+    name: Shopware integration tests
+    secret: shopware-integration-secret
+    redirectURIs:
+      - http://localhost:8000/sw6oidc/callback
+      - http://localhost:8000/api/sw6oidc/admin/callback
+
+# Password for both users: "password".
+staticPasswords:
+  - email: customer@example.com
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: customer
+    userID: 1b2c3d4e-0000-4000-8000-00000000c001
+  - email: admin@example.com
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: admin
+    userID: 1b2c3d4e-0000-4000-8000-00000000a001

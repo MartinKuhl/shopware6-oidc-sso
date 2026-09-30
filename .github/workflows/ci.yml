@@ -130,3 +130,61 @@ jobs:
           name: coverage-report-php${{ matrix.php-version }}
           path: var/coverage
           retention-days: 14
+
+  # Integration suite: a real Shopware 6.7 (fresh shopware/production project
+  # with this plugin as a path repository) + MySQL + Dex. Written without a
+  # Docker environment and not yet run — continue-on-error until it has
+  # passed once (see tests/Integration/README.md), then remove that line.
+  integration:
+    name: Integration tests (Shopware 6.7 + Dex)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      SHOPWARE_PROJECT_ROOT: ${{ github.workspace }}/shop
+      APP_URL: http://localhost:8000
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/shopware
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Start Dex
+        run: docker compose -f plugin/tests/Integration/docker-compose.yml up -d --wait
+
+      - name: Create Shopware project with the plugin
+        run: |
+          composer create-project shopware/production:~6.7.0 shop --no-interaction --no-progress --no-scripts
+          cd shop
+          composer config repositories.sw6oidc '{"type": "path", "url": "../plugin", "options": {"symlink": true}}'
+          composer require 'martinkuhl/shopware6-oidc-sso:*' --no-interaction --no-progress --no-scripts
+          composer require --dev 'phpunit/phpunit:^11.5' symfony/browser-kit --no-interaction --no-progress --no-scripts
+          {
+            echo "APP_ENV=test"
+            echo "APP_URL=${APP_URL}"
+            echo "DATABASE_URL=${DATABASE_URL}"
+            echo "APP_SECRET=$(openssl rand -hex 32)"
+            echo "INSTANCE_ID=$(openssl rand -hex 16)"
+          } > .env.local
+
+      - name: Integration suite
+        working-directory: plugin
+        run: composer test-integration

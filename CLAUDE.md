@@ -21,6 +21,7 @@ composer rector-fix        # rector process (applies fixes)
 composer cs-check          # phpcs (PSR12-based ruleset)
 composer cs-fix            # phpcbf
 composer ci                # cs-check -> phpstan -> psalm -> rector -> test
+SHOPWARE_PROJECT_ROOT=/path/to/shop composer test-integration   # integration suite, see tests/Integration/README.md
 ```
 
 ### Plugin lifecycle
@@ -255,7 +256,8 @@ Do not assume the following are fully wired just because the schema or config UI
 - Back-/Front-Channel Logout end *all* sessions of an admin user (see "Session/subject registry"), and only knows sessions created after the registry shipped.
 - `AtomicCacheInterface` is always `RedisAtomicCache`, which selects its backend **at runtime**: Redis GETDEL when `SW6OIDC_REDIS_DSN` (`redis://` or `rediss://`) is set and connectable, else `CachePoolAtomicCache` (sequential get-then-delete on `cache.app`, single-node only). Deliberately not a compiler pass — that would freeze the choice into the cached container. Redis errors degrade to the fallback per call, and `getAndDelete()` consults the fallback on a Redis miss.
 - `ClaimsNormalizer::extractEmail()` exists but has no caller in the current codebase. (`UserProviderBindingService::unbind()` is called by the Administration unlink action and `Subscriber/UserProviderCleanupSubscriber`, which removes a binding on `user.deleted` / `customer.deleted` since `user_id` has no FK.)
-- Tests are unit-only (`tests/Unit/`, ~290 tests): OIDC core (state/PKCE, JWT, claims), provisioning, group mapping, bindings, WebAuthn ceremonies against the real 5.x validators (`SoftwareAuthenticator` test helper), and every security/config component. No integration tests against a live Shopware instance or IdP (Dex harness still a TODO).
+- Integration suite (`tests/Integration/`, `phpunit.integration.xml.dist`): real Shopware kernel via core's `TestBootstrapper` (separate `<db>_test` database, needs `SHOPWARE_PROJECT_ROOT` and runs with *the shop's* PHPUnit/autoloader — the plugin's own `vendor/` has a second `shopware/core`), Dex from `tests/Integration/docker-compose.yml` (plain HTTP → `SW6OIDC_ALLOW_INSECURE_IDP_URLS=1`, `APP_URL=http://localhost:8000` must match the Dex client's redirect URIs). `BackChannelLogoutTest` needs no Dex (JWKS seeded into `cache.app` under `sw6oidc_jwks_<sha256(url)>`); the Dex tests (`StorefrontOidcLoginTest`, `AdminOidcLoginTest`, `AccessControlRulesTest`) drive Dex's login form with `Support/DexLoginDriver` and skip when Dex is down. **Written but never run** — the CI job `integration` is `continue-on-error` until it has passed once.
+- Unit tests (`tests/Unit/`, ~460 tests): OIDC core (state/PKCE, JWT, claims), provisioning, group mapping, bindings, WebAuthn ceremonies against the real 5.x validators (`SoftwareAuthenticator` test helper), and every security/config component. No integration tests against a live Shopware instance or IdP (Dex harness still a TODO).
 - No Docker/dev Shopware environment committed in this repo. Deploy note for a running shop: PHP-FPM opcache may keep serving stale plugin classes after an update — reset it (e.g. `cachetool opcache:reset`) in addition to `cache:clear`.
 
 ## Tooling
@@ -264,4 +266,4 @@ Do not assume the following are fully wired just because the schema or config UI
 - `psalm.xml` — `errorLevel="4"`, `findUnusedCode="false"`; explicit suppressions for `MissingOverrideAttribute` (PHP 8.2 predates `#[\Override]`), `UndefinedDocblockClass` (Shopware DAL generics stubs), `InternalMethod` (`Context::createDefaultContext()`, needed pre-auth; plus file-scoped for the encrypted-field serializer and the provider write guard, which necessarily use DAL write-stack internals), `UndefinedClass` (`\Redis`, optional ext-redis for `RedisAtomicCache`).
 - `phpcs.xml.dist` — PSR12 base, relaxed line length (soft 180 / hard 200) for long route-attribute/constructor-promotion lines.
 - `rector.php` — `withPhpSets()` (auto-detects PHP 8.2 floor from `composer.json`), `deadCode`/`codeQuality`/`typeDeclarations`/`earlyReturn` sets.
-- CI (`.github/workflows/ci.yml`) — 4 parallel jobs on push/PR to `main`: `lint` (PHPCS), `static-analysis` (PHPStan + Psalm), `rector` (dry-run, fails if changes remain), `tests` (PHPUnit matrix across PHP 8.2/8.3/8.4/8.5, coverage uploaded per version).
+- CI (`.github/workflows/ci.yml`) — 5 parallel jobs on push/PR to `main`: `lint` (PHPCS), `static-analysis` (PHPStan + Psalm), `rector` (dry-run, fails if changes remain), `tests` (PHPUnit matrix across PHP 8.2/8.3/8.4/8.5, coverage uploaded per version), `integration` (fresh `shopware/production` 6.7 + MySQL service + Dex, plugin as path repository; non-blocking for now). The static-analysis tools only scan `src/`.
