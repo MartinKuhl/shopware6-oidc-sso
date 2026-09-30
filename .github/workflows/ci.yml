@@ -177,13 +177,16 @@ jobs:
           composer config repositories.sw6oidc '{"type": "path", "url": "../plugin", "options": {"symlink": true}}'
           composer require 'martinkuhl/shopware6-oidc-sso:*' --no-interaction --no-progress --no-scripts
           composer require --dev 'phpunit/phpunit:^11.5' symfony/browser-kit --no-interaction --no-progress --no-scripts
+          # .env.test.local, not .env.local: Dotenv ignores .env.local when
+          # APP_ENV=test, which left the recipe's short APP_SECRET in place
+          # (lcobucci/jwt rejects HMAC keys under 256 bits).
           {
             echo "APP_ENV=test"
             echo "APP_URL=${APP_URL}"
             echo "DATABASE_URL=${DATABASE_URL}"
             echo "APP_SECRET=$(openssl rand -hex 32)"
             echo "INSTANCE_ID=$(openssl rand -hex 16)"
-          } > .env.local
+          } > .env.test.local
 
       - name: Integration suite
         working-directory: plugin

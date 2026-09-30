@@ -15,11 +15,16 @@ use Shopware\Core\System\SalesChannel\Context\SalesChannelContextPersister;
  * JwtVerifier, registry and context persister — without Dex (it can't send
  * logout tokens). The IdP's JWKS is seeded into cache.app under the key
  * JwtVerifier reads, so no HTTP is needed.
+ *
+ * The fetched endpoints use a loopback IP: the provider write guard blocks
+ * unresolvable hosts even with SW6OIDC_ALLOW_INSECURE_IDP_URLS=1, and nothing
+ * is ever fetched from them. The issuer is only compared, never checked.
  */
 final class BackChannelLogoutTest extends Sw6OidcIntegrationTestCase
 {
     private const ISSUER = 'https://idp.integration.test';
-    private const JWKS = 'https://idp.integration.test/jwks';
+    private const ENDPOINT_BASE = 'https://127.0.0.1';
+    private const JWKS = self::ENDPOINT_BASE . '/jwks';
 
     private JwtTestSigner $signer;
 
@@ -32,8 +37,8 @@ final class BackChannelLogoutTest extends Sw6OidcIntegrationTestCase
             'appName' => 'bcl-' . Uuid::randomHex(),
             'clientId' => 'shop-client',
             'clientSecret' => 'secret',
-            'authorizeEndpoint' => self::ISSUER . '/authorize',
-            'accessTokenEndpoint' => self::ISSUER . '/token',
+            'authorizeEndpoint' => self::ENDPOINT_BASE . '/authorize',
+            'accessTokenEndpoint' => self::ENDPOINT_BASE . '/token',
             'jwksEndpoint' => self::JWKS,
             'issuer' => self::ISSUER,
             'scope' => 'openid',
