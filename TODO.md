@@ -39,6 +39,7 @@ recorded so nobody "fixes" them back:
   action (see Phase 8c below).
 - **Phase 6:** matching is list-aware (`groups` matches `groups.0`, `groups.1`, …; Zitadel role-object names count as entries), case-insensitive, and treats `true`/`1`/`false`/`0` as booleans; unknown operators fail closed. The admin callback passes the denial message through a one-time error ticket (`AdminLoginErrorTicketStore`) instead of the URL. Rules are part of config export/import (not in the original plan).
 - **Phase 7:** the registry also indexes by local account (`resolveByUser()`, needed for admin logout once `jti`s rotate). Admin session destruction ends **all** of that admin's sessions (refresh tokens revoked + `last_updated_password_at` bumped): Shopware access tokens are stateless and `revokeAccessToken()` is a no-op, so a single admin session can't be targeted. Customer destruction is exact (`SalesChannelContextPersister::delete()`).
+- **Phase 8:** the rate limiter uses a *penalty model* — only failed requests consume the 10/60s budget, so a busy IdP or a NAT'd office is never throttled; applied to the back-channel endpoint and both callbacks. `cache.rate_limiter` exists on 6.7 (`on-invalid="null"` falls back to `cache.app`). Logout-token checks live in a dedicated `JwtVerifier::verifyLogoutToken()` (shares signature + `exp`/`iss`/`aud` checks with `verify()`, rejects `nonce`, requires `events`/`iat`/`sub`-or-`sid`) instead of `verify(expectedNonce: null)`, which would have logged a nonce warning and accepted id_tokens. `findByIssuer()` returns a list (providers sharing an IdP are told apart by `aud`). Added `jti` replay protection. The session fan-out lives in `Sw6OidcIdpLogoutHandler`, shared with Phase 8b.
 - **Phase 12:** Shopware 6.7 has no CSP collector API — implemented as a
   `kernel.response` subscriber that only appends IdP origins to directives an
   existing policy already declares.
@@ -48,7 +49,7 @@ recorded so nobody "fixes" them back:
 ```
 Phase 6  Claims-based access-control rules engine     (shipped)
 Phase 7  Session/subject registry (foundational)      (shipped)
-Phase 8  Rate limiting + Back-Channel Logout          (needs 7)
+Phase 8  Rate limiting + Back-Channel Logout          (shipped)
 Phase 8b Front-Channel Logout                         (needs 7, 8)
 Phase 8c Admin-side RP-initiated logout               (needs 7, 8)
 Phase 10 Audit/session-activity log + admin UI         (needs 7, 8, 8b, 8c)
@@ -112,35 +113,35 @@ Ships no user-visible behavior by itself — pure plumbing that Phases
 
 ---
 
-## Phase 8 — Rate limiting + Back-Channel Logout
+## Phase 8 — Rate limiting + Back-Channel Logout (shipped)
 
 **Rate limiting:**
-- [ ] New `src/Service/Security/Sw6OidcRateLimiter.php` — wraps Symfony's
+- [x] New `src/Service/Security/Sw6OidcRateLimiter.php` — wraps Symfony's
       `RateLimiterFactory`, constructed directly in `services.xml` (a plugin
       cannot register into Shopware core's own `shopware.api.rate_limiter`
       registry). Fixed-window, 10 req/60s, storage via
       `Symfony\Component\RateLimiter\Storage\CacheStorage`. *(verify whether
       `cache.rate_limiter` pool id exists in 6.7; fall back to `cache.app` if
       not)*
-- [ ] Apply to the new logout endpoints and, cheaply, the existing callback
+- [x] Apply to the new logout endpoints and, cheaply, the existing callback
       controllers too.
 
 **Back-Channel Logout:**
-- [ ] New `src/Controller/Oidc/BackChannelLogoutController.php`
+- [x] New `src/Controller/Oidc/BackChannelLogoutController.php`
       (`POST /sw6oidc/backchannel-logout`, unauthenticated).
-- [ ] `JwtVerifier::decodeUnverified()` — new method, decode without verify
+- [x] `JwtVerifier::decodeUnverified()` — new method, decode without verify
       (to read `iss` before a provider is known).
-- [ ] `ProviderResolver::findByIssuer()` — new method.
-- [ ] Reuse `JwtVerifier::verify()` (passing `expectedNonce = null`) for
+- [x] `ProviderResolver::findByIssuer()` — new method.
+- [x] Reuse `JwtVerifier::verify()` (passing `expectedNonce = null`) for
       signature checking; validate `events` claim + `aud` + presence of
       `sub`/`sid`; rate-limit by IP; resolve + revoke via the Phase 7 registry;
       destroy via the destruction service. Return bare 200 on success
       (including "already logged out"), 400 on validation failure.
-- [ ] Tests: full negative/positive matrix for the controller, plus
+- [x] Tests: full negative/positive matrix for the controller, plus
       `decodeUnverified`/`findByIssuer` unit tests. Highest-value candidate
       for an early Dex-backed integration test (unauthenticated,
       JWT-signature-gated).
-- [ ] Docs: `CLAUDE.md` — new "Back-Channel Logout" subsection; remove the
+- [x] Docs: `CLAUDE.md` — new "Back-Channel Logout" subsection; remove the
       corresponding gap bullet.
 
 ---

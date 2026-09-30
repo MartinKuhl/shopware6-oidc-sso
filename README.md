@@ -64,11 +64,12 @@ bin/console database:migrate Sw6Oidc --all
 | `https://your-shop.com/sw6oidc/callback` | Redirect URI (Storefront) | **Yes**, for customer SSO | Authorization code callback for Storefront login |
 | `https://your-shop.com/api/sw6oidc/admin/callback` | Redirect URI (Admin) | **Yes**, for admin SSO | Authorization code callback for Administration login |
 | `https://your-shop.com/api/sw6oidc/provider/test-callback` | Redirect URI | Optional | Only needed if you use the **Run live login test** button on a provider's detail page in the Administration — the IdP redirects back here with the same strict exact-match check as the other two URIs |
+| `https://your-shop.com/sw6oidc/backchannel-logout` | Back-Channel Logout URI | Optional | Lets the IdP end shop sessions when the user logs out at the IdP (see [Back-Channel Logout](#back-channel-logout)). Enable "session required" / `backchannel_logout_session_required` if the IdP offers it |
 | Your shop's account login page | Post Logout Redirect URI | Optional | Only the Storefront/customer flow redirects back from the IdP on logout today (see [Known Limitations](#known-limitations)) |
 
 Register only the redirect URI(s) for the flow(s) you intend to use — you don't need both if, say, only customer SSO is enabled for a given provider.
 
-> There is currently no Back-Channel or Front-Channel Logout URL to register — the plugin does not implement either (see [Known Limitations](#known-limitations)).
+> Front-Channel Logout is not implemented yet (see [Known Limitations](#known-limitations)).
 
 ---
 
@@ -247,6 +248,20 @@ https://auth.your-domain.example/logout
 ```
 (the bare portal path, not anything under `/api/oidc/...`). The plugin auto-detects this shape — any End-Session Endpoint whose path ends in `/logout` and contains neither `/oauth2/` nor `/oidc/` is treated as Authelia-style forward-auth logout, and the plugin sends `?rd=<url>` instead of the standard `id_token_hint`/`state`/`post_logout_redirect_uri` params. No Post Logout Redirect URI needs registering with Authelia for this.
 
+### Back-Channel Logout
+
+With [OIDC Back-Channel Logout](https://openid.net/specs/openid-connect-backchannel-1_0.html), the IdP notifies the shop server-to-server when a user's IdP session ends (logout at the IdP or in another application, session revoked by an administrator). Register `https://your-shop.com/sw6oidc/backchannel-logout` as the client's Back-Channel Logout URI.
+
+- The logout token is verified like an id_token (signature against the provider's JWKS, `iss`, `aud`, `exp`) plus the logout-specific rules: a back-channel logout `events` claim, `sub` and/or `sid`, and **no** `nonce`. Replayed tokens (same `jti`) are ignored.
+- With a `sid`, only the shop sessions created from that IdP session end; with only a `sub`, all of that user's shop sessions from this provider end. This needs the IdP to put `sid` into the id_token (usually enabled together with "backchannel logout session required").
+- **Customers** are logged out of exactly that session. **Administration users** are logged out of *all* their Administration sessions: Shopware's admin access tokens can't be revoked one by one, so the plugin revokes the user's refresh tokens and invalidates every access token issued so far (the mechanism Shopware uses after a password change — the password itself is not changed).
+- Only logins made after this feature was installed are known to the plugin; older sessions are not affected.
+- Invalid requests are answered with HTTP 400; an address sending more than 10 invalid requests per minute gets HTTP 429 for the rest of the minute. Valid logout notifications are never rate-limited.
+
+### Rate limiting
+
+The unauthenticated endpoints (OIDC callbacks, Back-Channel Logout) count **failed** requests per client IP address — invalid state, forged tokens, garbage. After 10 failures within 60 seconds, that address is refused for the rest of the window. Successful logins and valid logout notifications never count, so an office behind one NAT address or a busy IdP is not throttled. The counters live in Shopware's `cache.rate_limiter` pool (falls back to the app cache).
+
 ### Passkey (WebAuthn) Security
 
 - Public-key cryptography only — the server stores a public key and signature counter, never a shared secret; credentials are phishing-resistant (bound to the origin).
@@ -265,7 +280,8 @@ Client secrets are **encrypted at rest** (libsodium secretbox, key derived from 
 
 ## Known Limitations
 
-- **No OIDC Back-Channel Logout** — an IdP cannot push a server-side logout notification to this plugin.
+- **No OIDC Front-Channel Logout** — only Back-Channel Logout is supported for IdP-initiated logout.
+- **Back-Channel Logout ends all Administration sessions of the user** — not just the one created from the IdP session (Shopware admin access tokens cannot be revoked individually).
 - **"Sync on SSO" is per provider, not per attribute** — all five provider-level toggles (customer profile/address/group, admin profile/role) are applied on repeat logins, but there is no per-attribute sync control.
 - **The "Enable debug logging" toggle does not control log verbosity** — the plugin's log level is set via the `SW6OIDC_LOG_LEVEL` environment variable (default `debug`), not this UI toggle. Logs are written to a plugin-specific log file/channel and can contain claim data — handle with the same care as any log containing PII.
 - **Single-node atomic cache unless Redis is configured** — without `SW6OIDC_REDIS_DSN`, one-time tokens/nonces are consumed via a sequential get-then-delete against Shopware's app cache, which is safe for single-node deployments but not truly atomic under concurrent requests on the same key. Multi-node/HA deployments must set `SW6OIDC_REDIS_DSN` (e.g. `redis://:password@redis:6379/2`, or `rediss://` for TLS); it is picked up at runtime.

@@ -24,6 +24,7 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedExc
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Psr\Log\LoggerInterface;
@@ -67,6 +68,7 @@ class OidcAdminAuthController extends AbstractController
         private readonly RpInitiatedLogoutService $rpInitiatedLogoutService,
         private readonly AdminLoginErrorTicketStore $loginErrorTicketStore,
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
+        private readonly Sw6OidcRateLimiter $rateLimiter,
     ) {
     }
 
@@ -161,6 +163,12 @@ class OidcAdminAuthController extends AbstractController
     {
         $context = Context::createDefaultContext();
 
+        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp())) {
+            $this->logger->warning('sw6oidc: admin OIDC callback rate-limited.');
+
+            return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_error' => 'oidc_failed']));
+        }
+
         if ($request->query->get('error') !== null) {
             $this->logger->warning('sw6oidc: IdP returned an OAuth error on the admin callback.', [
                 'error' => $request->query->get('error'),
@@ -231,6 +239,7 @@ class OidcAdminAuthController extends AbstractController
                     : 'admin_auto_create_disabled',
             ]));
         } catch (\Throwable $exception) {
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp());
             $this->logger->warning('sw6oidc: admin OIDC callback failed.', [
                 'exceptionClass' => $exception::class,
                 'exception' => $exception->getMessage(),

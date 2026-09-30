@@ -23,6 +23,9 @@ class JwtVerifier
 {
     private const JWKS_FAILURE_TTL_SECONDS = 60;
 
+    /** OIDC Back-Channel Logout 1.0 §2.4: the `events` member identifying a logout token. */
+    public const BACKCHANNEL_LOGOUT_EVENT = 'http://schemas.openid.net/event/backchannel-logout';
+
     public function __construct(
         private readonly HttpClientInterface $httpClient,
         private readonly CacheItemPoolInterface $cache,
@@ -44,6 +47,78 @@ class JwtVerifier
         int $jwksCacheTtlSeconds,
         int $httpTimeoutSeconds,
     ): array {
+        $payload = $this->verifySignedPayload($jwt, $jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds);
+
+        $this->assertClaims($payload, $issuer, $audience, $expectedNonce);
+
+        return $payload;
+    }
+
+    /**
+     * Verifies an OIDC Back-Channel Logout token (§2.6): same signature and
+     * exp/nbf/iss/aud checks as an id_token, plus: `iat` present, an
+     * `events` object containing the back-channel-logout member, `sub`
+     * and/or `sid` present, and **no** `nonce` (which is what keeps an
+     * id_token from being replayed as a logout token).
+     *
+     * @return array<string, mixed>
+     *
+     * @throws InvalidJwtException
+     */
+    public function verifyLogoutToken(
+        string $jwt,
+        string $jwksEndpoint,
+        string $issuer,
+        string $audience,
+        int $jwksCacheTtlSeconds,
+        int $httpTimeoutSeconds,
+    ): array {
+        $payload = $this->verifySignedPayload($jwt, $jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds);
+
+        $this->assertStandardClaims($payload, $issuer, $audience);
+
+        if (!isset($payload['iat']) || !is_numeric($payload['iat'])) {
+            throw new InvalidJwtException('Logout token has no "iat" claim.');
+        }
+
+        $events = $payload['events'] ?? null;
+
+        if (!\is_array($events) || !\array_key_exists(self::BACKCHANNEL_LOGOUT_EVENT, $events) || !\is_array($events[self::BACKCHANNEL_LOGOUT_EVENT])) {
+            throw new InvalidJwtException('Logout token has no back-channel logout "events" member.');
+        }
+
+        if (\array_key_exists('nonce', $payload)) {
+            throw new InvalidJwtException('Logout token must not contain a "nonce" claim.');
+        }
+
+        $hasSub = \is_string($payload['sub'] ?? null) && $payload['sub'] !== '';
+        $hasSid = \is_string($payload['sid'] ?? null) && $payload['sid'] !== '';
+
+        if (!$hasSub && !$hasSid) {
+            throw new InvalidJwtException('Logout token contains neither "sub" nor "sid".');
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Reads a JWT payload **without** verifying it — only to learn which
+     * provider (`iss`) must verify it. Never trust the result on its own.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function decodeUnverified(string $jwt): ?array
+    {
+        return JwtPayloadReader::decode($jwt);
+    }
+
+    /**
+     * @return array<string, mixed>
+     *
+     * @throws InvalidJwtException
+     */
+    private function verifySignedPayload(string $jwt, string $jwksEndpoint, int $jwksCacheTtlSeconds, int $httpTimeoutSeconds): array
+    {
         $jws = $this->deserialize($jwt);
         $this->assertSupportedAlgorithm($jws);
 
@@ -68,8 +143,6 @@ class JwtVerifier
         if (!\is_array($payload)) {
             throw new InvalidJwtException('JWT payload is not a valid JSON object.');
         }
-
-        $this->assertClaims($payload, $issuer, $audience, $expectedNonce);
 
         return $payload;
     }
@@ -97,6 +170,24 @@ class JwtVerifier
      */
     private function assertClaims(array $payload, string $issuer, string $audience, ?string $expectedNonce): void
     {
+        $this->assertStandardClaims($payload, $issuer, $audience);
+
+        if ($expectedNonce === null) {
+            $this->logger->warning('sw6oidc: JWT nonce validation skipped (no expected nonce supplied).');
+
+            return;
+        }
+
+        if (($payload['nonce'] ?? null) !== $expectedNonce) {
+            throw new InvalidJwtException('JWT nonce does not match the nonce sent in the authorization request.');
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function assertStandardClaims(array $payload, string $issuer, string $audience): void
+    {
         $now = time();
 
         if (!isset($payload['exp']) || $now >= (int) $payload['exp']) {
@@ -116,16 +207,6 @@ class JwtVerifier
 
         if (!$audienceMatches) {
             throw new InvalidJwtException("JWT audience does not match this provider's client id.");
-        }
-
-        if ($expectedNonce === null) {
-            $this->logger->warning('sw6oidc: JWT nonce validation skipped (no expected nonce supplied).');
-
-            return;
-        }
-
-        if (($payload['nonce'] ?? null) !== $expectedNonce) {
-            throw new InvalidJwtException('JWT nonce does not match the nonce sent in the authorization request.');
         }
     }
 

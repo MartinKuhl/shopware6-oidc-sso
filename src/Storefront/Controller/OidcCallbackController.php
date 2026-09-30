@@ -6,6 +6,7 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
@@ -41,6 +42,7 @@ class OidcCallbackController extends StorefrontController
         private readonly LogoutContextStore $logoutContextStore,
         private readonly LoggerInterface $logger,
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
+        private readonly Sw6OidcRateLimiter $rateLimiter,
     ) {
     }
 
@@ -52,6 +54,13 @@ class OidcCallbackController extends StorefrontController
     )]
     public function callback(Request $request, SalesChannelContext $context): Response
     {
+        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp())) {
+            $this->logger->warning('sw6oidc: customer OIDC callback rate-limited.');
+            $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.failed'));
+
+            return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
+        }
+
         if ($request->query->get('error') !== null) {
             $this->logger->warning('sw6oidc: IdP returned an OAuth error on the customer callback.', [
                 'error' => $request->query->get('error'),
@@ -119,6 +128,7 @@ class OidcCallbackController extends StorefrontController
 
             return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
         } catch (\Throwable $exception) {
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp());
             $this->logger->warning('sw6oidc: customer OIDC callback failed.', [
                 'exceptionClass' => $exception::class,
                 'exception' => $exception->getMessage(),

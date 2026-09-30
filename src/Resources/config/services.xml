@@ -262,6 +262,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -282,6 +283,36 @@
             <argument type="service" id="Shopware\Core\Framework\Api\OAuth\RefreshTokenRepository" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <!--
+            Penalty-model rate limiting (only failed requests count) for the
+            unauthenticated endpoints. cache.rate_limiter is Shopware's own pool;
+            cache.app is the fallback if an installation doesn't define it.
+        -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter">
+            <argument type="service" id="cache.rate_limiter" on-invalid="null" />
+            <argument type="service" id="cache.app" />
+        </service>
+
+        <!-- OIDC Back-Channel Logout receiver -->
+        <service id="MartinKuhl\Sw6Oidc\Controller\Oidc\BackChannelLogoutController" public="true">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
+            <argument type="service" id="cache.app" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <call method="setContainer">
+                <argument type="service" id="service_container" />
+            </call>
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore">
@@ -402,6 +433,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
