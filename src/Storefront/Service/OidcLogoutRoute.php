@@ -3,7 +3,6 @@
 namespace MartinKuhl\Sw6Oidc\Storefront\Service;
 
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext;
-use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
 use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
@@ -26,8 +25,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  * This has to happen here rather than in a CustomerLogoutEvent listener: core
  * LogoutRoute replaces the sales-channel context with a fresh random token
  * *before* dispatching that event, so the event no longer carries the token
- * the LogoutContextStore entry was saved under at login. We capture it before
- * delegating and only consume the entry once the logout actually succeeded.
+ * the session registry entry was registered under at login. We capture it
+ * before delegating and only consume the entry once the logout succeeded.
  *
  * The resolved URL is only handed to PendingLogoutRedirect; turning it into
  * a redirect is CustomerLogoutSubscriber's job (Storefront route only, so
@@ -37,7 +36,6 @@ class OidcLogoutRoute extends AbstractLogoutRoute
 {
     public function __construct(
         private readonly AbstractLogoutRoute $decorated,
-        private readonly LogoutContextStore $logoutContextStore,
         private readonly ProviderResolver $providerResolver,
         private readonly RpInitiatedLogoutService $rpInitiatedLogoutService,
         private readonly PendingLogoutRedirect $pendingLogoutRedirect,
@@ -46,19 +44,6 @@ class OidcLogoutRoute extends AbstractLogoutRoute
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
     ) {
-    }
-
-    /**
-     * The session is over locally, so a later Back-/Front-Channel Logout has
-     * nothing left to end for it.
-     */
-    private function forgetRegisteredSession(string $customerId, string $contextToken): void
-    {
-        foreach ($this->sessionRegistry->resolveByUser(Sw6OidcSession::USER_TYPE_CUSTOMER, $customerId) as $session) {
-            if ($session->sessionKey === $contextToken) {
-                $this->sessionRegistry->remove($session);
-            }
-        }
     }
 
     public function getDecorated(): AbstractLogoutRoute
@@ -73,23 +58,33 @@ class OidcLogoutRoute extends AbstractLogoutRoute
 
         $response = $this->decorated->logout($context, $data);
 
-        if ($customerId !== null) {
-            $this->forgetRegisteredSession($customerId, $preLogoutToken);
-            $this->activityRecorder->recordLogout(
-                Sw6OidcSession::USER_TYPE_CUSTOMER,
-                $customerId,
-                Sw6OidcSessionActivityDefinition::LOGOUT_REASON_LOGOUT,
-                $preLogoutToken,
-            );
+        if ($customerId === null) {
+            return $response;
         }
 
-        $logoutContext = $this->logoutContextStore->consume($preLogoutToken);
+        // The session is over locally: a later Back-/Front-Channel Logout has
+        // nothing left to end for it.
+        $session = $this->sessionRegistry->findBySessionKey(Sw6OidcSession::USER_TYPE_CUSTOMER, $customerId, $preLogoutToken);
 
-        if (!$logoutContext instanceof LogoutContext) {
-            $this->logger->debug('sw6oidc: no OIDC logout context for this customer session, skipping RP-initiated logout.');
+        if ($session instanceof Sw6OidcSession) {
+            $this->sessionRegistry->remove($session);
+        }
+
+        $this->activityRecorder->recordLogout(
+            Sw6OidcSession::USER_TYPE_CUSTOMER,
+            $customerId,
+            Sw6OidcSessionActivityDefinition::LOGOUT_REASON_LOGOUT,
+            $preLogoutToken,
+            $session?->id,
+        );
+
+        if (!$session instanceof Sw6OidcSession) {
+            $this->logger->debug('sw6oidc: no OIDC session registered for this customer session, skipping RP-initiated logout.');
 
             return $response;
         }
+
+        $logoutContext = new LogoutContext($session->providerId, $session->idToken, $session->idpAccessToken, $session->idpRefreshToken);
 
         try {
             $provider = $this->providerResolver->getActiveById($logoutContext->providerId, 'customer', $context->getContext());
@@ -102,7 +97,7 @@ class OidcLogoutRoute extends AbstractLogoutRoute
             return $response;
         }
 
-        $this->rpInitiatedLogoutService->revokeToken($provider, null);
+        $this->rpInitiatedLogoutService->revokeTokens($provider, $logoutContext);
 
         $logoutUrl = $this->rpInitiatedLogoutService->buildLogoutUrl(
             $provider,

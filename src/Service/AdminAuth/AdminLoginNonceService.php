@@ -7,13 +7,10 @@ use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
 /**
  * The one-time nonce hand-off from the OIDC callback (a full browser
  * navigation, server-rendered) into the Administration SPA (which resumes
- * control at `/admin#/login?sw6oidc_nonce=...` and exchanges it via XHR) — the
- * direct analogue of the Magento module's oidc_admin_nonce cookie ->
- * Oidccallback hand-off, adapted to a query param since the SPA reads the URL
- * itself rather than a controller reading a cookie.
+ * control at `/admin#/login?sw6oidc_nonce=...` and exchanges it via XHR).
  *
- * Besides the user id, the nonce carries the login's provider/sub/sid/id_token
- * forward to the token exchange, where the session registry entry is written.
+ * Carries only references (user, provider, pending registry entry) — the
+ * id_token itself is stored once, encrypted, in the session registry.
  */
 class AdminLoginNonceService
 {
@@ -24,16 +21,14 @@ class AdminLoginNonceService
     {
     }
 
-    public function createNonce(string $userId, ?string $providerId = null, ?string $sub = null, ?string $sid = null, ?string $idToken = null): string
+    public function createNonce(string $userId, ?string $providerId = null, ?string $registrySessionId = null): string
     {
         $nonce = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 
         $this->cache->save(self::CACHE_PREFIX . $nonce, json_encode([
             'userId' => $userId,
             'providerId' => $providerId,
-            'sub' => $sub,
-            'sid' => $sid,
-            'idToken' => $idToken,
+            'registrySessionId' => $registrySessionId,
         ], JSON_THROW_ON_ERROR), self::TTL_SECONDS);
 
         return $nonce;
@@ -51,14 +46,13 @@ class AdminLoginNonceService
             return null;
         }
 
-        $data = json_decode($raw, true);
-
-        // Nonces minted before this format change stored the bare user id.
-        if (!\is_array($data)) {
-            return new AdminLoginNonce($raw);
+        try {
+            $data = json_decode($raw, true, 4, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
         }
 
-        if (!\is_string($data['userId'] ?? null) || $data['userId'] === '') {
+        if (!\is_array($data) || !\is_string($data['userId'] ?? null) || $data['userId'] === '') {
             return null;
         }
 
@@ -67,9 +61,7 @@ class AdminLoginNonceService
         return new AdminLoginNonce(
             $data['userId'],
             $string($data['providerId'] ?? null),
-            $string($data['sub'] ?? null),
-            $string($data['sid'] ?? null),
-            $string($data['idToken'] ?? null),
+            $string($data['registrySessionId'] ?? null),
         );
     }
 }

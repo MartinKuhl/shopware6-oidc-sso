@@ -3,7 +3,6 @@
 namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
-use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackResult;
@@ -49,7 +48,6 @@ class OidcCallbackController extends StorefrontController
         private readonly CustomerProvisioningService $customerProvisioningService,
         private readonly OidcCustomerLoginRoute $loginRoute,
         private readonly SalesChannelContextService $salesChannelContextService,
-        private readonly LogoutContextStore $logoutContextStore,
         private readonly LoggerInterface $logger,
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
         private readonly Sw6OidcRateLimiter $rateLimiter,
@@ -121,27 +119,18 @@ class OidcCallbackController extends StorefrontController
             // login would — no manual cookie handling needed here.
             $request->attributes->set(PlatformRequest::ATTRIBUTE_SALES_CHANNEL_CONTEXT_OBJECT, $newContext);
 
-            $this->logoutContextStore->remember(
-                $tokenResponse->getToken(),
+            $registrySession = $this->sessionRegistry->register(
                 $result->provider->getId(),
+                $result->identity()->subject,
+                $result->sessionId(),
+                Sw6OidcSession::USER_TYPE_CUSTOMER,
+                $customer->getId(),
+                $tokenResponse->getToken(),
+                $context->getSalesChannelId(),
                 $result->idToken(),
+                $result->idpAccessToken(),
+                $result->idpRefreshToken(),
             );
-
-            $subject = $result->subject();
-            $registrySession = null;
-
-            if ($subject !== null) {
-                $registrySession = $this->sessionRegistry->register(
-                    $result->provider->getId(),
-                    $subject,
-                    $result->sessionId(),
-                    Sw6OidcSession::USER_TYPE_CUSTOMER,
-                    $customer->getId(),
-                    $tokenResponse->getToken(),
-                    $context->getSalesChannelId(),
-                    $result->idToken(),
-                );
-            }
 
             $this->activityRecorder->recordLogin(
                 Sw6OidcSession::USER_TYPE_CUSTOMER,

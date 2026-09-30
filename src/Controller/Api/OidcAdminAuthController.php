@@ -63,8 +63,11 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 #[Route(defaults: ['_routeScope' => ['api'], 'auth_required' => false])]
 class OidcAdminAuthController extends AbstractController
 {
-    /** Registry entry consumed by the current logout() call (for the activity log). */
-    private ?string $endedRegistrySessionId = null;
+    /** Token-response field / logout parameter carrying the admin's login-session handle. */
+    public const LOGIN_SESSION_FIELD = 'sw6oidc_login_session';
+
+    /** How long an admin OIDC login may take from IdP callback to nonce exchange. */
+    private const PENDING_SESSION_TTL_SECONDS = 600;
 
     public function __construct(
         private readonly ProviderResolver $providerResolver,
@@ -217,24 +220,26 @@ class OidcAdminAuthController extends AbstractController
 
             $adminUser = $this->adminProvisioningService->findOrCreateAdmin($result->provider, $result->profile, $result->identity(), $context);
 
-            $this->logoutContextStore->rememberForAdmin(
-                $adminUser->getId(),
-                $result->provider->getId(),
-                \is_string($result->tokens['id_token'] ?? null) ? $result->tokens['id_token'] : null,
-            );
+            $this->logoutContextStore->rememberForAdmin($adminUser->getId(), $result->provider->getId());
 
-            $this->logger->debug('sw6oidc: admin user resolved, minting login nonce.', [
-                'providerId' => $result->provider->getId(),
-                'userId' => $adminUser->getId(),
-            ]);
-
-            $nonce = $this->loginNonceService->createNonce(
-                $adminUser->getId(),
+            // Registered now (the id_token and IdP tokens are only known here),
+            // completed with the access token's jti once the SPA redeems the
+            // nonce; an unredeemed entry expires with the nonce window.
+            $pendingSession = $this->sessionRegistry->register(
                 $result->provider->getId(),
-                $result->subject(),
+                $result->identity()->subject,
                 $result->sessionId(),
+                Sw6OidcSession::USER_TYPE_ADMIN,
+                $adminUser->getId(),
+                'pending:' . bin2hex(random_bytes(16)),
+                null,
                 $result->idToken(),
+                $result->idpAccessToken(),
+                $result->idpRefreshToken(),
+                self::PENDING_SESSION_TTL_SECONDS,
             );
+
+            $nonce = $this->loginNonceService->createNonce($adminUser->getId(), $result->provider->getId(), $pendingSession->id);
             $this->logger->debug('sw6oidc: admin OIDC callback succeeded, redirecting back into the Administration SPA.', [
                 'userId' => $adminUser->getId(),
             ]);
@@ -392,7 +397,18 @@ class OidcAdminAuthController extends AbstractController
 
         $response = (new HttpFoundationFactory())->createResponse($tokenResponse);
         $jti = $this->accessTokenJti($response);
-        $registrySession = $jti !== null ? $this->registerAdminSession($loginNonce, $jti) : null;
+        $registrySession = null;
+
+        if ($jti !== null && $loginNonce->registrySessionId !== null) {
+            $this->sessionRegistry->activate($loginNonce->registrySessionId, $jti);
+            $registrySession = $this->sessionRegistry->get($loginNonce->registrySessionId);
+
+            // The Administration's handle on exactly this login session: sent
+            // back at logout, it survives token refreshes (unlike the jti).
+            if ($registrySession instanceof Sw6OidcSession) {
+                $response = $this->withLoginSessionId($response, $registrySession->id);
+            }
+        }
 
         if ($jti !== null) {
             $this->activityRecorder->recordLogin(
@@ -499,17 +515,18 @@ class OidcAdminAuthController extends AbstractController
         $source = $context->getSource();
         $userId = $source instanceof AdminApiSource ? $source->getUserId() : null;
 
-        $logoutContext = $userId !== null ? $this->consumeAdminLogoutContext($userId, $request) : null;
+        $logoutContext = null;
 
         if ($userId !== null) {
+            [$logoutContext, $endedRegistrySessionId] = $this->consumeAdminLogoutContext($userId, $request);
+
             $currentJti = $request->attributes->get(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID);
             $this->activityRecorder->recordLogout(
                 Sw6OidcSession::USER_TYPE_ADMIN,
                 $userId,
                 Sw6OidcSessionActivityDefinition::LOGOUT_REASON_LOGOUT,
                 \is_string($currentJti) ? $currentJti : null,
-                $this->endedRegistrySessionId,
-                true,
+                $endedRegistrySessionId,
             );
         }
 
@@ -532,7 +549,7 @@ class OidcAdminAuthController extends AbstractController
             return new JsonResponse(['logoutUrl' => null]);
         }
 
-        $this->rpInitiatedLogoutService->revokeToken($provider, null);
+        $this->rpInitiatedLogoutService->revokeTokens($provider, $logoutContext);
 
         $logoutUrl = $this->rpInitiatedLogoutService->buildLogoutUrl(
             $provider,
@@ -551,59 +568,56 @@ class OidcAdminAuthController extends AbstractController
     }
 
     /**
-     * Writes the session-registry entry for an OIDC admin login, keyed by the
-     * jti of the access token just minted in this request. Never fails the
-     * login: without provider/sub (passkey-less legacy nonce, IdP without
-     * sub) there is simply nothing to register.
+     * Finds exactly the login session being logged out: by the login-session
+     * handle the Administration received with its token response (survives
+     * refreshes), else by the current access token's jti (first minutes of a
+     * login). Only an exact match is removed from the registry — guessing
+     * "the newest session" would end another device's registry entry and
+     * send that device's id_token as the hint (N-M4). Without a match, the
+     * provider of the admin's last login still yields an IdP logout URL.
+     *
+     * @return array{0: LogoutContext|null, 1: string|null} the context and the ended registry entry id
      */
-    private function registerAdminSession(AdminLoginNonce $loginNonce, string $jti): ?Sw6OidcSession
+    private function consumeAdminLogoutContext(string $userId, Request $request): array
     {
-        if ($loginNonce->providerId === null || $loginNonce->sub === null) {
-            return null;
+        $loginSessionId = $request->request->get(self::LOGIN_SESSION_FIELD);
+        $currentJti = $request->attributes->get(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID);
+
+        $session = \is_string($loginSessionId) && $loginSessionId !== ''
+            ? $this->sessionRegistry->findForUser(Sw6OidcSession::USER_TYPE_ADMIN, $userId, $loginSessionId)
+            : null;
+
+        if (!$session instanceof Sw6OidcSession && \is_string($currentJti) && $currentJti !== '') {
+            $session = $this->sessionRegistry->findBySessionKey(Sw6OidcSession::USER_TYPE_ADMIN, $userId, $currentJti);
         }
 
-        return $this->sessionRegistry->register(
-            $loginNonce->providerId,
-            $loginNonce->sub,
-            $loginNonce->sid,
-            Sw6OidcSession::USER_TYPE_ADMIN,
-            $loginNonce->userId,
-            $jti,
-            null,
-            $loginNonce->idToken,
-        );
+        if (!$session instanceof Sw6OidcSession) {
+            return [$this->logoutContextStore->consumeForAdmin($userId), null];
+        }
+
+        $this->sessionRegistry->remove($session);
+
+        return [
+            new LogoutContext($session->providerId, $session->idToken, $session->idpAccessToken, $session->idpRefreshToken),
+            $session->id,
+        ];
     }
 
     /**
-     * The session registry is the primary source: the entry whose jti is the
-     * current access token (still true in the first ~10 minutes of a login),
-     * else the admin's newest OIDC session. LogoutContextStore is kept as the
-     * fallback for logins registered before the registry existed, and is
-     * consumed either way so both stay in sync.
+     * Adds the login-session handle to the OAuth token response JSON.
      */
-    private function consumeAdminLogoutContext(string $userId, Request $request): ?LogoutContext
+    private function withLoginSessionId(Response $response, string $loginSessionId): Response
     {
-        $fallback = $this->logoutContextStore->consumeForAdmin($userId);
-        $sessions = $this->sessionRegistry->resolveByUser(Sw6OidcSession::USER_TYPE_ADMIN, $userId);
+        $payload = json_decode((string) $response->getContent(), true);
 
-        if ($sessions === []) {
-            return $fallback;
+        if (!\is_array($payload)) {
+            return $response;
         }
 
-        $currentJti = $request->attributes->get(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID);
-        $current = null;
+        $payload[self::LOGIN_SESSION_FIELD] = $loginSessionId;
+        $response->setContent(json_encode($payload, JSON_THROW_ON_ERROR));
 
-        foreach ($sessions as $session) {
-            if ($session->sessionKey === $currentJti) {
-                $current = $session;
-            }
-        }
-
-        $current ??= $sessions[\count($sessions) - 1];
-        $this->sessionRegistry->remove($current);
-        $this->endedRegistrySessionId = $current->id;
-
-        return new LogoutContext($current->providerId, $current->idToken);
+        return $response;
     }
 
     private function accessTokenJti(Response $tokenResponse): ?string

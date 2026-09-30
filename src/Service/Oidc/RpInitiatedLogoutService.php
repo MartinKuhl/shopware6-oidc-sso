@@ -65,9 +65,19 @@ class RpInitiatedLogoutService
      * Fire-and-forget: a failed revocation must never block the user from
      * logging out.
      */
-    public function revokeToken(Sw6OidcProviderEntity $provider, ?string $accessToken): void
+    /**
+     * RFC 7009 revocation of the login's IdP tokens (refresh token first —
+     * revoking it usually invalidates the access token too). Fire-and-forget.
+     */
+    public function revokeTokens(Sw6OidcProviderEntity $provider, LogoutContext $logoutContext): void
     {
-        if ($accessToken === null || $accessToken === '') {
+        $this->revokeToken($provider, $logoutContext->idpRefreshToken, 'refresh_token');
+        $this->revokeToken($provider, $logoutContext->idpAccessToken, 'access_token');
+    }
+
+    public function revokeToken(Sw6OidcProviderEntity $provider, ?string $token, string $tokenTypeHint = 'access_token'): void
+    {
+        if ($token === null || $token === '') {
             return;
         }
 
@@ -82,7 +92,7 @@ class RpInitiatedLogoutService
         // client_id from the body; a public client has no secret, so it
         // identifies itself via client_id in the body instead (RFC 7009 §2.1
         // references the token endpoint's authentication methods).
-        $params = ['token' => $accessToken];
+        $params = ['token' => $token, 'token_type_hint' => $tokenTypeHint];
 
         if ($provider->isPublicClient()) {
             $params['client_id'] = $provider->getClientId();

@@ -2,9 +2,9 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Controller\Oidc;
 
+use MartinKuhl\Sw6Oidc\Tests\Unit\Support\SqliteSessionRegistry;
 use MartinKuhl\Sw6Oidc\Controller\Oidc\FrontChannelLogoutController;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
-use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler;
@@ -34,17 +34,17 @@ final class FrontChannelLogoutControllerTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->registry = new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger());
+        $this->registry = SqliteSessionRegistry::create();
         $this->rateLimiter = new Sw6OidcRateLimiter(null, new ArrayAdapter());
     }
 
     public function testKnownSidEndsTheSession(): void
     {
-        $this->registry->register('p1', 'user-1', 'sid-1', 'customer', 'c1', 'ctx-1', 'sc');
+        $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'customer', 'c1000000000000000000000000000001', 'ctx-1', '5c000000000000000000000000000001');
 
         $this->assertPixel($this->get(['iss' => self::ISSUER, 'sid' => 'sid-1']));
         self::assertCount(1, $this->destroyed);
-        self::assertSame([], $this->registry->resolveBySid('p1', 'sid-1'));
+        self::assertSame([], $this->registry->resolveBySid('a1000000000000000000000000000001', 'sid-1'));
     }
 
     public function testUnknownSidStillReturnsThePixel(): void
@@ -55,7 +55,7 @@ final class FrontChannelLogoutControllerTest extends TestCase
 
     public function testUnknownIssuerOrMissingParametersDoNothing(): void
     {
-        $this->registry->register('p1', 'user-1', 'sid-1', 'customer', 'c1', 'ctx-1', 'sc');
+        $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'customer', 'c1000000000000000000000000000001', 'ctx-1', '5c000000000000000000000000000001');
 
         $this->assertPixel($this->get(['iss' => 'https://other.example', 'sid' => 'sid-1']));
         $this->assertPixel($this->get(['sid' => 'sid-1']));
@@ -71,7 +71,7 @@ final class FrontChannelLogoutControllerTest extends TestCase
             $controller->logout($this->request(['iss' => self::ISSUER, 'sid' => 'guess-' . $i]));
         }
 
-        $this->registry->register('p1', 'user-1', 'sid-1', 'customer', 'c1', 'ctx-1', 'sc');
+        $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'customer', 'c1000000000000000000000000000001', 'ctx-1', '5c000000000000000000000000000001');
 
         $this->assertPixel($controller->logout($this->request(['iss' => self::ISSUER, 'sid' => 'sid-1'])));
         self::assertSame([], $this->destroyed);
@@ -105,7 +105,7 @@ final class FrontChannelLogoutControllerTest extends TestCase
     private function controller(): FrontChannelLogoutController
     {
         $provider = new Sw6OidcProviderEntity();
-        $provider->setId('p1');
+        $provider->setId('a1000000000000000000000000000001');
 
         $resolver = $this->createStub(ProviderResolver::class);
         $resolver->method('findByIssuer')->willReturnCallback(static fn (string $issuer): array => $issuer === self::ISSUER ? [$provider] : []);
@@ -117,7 +117,7 @@ final class FrontChannelLogoutControllerTest extends TestCase
 
         return new FrontChannelLogoutController(
             $resolver,
-            new Sw6OidcIdpLogoutHandler($this->registry, $destruction, new LogoutContextStore(new InMemoryAtomicCache()), new NullLogger(), $this->createStub(Sw6OidcSessionActivityRecorder::class)),
+            new Sw6OidcIdpLogoutHandler($this->registry, $destruction, new NullLogger(), $this->createStub(Sw6OidcSessionActivityRecorder::class)),
             $this->rateLimiter,
             new NullLogger(),
         );

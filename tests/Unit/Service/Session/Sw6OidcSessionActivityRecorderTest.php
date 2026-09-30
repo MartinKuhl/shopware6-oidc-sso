@@ -59,16 +59,14 @@ final class Sw6OidcSessionActivityRecorderTest extends TestCase
         self::assertSame(['ctx-a' => null, 'ctx-b' => 'backchannel'], $this->reasons());
     }
 
-    public function testUnmatchedLogoutClosesNothingUnlessFallingBackToTheNewest(): void
+    public function testUnmatchedLogoutClosesNothing(): void
     {
         $this->login('ctx-old', null, '-2 minutes');
         $this->login('ctx-new', null, '-1 minute');
 
         $this->recorder->recordLogout('customer', 'c1', 'logout', 'refreshed-jti');
+        // Guessing the newest row would close another device's session (N-M4).
         self::assertSame(['ctx-old' => null, 'ctx-new' => null], $this->reasons());
-
-        $this->recorder->recordLogout('customer', 'c1', 'logout', 'refreshed-jti', null, true);
-        self::assertSame(['ctx-old' => null, 'ctx-new' => 'logout'], $this->reasons());
     }
 
     public function testLogoutOfAllSessionsClosesEveryOpenRowOfTheAccount(): void

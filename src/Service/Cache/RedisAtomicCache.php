@@ -10,19 +10,21 @@ use Psr\Log\LoggerInterface;
  * switch would be frozen into Shopware's cached container, so changing
  * SW6OIDC_REDIS_DSN would silently do nothing until the next cache:clear):
  *
- *  - SW6OIDC_REDIS_DSN set, ext-redis loaded, connection OK: true atomic
- *    read-and-delete via Redis GETDEL (or a GET+DEL Lua script on Redis < 6.2).
- *    Required for multi-node HA — mirrors the Magento module's Redis
- *    requirement for shared OIDC state across web nodes.
- *  - Otherwise: every call delegates to the fallback (CachePoolAtomicCache,
- *    sequential get-then-delete on cache.app, single-node safe).
+ *  - SW6OIDC_REDIS_DSN set, ext-redis loaded, connection OK: Redis. Reads use
+ *    a GET+DEL Lua script, which is atomic on every Redis version (GETDEL
+ *    needs a 6.2+ *server*; checking the client's method list says nothing
+ *    about that), writes use SET … NX EX for addIfAbsent().
+ *  - Otherwise, and per call whenever Redis errors: the database store
+ *    (DatabaseAtomicCache), which is atomic and shared by all app servers too.
  *
- * The connection is opened lazily, once per process. A value written to the
- * fallback because Redis failed on save() is still found by getAndDelete(),
- * which consults the fallback on a Redis miss or error.
+ * A value written to the database because Redis failed on save() is still
+ * found by getAndDelete(), which consults the database on a Redis miss.
  */
 class RedisAtomicCache implements AtomicCacheInterface
 {
+    public const BACKEND_REDIS = 'redis';
+    public const BACKEND_DATABASE = 'database';
+
     private const GET_AND_DELETE_LUA = <<<'LUA'
         local value = redis.call('GET', KEYS[1])
         if value then
@@ -42,6 +44,14 @@ class RedisAtomicCache implements AtomicCacheInterface
     ) {
     }
 
+    /**
+     * Which store this process uses ('redis' or 'database').
+     */
+    public function backend(): string
+    {
+        return $this->redis() instanceof \Redis ? self::BACKEND_REDIS : self::BACKEND_DATABASE;
+    }
+
     public function save(string $key, string $value, int $ttlSeconds): void
     {
         $redis = $this->redis();
@@ -53,10 +63,10 @@ class RedisAtomicCache implements AtomicCacheInterface
         }
 
         try {
-            $redis->setex($this->prefixedKey($key), $ttlSeconds, $value);
+            $redis->setex($this->prefixedKey($key), max(1, $ttlSeconds), $value);
         } catch (\Throwable $exception) {
-            $this->logger->warning('sw6oidc: Redis save failed; using the non-atomic cache-pool fallback for this token.', [
-                'exception' => $exception->getMessage(),
+            $this->logger->warning('sw6oidc: Redis save failed; using the database store for this token.', [
+                'exceptionClass' => $exception::class,
             ]);
             $this->fallback->save($key, $value, $ttlSeconds);
         }
@@ -70,24 +80,11 @@ class RedisAtomicCache implements AtomicCacheInterface
             return $this->fallback->getAndDelete($key);
         }
 
-        $redisKey = $this->prefixedKey($key);
-
         try {
-            // PHPStan's phpredis stub always declares getdel() (added in
-            // phpredis ~5.3.0 / Redis 6.2), so it can't see that this
-            // actually varies across the range of phpredis versions this
-            // plugin supports at runtime - the check itself is real and
-            // needed, not dead code.
-            if (method_exists($redis, 'getdel')) { // @phpstan-ignore function.alreadyNarrowedType
-                $value = $redis->getdel($redisKey);
-            } else {
-                $value = $redis->eval(self::GET_AND_DELETE_LUA, [$redisKey], 1);
-            }
+            $value = $redis->eval(self::GET_AND_DELETE_LUA, [$this->prefixedKey($key)], 1);
         } catch (\Throwable $exception) {
-            // Connection dropped mid-request: degrade to the non-atomic fallback
-            // rather than failing the login flow outright.
-            $this->logger->warning('sw6oidc: Redis getAndDelete failed; trying the cache-pool fallback.', [
-                'exception' => $exception->getMessage(),
+            $this->logger->warning('sw6oidc: Redis getAndDelete failed; trying the database store.', [
+                'exceptionClass' => $exception::class,
             ]);
 
             return $this->fallback->getAndDelete($key);
@@ -97,9 +94,28 @@ class RedisAtomicCache implements AtomicCacheInterface
             return $value;
         }
 
-        // Miss: the token may have been written to the fallback by a save()
+        // Miss: the token may have been written to the database by a save()
         // that hit a Redis error.
         return $this->fallback->getAndDelete($key);
+    }
+
+    public function addIfAbsent(string $key, string $value, int $ttlSeconds): bool
+    {
+        $redis = $this->redis();
+
+        if (!$redis instanceof \Redis) {
+            return $this->fallback->addIfAbsent($key, $value, $ttlSeconds);
+        }
+
+        try {
+            return $redis->set($this->prefixedKey($key), $value, ['nx', 'ex' => max(1, $ttlSeconds)]) === true;
+        } catch (\Throwable $exception) {
+            $this->logger->warning('sw6oidc: Redis addIfAbsent failed; using the database store.', [
+                'exceptionClass' => $exception::class,
+            ]);
+
+            return $this->fallback->addIfAbsent($key, $value, $ttlSeconds);
+        }
     }
 
     private function redis(): ?\Redis

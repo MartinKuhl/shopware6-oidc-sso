@@ -12,12 +12,14 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(AdminLoginNonce::class)]
 final class AdminLoginNonceServiceTest extends TestCase
 {
-    public function testNonceCarriesTheOidcLoginIdentityAndIsSingleUse(): void
+    public function testNonceCarriesReferencesOnlyAndIsSingleUse(): void
     {
-        $service = new AdminLoginNonceService(new InMemoryAtomicCache());
-        $nonce = $service->createNonce('user-1', 'provider-1', 'sub-1', 'sid-1', 'id.token');
+        $cache = new InMemoryAtomicCache();
+        $service = new AdminLoginNonceService($cache);
+        $nonce = $service->createNonce('user-1', 'provider-1', 'registry-1');
 
-        self::assertEquals(new AdminLoginNonce('user-1', 'provider-1', 'sub-1', 'sid-1', 'id.token'), $service->redeemNonce($nonce));
+        self::assertStringNotContainsString('token', implode('', $cache->items), 'no id_token copies (N-L10)');
+        self::assertEquals(new AdminLoginNonce('user-1', 'provider-1', 'registry-1'), $service->redeemNonce($nonce));
         self::assertNull($service->redeemNonce($nonce));
     }
 
@@ -28,12 +30,12 @@ final class AdminLoginNonceServiceTest extends TestCase
         self::assertEquals(new AdminLoginNonce('user-1'), $service->redeemNonce($service->createNonce('user-1')));
     }
 
-    public function testLegacyBareUserIdEntryIsStillRedeemable(): void
+    public function testMalformedEntryIsRejected(): void
     {
         $cache = new InMemoryAtomicCache();
         $cache->items['sw6oidc_admin_nonce_legacy'] = '0190a1b2c3d4e5f60718293a4b5c6d7e';
 
-        self::assertEquals(new AdminLoginNonce('0190a1b2c3d4e5f60718293a4b5c6d7e'), (new AdminLoginNonceService($cache))->redeemNonce('legacy'));
+        self::assertNull((new AdminLoginNonceService($cache))->redeemNonce('legacy'));
     }
 
     public function testUnknownOrEmptyNonce(): void

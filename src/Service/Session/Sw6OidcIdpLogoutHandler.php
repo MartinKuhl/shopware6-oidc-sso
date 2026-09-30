@@ -2,22 +2,19 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Session;
 
-use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use Psr\Log\LoggerInterface;
 
 /**
  * The shared "the IdP says this session is over" step behind Back- and
  * Front-Channel Logout: look the sessions up in the registry, remove them,
- * destroy the local sessions, and drop their now-pointless RP-initiated
- * logout contexts. Protocol validation (token signature, iss/sid query
- * parameters) stays in the controllers.
+ * destroy the local sessions. Protocol validation (token signature, iss/sid
+ * query parameters) stays in the controllers.
  */
 class Sw6OidcIdpLogoutHandler
 {
     public function __construct(
         private readonly Sw6OidcSessionRegistry $registry,
         private readonly Sw6OidcSessionDestructionService $destructionService,
-        private readonly LogoutContextStore $logoutContextStore,
         private readonly LoggerInterface $logger,
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
     ) {
@@ -53,8 +50,6 @@ class Sw6OidcIdpLogoutHandler
             $this->registry->remove($session);
 
             if ($session->userType === Sw6OidcSession::USER_TYPE_ADMIN) {
-                $this->logoutContextStore->consumeForAdmin($session->userId);
-
                 // Admin destruction is per user anyway; once is enough.
                 if (isset($destroyedAdmins[$session->userId])) {
                     continue;
@@ -62,11 +57,17 @@ class Sw6OidcIdpLogoutHandler
 
                 $destroyedAdmins[$session->userId] = true;
                 $this->activityRecorder->recordLogoutOfAllSessions($session->userType, $session->userId, $reason);
-            } else {
-                $this->logoutContextStore->consume($session->sessionKey);
-                $this->activityRecorder->recordLogout($session->userType, $session->userId, $reason, $session->sessionKey, $session->id);
+                $this->destructionService->destroy($session);
+
+                // Every session of this admin is dead now, not only the
+                // sid-matched ones: drop all their registry entries so later
+                // logouts don't act on stale ones (N-L3).
+                $this->registry->removeAllForUser($session->userType, $session->userId);
+
+                continue;
             }
 
+            $this->activityRecorder->recordLogout($session->userType, $session->userId, $reason, $session->sessionKey, $session->id);
             $this->destructionService->destroy($session);
         }
 

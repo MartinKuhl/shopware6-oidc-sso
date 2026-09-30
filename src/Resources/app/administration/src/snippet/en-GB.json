@@ -295,7 +295,16 @@
                 "linkExistingAccountsHelp": "On a first SSO login, connect an existing Shopware account with the same, verified email address. Off: existing accounts must be connected explicitly from their profile (\"Connect SSO\"). Superadmins are never linked automatically.",
                 "linkExistingAccountsUnverifiedWarning": "Existing accounts are never linked with an unverified email, even with email verification not required — such users have to connect SSO from their profile.",
                 "lockoutConfirmTitle": "Lock out admins without single sign-on?",
-                "lockoutConfirmButton": "Disable password login anyway"
+                "lockoutConfirmButton": "Disable password login anyway",
+                "diagnosticsAtomicStore": "One-time token store",
+                "atomicStore": {
+                    "redis": "Redis (SW6OIDC_REDIS_DSN)",
+                    "database": "Database"
+                },
+                "infrastructureWarning": {
+                    "redis_dsn_unusable": "SW6OIDC_REDIS_DSN is set, but Redis can't be used (PHP extension missing, unreachable or authentication failing). One-time tokens are stored in the database instead — check the log for details.",
+                    "multi_node_without_redis": "Several app servers handled SSO recently, but Redis isn't in use. Logins stay correct, but the rate limiter and the JWKS cache are per server unless Shopware's cache pools are shared. Set SW6OIDC_REDIS_DSN."
+                }
             }
         },
         "userProvider": {

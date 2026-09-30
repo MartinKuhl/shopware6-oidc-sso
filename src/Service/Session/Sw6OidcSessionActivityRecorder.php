@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Session;
 
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityEntity;
+use MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -27,6 +28,7 @@ class Sw6OidcSessionActivityRecorder
     public function __construct(
         private readonly EntityRepository $activityRepository,
         private readonly LoggerInterface $logger,
+        private readonly ?NodeHeartbeat $nodeHeartbeat = null,
     ) {
     }
 
@@ -57,12 +59,15 @@ class Sw6OidcSessionActivityRecorder
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: could not record session login.', ['exception' => $exception->getMessage()]);
         }
+
+        // Every login path passes through here: a cheap way to learn which app servers serve SSO.
+        $this->nodeHeartbeat?->record();
     }
 
     /**
-     * Closes the open login row of one session. With $fallbackToNewest, the
-     * account's newest open row is closed when nothing matches (admin
-     * logouts after a token refresh, when the jti is no longer the first one).
+     * Closes the open login row of exactly one session (by registry entry or
+     * session key). Nothing matching means nothing is closed — guessing
+     * "the newest row" would mark another device's session as logged out.
      */
     public function recordLogout(
         string $userType,
@@ -70,7 +75,6 @@ class Sw6OidcSessionActivityRecorder
         string $reason,
         ?string $sessionKey = null,
         ?string $registrySessionId = null,
-        bool $fallbackToNewest = false,
     ): void {
         try {
             $open = $this->openActivities($userType, $userId);
@@ -86,10 +90,6 @@ class Sw6OidcSessionActivityRecorder
 
                     break;
                 }
-            }
-
-            if ($match === null && $fallbackToNewest) {
-                $match = $open[0] ?? null;
             }
 
             if ($match !== null) {

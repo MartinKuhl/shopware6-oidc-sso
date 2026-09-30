@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Controller\Api;
 
+use MartinKuhl\Sw6Oidc\Tests\Unit\Support\SqliteSessionRegistry;
 use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Controller\Api\OidcAdminAuthController;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore;
@@ -12,8 +13,6 @@ use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
 use Nyholm\Psr7\Response as PsrResponse;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
-use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\HttpFoundation\Request;
 
 #[CoversClass(OidcAdminAuthController::class)]
@@ -23,26 +22,29 @@ final class OidcAdminAuthControllerSessionTest extends TestCase
 
     private const USER_ID = '0190a1b2c3d4e5f60718293a4b5c6d7e';
 
-    public function testTokenExchangeRegistersTheOidcSessionUnderTheMintedJti(): void
+    public function testTokenExchangeActivatesThePendingSessionAndReturnsItsHandle(): void
     {
-        $registry = new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger());
+        $registry = SqliteSessionRegistry::create();
+        $pending = $registry->register('a1000000000000000000000000000001', 'sub-1', 'sid-1', 'admin', self::USER_ID, 'pending:abc', null, 'id.token', ttlSeconds: 600);
         $nonces = new AdminLoginNonceService(new InMemoryAtomicCache());
-        $nonce = $nonces->createNonce(self::USER_ID, 'provider-1', 'sub-1', 'sid-1', 'id.token');
+        $nonce = $nonces->createNonce(self::USER_ID, 'a1000000000000000000000000000001', $pending->id);
 
         $response = $this->exchange($nonces, $registry, $nonce, $this->jwt(['jti' => 'jti-123', 'sub' => self::USER_ID]));
 
         self::assertSame(200, $response->getStatusCode());
-        $sessions = $registry->resolveBySid('provider-1', 'sid-1');
+        $sessions = $registry->resolveBySid('a1000000000000000000000000000001', 'sid-1');
         self::assertCount(1, $sessions);
         self::assertSame('jti-123', $sessions[0]->sessionKey);
-        self::assertSame('admin', $sessions[0]->userType);
-        self::assertSame(self::USER_ID, $sessions[0]->userId);
         self::assertSame('id.token', $sessions[0]->idToken);
+
+        $body = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame($pending->id, $body[OidcAdminAuthController::LOGIN_SESSION_FIELD]);
+        self::assertSame('refresh', $body['refresh_token'], 'the OAuth response itself is untouched');
     }
 
     public function testNonOidcNonceRegistersNothing(): void
     {
-        $registry = new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger());
+        $registry = SqliteSessionRegistry::create();
         $nonces = new AdminLoginNonceService(new InMemoryAtomicCache());
 
         $this->exchange($nonces, $registry, $nonces->createNonce(self::USER_ID), $this->jwt(['jti' => 'jti-1']));
@@ -52,7 +54,7 @@ final class OidcAdminAuthControllerSessionTest extends TestCase
 
     public function testUnknownNonceIsRejected(): void
     {
-        $registry = new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger());
+        $registry = SqliteSessionRegistry::create();
 
         $response = $this->exchange(new AdminLoginNonceService(new InMemoryAtomicCache()), $registry, 'unknown', 'x');
 

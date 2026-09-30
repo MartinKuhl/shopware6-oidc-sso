@@ -295,7 +295,16 @@
                 "linkExistingAccountsHelp": "Beim ersten SSO-Login ein bestehendes Shopware-Konto mit derselben, bestätigten E-Mail-Adresse verknüpfen. Aus: Bestehende Konten müssen im Profil ausdrücklich verbunden werden („SSO verbinden“). Superadmins werden nie automatisch verknüpft.",
                 "linkExistingAccountsUnverifiedWarning": "Bestehende Konten werden nie mit einer unbestätigten E-Mail-Adresse verknüpft, auch wenn keine Bestätigung verlangt wird — diese Benutzer müssen SSO in ihrem Profil verbinden.",
                 "lockoutConfirmTitle": "Admins ohne Single Sign-on aussperren?",
-                "lockoutConfirmButton": "Passwort-Anmeldung trotzdem deaktivieren"
+                "lockoutConfirmButton": "Passwort-Anmeldung trotzdem deaktivieren",
+                "diagnosticsAtomicStore": "Speicher für Einmal-Token",
+                "atomicStore": {
+                    "redis": "Redis (SW6OIDC_REDIS_DSN)",
+                    "database": "Datenbank"
+                },
+                "infrastructureWarning": {
+                    "redis_dsn_unusable": "SW6OIDC_REDIS_DSN ist gesetzt, Redis kann aber nicht verwendet werden (PHP-Erweiterung fehlt, nicht erreichbar oder Anmeldung fehlgeschlagen). Einmal-Token werden stattdessen in der Datenbank gespeichert — Details stehen im Log.",
+                    "multi_node_without_redis": "Mehrere App-Server haben kürzlich SSO-Anmeldungen verarbeitet, Redis wird aber nicht verwendet. Anmeldungen bleiben korrekt, aber Rate-Limiter und JWKS-Cache sind pro Server getrennt, sofern die Cache-Pools von Shopware nicht gemeinsam genutzt werden. Bitte SW6OIDC_REDIS_DSN setzen."
+                }
             }
         },
         "userProvider": {

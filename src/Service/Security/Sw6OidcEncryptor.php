@@ -59,6 +59,22 @@ class Sw6OidcEncryptor
         return $plaintext;
     }
 
+    /**
+     * Like decrypt(), but a value that can't be decrypted (foreign or
+     * corrupted envelope, rotated APP_SECRET) yields null instead of the
+     * envelope — use it wherever the plaintext is about to be *used*
+     * (sent to an IdP, exported, compared), so ciphertext never leaks out
+     * as if it were the secret. Unencrypted legacy values pass through.
+     */
+    public function decryptOrNull(string $value): ?string
+    {
+        if (!$this->isEncrypted($value)) {
+            return $value;
+        }
+
+        return $this->tryDecrypt($value);
+    }
+
     public function isEncrypted(string $value): bool
     {
         return str_starts_with($value, self::PREFIX);

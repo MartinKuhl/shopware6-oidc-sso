@@ -2,9 +2,9 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Storefront\Service;
 
+use MartinKuhl\Sw6Oidc\Tests\Unit\Support\SqliteSessionRegistry;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
-use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
 use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
@@ -13,7 +13,6 @@ use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcLogoutRoute;
 use MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect;
-use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -23,7 +22,6 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Shopware\Core\System\SalesChannel\ContextTokenResponse;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
-use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 #[CoversClass(OidcLogoutRoute::class)]
@@ -31,8 +29,7 @@ final class OidcLogoutRouteTest extends TestCase
 {
     private const PRE_LOGOUT_TOKEN = 'pre-logout-token';
     private const LOGIN_URL = 'https://shop.example/account/login';
-
-    private LogoutContextStore $store;
+    private const CUSTOMER_ID = 'c1000000000000000000000000000001';
 
     private PendingLogoutRedirect $pending;
 
@@ -40,24 +37,23 @@ final class OidcLogoutRouteTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->store = new LogoutContextStore(new InMemoryAtomicCache());
         $this->pending = new PendingLogoutRedirect();
-        $this->registry = new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger());
+        $this->registry = SqliteSessionRegistry::create();
     }
 
     public function testLogoutForgetsTheRegisteredSessionOfThisContextOnly(): void
     {
-        $this->registry->register('provider-1', 'sub', 'sid-1', 'customer', 'cust-1', self::PRE_LOGOUT_TOKEN, 'sc');
-        $other = $this->registry->register('provider-1', 'sub', 'sid-2', 'customer', 'cust-1', 'other-device-token', 'sc');
+        $this->registry->register('a1000000000000000000000000000001', 'sub', 'sid-1', 'customer', 'c1000000000000000000000000000001', self::PRE_LOGOUT_TOKEN, '5c000000000000000000000000000001');
+        $other = $this->registry->register('a1000000000000000000000000000001', 'sub', 'sid-2', 'customer', 'c1000000000000000000000000000001', 'other-device-token', '5c000000000000000000000000000001');
 
-        $this->route($this->provider('https://auth.example/logout'))->logout($this->context('cust-1'), new RequestDataBag());
+        $this->route($this->provider('https://auth.example/logout'))->logout($this->context('c1000000000000000000000000000001'), new RequestDataBag());
 
-        self::assertEquals([$other], $this->registry->resolveByUser('customer', 'cust-1'));
+        self::assertEquals([$other], $this->registry->resolveByUser('customer', 'c1000000000000000000000000000001'));
     }
 
     public function testProviderPostLogoutUrlOverridesTheLoginPageAndCarriesASignedState(): void
     {
-        $this->store->remember(self::PRE_LOGOUT_TOKEN, 'provider-1', 'id-token');
+        $this->rememberLogin('id-token');
         $provider = $this->provider('https://idp.example/oidc/end-session');
         $provider->setPostLogoutUrl('https://shop.example/sw6oidc/postlogout');
 
@@ -71,13 +67,13 @@ final class OidcLogoutRouteTest extends TestCase
 
     public function testResolvesLogoutUrlFromPreLogoutToken(): void
     {
-        $this->store->remember(self::PRE_LOGOUT_TOKEN, 'provider-1', 'id-token');
+        $this->rememberLogin('id-token');
 
         $response = $this->route($this->provider('https://auth.example/logout'))->logout($this->context(), new RequestDataBag());
 
         self::assertSame('fresh-token', $response->getToken());
         self::assertSame('https://auth.example/logout?rd=' . rawurlencode(self::LOGIN_URL), $this->pending->pull());
-        self::assertNull($this->store->consume(self::PRE_LOGOUT_TOKEN), 'logout context is single-use');
+        self::assertSame([], $this->registry->resolveByUser('customer', self::CUSTOMER_ID), 'the ended session leaves the registry');
     }
 
     public function testNoLogoutContextLeavesNoPendingRedirect(): void
@@ -89,7 +85,7 @@ final class OidcLogoutRouteTest extends TestCase
 
     public function testInactiveProviderLeavesNoPendingRedirect(): void
     {
-        $this->store->remember(self::PRE_LOGOUT_TOKEN, 'provider-1', 'id-token');
+        $this->rememberLogin('id-token');
 
         $this->route(null)->logout($this->context(), new RequestDataBag());
 
@@ -98,7 +94,7 @@ final class OidcLogoutRouteTest extends TestCase
 
     public function testFailedInnerLogoutKeepsLogoutContext(): void
     {
-        $this->store->remember(self::PRE_LOGOUT_TOKEN, 'provider-1', 'id-token');
+        $this->rememberLogin('id-token');
 
         $decorated = $this->createMock(AbstractLogoutRoute::class);
         $decorated->method('logout')->willThrowException(new \RuntimeException('boom'));
@@ -109,7 +105,7 @@ final class OidcLogoutRouteTest extends TestCase
         } catch (\RuntimeException) {
         }
 
-        self::assertNotNull($this->store->consume(self::PRE_LOGOUT_TOKEN));
+        self::assertCount(1, $this->registry->resolveByUser('customer', self::CUSTOMER_ID), 'a failed logout keeps the session registered');
         self::assertNull($this->pending->pull());
     }
 
@@ -132,7 +128,6 @@ final class OidcLogoutRouteTest extends TestCase
 
         return new OidcLogoutRoute(
             $decorated,
-            $this->store,
             $resolver,
             new RpInitiatedLogoutService($this->createMock(OidcHttpClient::class), new NullLogger(), new PostLogoutState('app-secret')),
             $this->pending,
@@ -146,13 +141,18 @@ final class OidcLogoutRouteTest extends TestCase
     private function provider(string $endSessionEndpoint): Sw6OidcProviderEntity
     {
         $provider = new Sw6OidcProviderEntity();
-        $provider->setId('provider-1');
+        $provider->setId('a1000000000000000000000000000001');
         $provider->setEndSessionEndpoint($endSessionEndpoint);
 
         return $provider;
     }
 
-    private function context(?string $customerId = null): SalesChannelContext
+    private function rememberLogin(?string $idToken): void
+    {
+        $this->registry->register('a1000000000000000000000000000001', 'sub', null, 'customer', self::CUSTOMER_ID, self::PRE_LOGOUT_TOKEN, null, $idToken);
+    }
+
+    private function context(?string $customerId = self::CUSTOMER_ID): SalesChannelContext
     {
         $context = $this->createMock(SalesChannelContext::class);
         $context->method('getToken')->willReturn(self::PRE_LOGOUT_TOKEN);

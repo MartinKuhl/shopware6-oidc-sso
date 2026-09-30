@@ -26,7 +26,24 @@ final readonly class OidcCallbackResult
 
     public function idToken(): ?string
     {
-        return \is_string($this->tokens['id_token'] ?? null) ? $this->tokens['id_token'] : null;
+        return $this->token('id_token');
+    }
+
+    public function idpAccessToken(): ?string
+    {
+        return $this->token('access_token');
+    }
+
+    public function idpRefreshToken(): ?string
+    {
+        return $this->token('refresh_token');
+    }
+
+    private function token(string $name): ?string
+    {
+        $value = $this->tokens[$name] ?? null;
+
+        return \is_string($value) && $value !== '' ? $value : null;
     }
 
     /**

@@ -18,6 +18,7 @@ import {
     serializeAssertionCredential,
 } from '../../service/webauthn-codec';
 import { consumeSsoReturnRoute } from '../../service/sso-return-route';
+import { rememberLoginSession } from '../../service/login-session';
 
 const { Component } = Shopware;
 
@@ -341,6 +342,7 @@ Component.override('sw-login-login', {
                     refresh: tokenData.refresh_token,
                     expiry: tokenData.expires_in,
                 });
+                rememberLoginSession(tokenData.sw6oidc_login_session);
 
                 this.sw6oidcCleanUrl();
                 await this.sw6oidcFinishLogin();

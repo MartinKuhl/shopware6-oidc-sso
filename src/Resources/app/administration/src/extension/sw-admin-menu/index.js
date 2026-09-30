@@ -1,3 +1,5 @@
+import { consumeLoginSession } from '../../service/login-session';
+
 const { Component } = Shopware;
 
 /**
@@ -50,9 +52,14 @@ Component.override('sw-admin-menu', {
             }
 
             try {
+                const loginSession = consumeLoginSession();
                 const response = await fetch('/api/sw6oidc/admin/logout', {
                     method: 'POST',
-                    headers: { Authorization: `Bearer ${token}` },
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams(loginSession ? { sw6oidc_login_session: loginSession } : {}),
                 });
 
                 if (!response.ok) {

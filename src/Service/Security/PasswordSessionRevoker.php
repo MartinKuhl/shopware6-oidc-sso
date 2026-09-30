@@ -51,7 +51,7 @@ class PasswordSessionRevoker
             SQL,
             [
                 'payload' => json_encode(['customerId' => null, 'billingAddressId' => null, 'shippingAddressId' => null], JSON_THROW_ON_ERROR),
-                'now' => (new \DateTimeImmutable())->format(Defaults::STORAGE_DATE_TIME_FORMAT),
+                'now' => (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format(Defaults::STORAGE_DATE_TIME_FORMAT),
             ],
         );
 

@@ -26,11 +26,47 @@ final class RedisAtomicCacheTest extends TestCase
         self::assertNull($cache->getAndDelete('k'));
     }
 
-    public function testUsesRedisGetdelWhenConnected(): void
+    public function testAlwaysUsesTheLuaScriptSoOldRedisServersWork(): void
+    {
+        $redis = $this->createMock(\Redis::class);
+        $redis->expects(self::never())->method('getdel');
+        $redis->expects(self::once())->method('eval')
+            ->with(self::stringContains("redis.call('GET'"), self::callback(static fn (array $keys): bool => str_starts_with($keys[0], 'sw6oidc:')), 1)
+            ->willReturn('v');
+
+        $cache = new RedisAtomicCache($this->factoryReturning($redis), new InMemoryAtomicCache(), new NullLogger());
+
+        self::assertSame('v', $cache->getAndDelete('k'));
+        self::assertSame(RedisAtomicCache::BACKEND_REDIS, $cache->backend());
+    }
+
+    public function testAddIfAbsentUsesSetNx(): void
+    {
+        $redis = $this->createMock(\Redis::class);
+        $redis->expects(self::exactly(2))->method('set')
+            ->with(self::stringStartsWith('sw6oidc:'), '1', ['nx', 'ex' => 60])
+            ->willReturnOnConsecutiveCalls(true, false);
+
+        $cache = new RedisAtomicCache($this->factoryReturning($redis), new InMemoryAtomicCache(), new NullLogger());
+
+        self::assertTrue($cache->addIfAbsent('jti', '1', 60));
+        self::assertFalse($cache->addIfAbsent('jti', '1', 60));
+    }
+
+    public function testWithoutRedisTheBackendIsTheDatabase(): void
+    {
+        $cache = new RedisAtomicCache(new RedisConnectionFactory(null, new NullLogger()), new InMemoryAtomicCache(), new NullLogger());
+
+        self::assertSame(RedisAtomicCache::BACKEND_DATABASE, $cache->backend());
+        self::assertTrue($cache->addIfAbsent('k', 'v', 60));
+        self::assertFalse($cache->addIfAbsent('k', 'v', 60));
+    }
+
+    public function testUsesRedisWhenConnected(): void
     {
         $redis = $this->createMock(\Redis::class);
         $redis->expects(self::once())->method('setex')->with(self::stringStartsWith('sw6oidc:'), 60, 'v');
-        $redis->expects(self::once())->method('getdel')->willReturn('v');
+        $redis->expects(self::once())->method('eval')->willReturn('v');
         $fallback = new InMemoryAtomicCache();
 
         $cache = new RedisAtomicCache($this->factoryReturning($redis), $fallback, new NullLogger());
@@ -44,7 +80,7 @@ final class RedisAtomicCacheTest extends TestCase
     {
         $redis = $this->createMock(\Redis::class);
         $redis->method('setex')->willThrowException(new \RedisException('gone'));
-        $redis->method('getdel')->willReturn(false);
+        $redis->method('eval')->willReturn(false);
         $fallback = new InMemoryAtomicCache();
 
         $cache = new RedisAtomicCache($this->factoryReturning($redis), $fallback, new NullLogger());
@@ -57,7 +93,7 @@ final class RedisAtomicCacheTest extends TestCase
     public function testReadErrorFallsBack(): void
     {
         $redis = $this->createMock(\Redis::class);
-        $redis->method('getdel')->willThrowException(new \RedisException('gone'));
+        $redis->method('eval')->willThrowException(new \RedisException('gone'));
         $fallback = new InMemoryAtomicCache();
         $fallback->save('k', 'v', 60);
 

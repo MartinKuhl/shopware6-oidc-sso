@@ -59,7 +59,7 @@ trait BuildsOidcAdminAuthController
             'logoutContextStore' => new LogoutContextStore(new InMemoryAtomicCache()),
             'rpInitiatedLogoutService' => new RpInitiatedLogoutService($this->createMock(OidcHttpClient::class), new NullLogger(), new PostLogoutState('app-secret')),
             'loginErrorTicketStore' => new AdminLoginErrorTicketStore(new InMemoryAtomicCache()),
-            'sessionRegistry' => new Sw6OidcSessionRegistry(new ArrayAdapter(), new NullLogger()),
+            'sessionRegistry' => SqliteSessionRegistry::create(),
             'rateLimiter' => new Sw6OidcRateLimiter(null, new ArrayAdapter()),
             'activityRecorder' => $this->createMock(Sw6OidcSessionActivityRecorder::class),
             'identityResolver' => $this->createMock(IdentityResolver::class),

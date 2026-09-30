@@ -62,9 +62,7 @@ class SessionActivityController extends AbstractController
         } else {
             $this->destructionService->destroyAllForUser($userType, $userId);
 
-            foreach ($this->sessionRegistry->resolveByUser($userType, $userId) as $session) {
-                $this->sessionRegistry->remove($session);
-            }
+            $this->sessionRegistry->removeAllForUser($userType, $userId);
 
             $this->activityRecorder->recordLogoutOfAllSessions($userType, $userId, Sw6OidcSessionActivityDefinition::LOGOUT_REASON_FORCED);
             $endedAll = true;

@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Service\Health\InfrastructureInspector;
 use MartinKuhl\Sw6Oidc\Service\Health\ProviderConfigInspector;
 use MartinKuhl\Sw6Oidc\Service\Health\ProviderReachabilityChecker;
 use Shopware\Core\Framework\Context;
@@ -14,8 +15,9 @@ use Symfony\Component\Routing\Annotation\Route;
 
 /**
  * On-demand diagnostics for one provider (the provider detail page's
- * diagnostics panel): configuration problems, a live reachability probe, and
- * the scheduled health-alert state.
+ * diagnostics panel): configuration problems, a live reachability probe, the
+ * scheduled health-alert state, and shop-wide infrastructure warnings
+ * (Redis/multi-node, see InfrastructureInspector).
  */
 #[Route(defaults: ['_routeScope' => ['api']])]
 class OidcDiagnosticsController extends AbstractController
@@ -24,6 +26,7 @@ class OidcDiagnosticsController extends AbstractController
         private readonly EntityRepository $providerRepository,
         private readonly ProviderConfigInspector $configInspector,
         private readonly ProviderReachabilityChecker $reachabilityChecker,
+        private readonly InfrastructureInspector $infrastructureInspector,
     ) {
     }
 
@@ -57,6 +60,7 @@ class OidcDiagnosticsController extends AbstractController
                 'firstFailureAt' => $format($provider->getHealthAlertFirstFailureAt()),
                 'lastNotifiedAt' => $format($provider->getHealthAlertLastNotifiedAt()),
             ],
+            'infrastructure' => $this->infrastructureInspector->inspect(),
         ]);
     }
 }

@@ -745,7 +745,23 @@
                         <strong>{{ $tc('sw6oidc.provider.detail.diagnosticsAlerting') }}:</strong>
                         <span>{{ $tc(diagnostics.alerting.enabled ? 'sw6oidc.provider.detail.diagnosticsAlertingOn' : 'sw6oidc.provider.detail.diagnosticsAlertingOff') }}</span>
                     </li>
+                    <li
+                        v-if="diagnostics.infrastructure"
+                        class="sw6oidc-test-result-list__item"
+                    >
+                        <strong>{{ $tc('sw6oidc.provider.detail.diagnosticsAtomicStore') }}:</strong>
+                        <span>{{ $tc(`sw6oidc.provider.detail.atomicStore.${diagnostics.infrastructure.atomicStore}`) }}</span>
+                    </li>
                 </ul>
+                <template v-if="diagnostics.infrastructure">
+                    <mt-banner
+                        v-for="warning in diagnostics.infrastructure.warnings"
+                        :key="warning"
+                        variant="attention"
+                    >
+                        {{ $tc(`sw6oidc.provider.detail.infrastructureWarning.${warning}`) }}
+                    </mt-banner>
+                </template>
             </sw-card>
             {% endblock %}
 
