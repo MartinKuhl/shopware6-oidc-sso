@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential;
 
 use Shopware\Core\Framework\DataAbstractionLayer\EntityDefinition;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\CreatedAtField;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\DateTimeField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ApiAware;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\PrimaryKey;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Required;
@@ -43,11 +44,13 @@ class Sw6OidcPasskeyCredentialDefinition extends EntityDefinition
             (new IdField('id', 'id'))->addFlags(new ApiAware(), new PrimaryKey(), new Required()),
             (new StringField('user_type', 'userType', 16))->addFlags(new ApiAware(), new Required()),
             (new IdField('user_id', 'userId'))->addFlags(new ApiAware(), new Required()),
-            (new StringField('credential_id', 'credentialId'))->addFlags(new ApiAware(), new Required()),
+            (new StringField('credential_id', 'credentialId', 1400))->addFlags(new ApiAware(), new Required()),
+            (new StringField('credential_id_hash', 'credentialIdHash', 64))->addFlags(new Required()),
             (new LongTextField('public_key', 'publicKey'))->addFlags(new ApiAware(), new Required()),
             (new IntField('sign_count', 'signCount'))->addFlags(new ApiAware()),
             (new StringField('user_handle', 'userHandle'))->addFlags(new ApiAware(), new Required()),
             (new StringField('nickname', 'nickname'))->addFlags(new ApiAware()),
+            (new DateTimeField('disabled_at', 'disabledAt'))->addFlags(new ApiAware()),
             new CreatedAtField(),
             new UpdatedAtField(),
         ]);

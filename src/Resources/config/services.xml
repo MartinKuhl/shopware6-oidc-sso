@@ -263,6 +263,8 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\LogoutRoute" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -499,6 +501,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcAdminAuthController" public="true">
@@ -507,13 +510,11 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminAuthorizationServer" />
-            <argument type="service" id="Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer" />
             <argument>%env(APP_URL)%/admin</argument>
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService" />
@@ -522,9 +523,47 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\StepUpService" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminAuthorizationServer" />
+            <argument type="service" id="Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\StepUpService">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument>%env(APP_URL)%</argument>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Controller\Api\StepUpController" public="true">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\StepUpService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <call method="setContainer">
+                <argument type="service" id="service_container" />
+            </call>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\BusinessEventSubscriber">
+            <argument type="service" id="Shopware\Core\Framework\Event\BusinessEventCollector" />
+            <tag name="kernel.event_subscriber" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcUserProviderAdminController" public="true">
@@ -651,6 +690,8 @@
             <argument type="service" id="Shopware\Core\System\SalesChannel\Context\SalesChannelContextService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver" />
+            <argument type="service" id="event_dispatcher" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -675,11 +716,12 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="user.repository" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminAuthorizationServer" />
-            <argument type="service" id="Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\AdminPasskeyLoginTokenTracker" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver" />
+            <argument type="service" id="event_dispatcher" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>

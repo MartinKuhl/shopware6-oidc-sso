@@ -5,7 +5,10 @@ namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
+use Shopware\Core\Checkout\Customer\SalesChannel\AbstractLogoutRoute;
+use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Controller\StorefrontController;
@@ -25,6 +28,8 @@ class SendAuthorizationRequestController extends StorefrontController
         private readonly ProviderResolver $providerResolver,
         private readonly AuthorizationRequestBuilder $requestBuilder,
         private readonly LoggerInterface $logger,
+        private readonly UserProviderBindingService $bindingService,
+        private readonly AbstractLogoutRoute $logoutRoute,
     ) {
     }
 
@@ -94,5 +99,51 @@ class SendAuthorizationRequestController extends StorefrontController
             AuthorizationFlowContext::PURPOSE_LINK,
             $customer->getId(),
         ));
+    }
+
+    /**
+     * Fresh login before a sensitive account change (adding a passkey):
+     * an SSO-connected customer goes through their provider with
+     * `prompt=login&max_age=0`; anybody else is logged out and asked to log
+     * in again. Either way they come back to the passkey page.
+     */
+    #[Route(
+        path: '/sw6oidc/reauth',
+        name: 'frontend.sw6oidc.reauth',
+        defaults: ['_loginRequired' => true],
+        methods: ['GET'],
+    )]
+    public function reauthenticate(Request $request, SalesChannelContext $context): RedirectResponse
+    {
+        $customer = $context->getCustomer();
+        \assert($customer instanceof \Shopware\Core\Checkout\Customer\CustomerEntity);
+
+        $providerId = $this->bindingService->getBoundProviderId('customer', $customer->getId(), $context->getContext());
+
+        if ($providerId !== null) {
+            try {
+                $provider = $this->providerResolver->getActiveById($providerId, 'customer', $context->getContext());
+
+                return new RedirectResponse($this->requestBuilder->build(
+                    $provider,
+                    'customer',
+                    $this->generateUrl('frontend.account.passkey.page'),
+                    $this->generateUrl('frontend.sw6oidc.callback', [], UrlGeneratorInterface::ABSOLUTE_URL),
+                    extraParams: ['prompt' => 'login', 'max_age' => '0'],
+                ));
+            } catch (ProviderNotFoundException) {
+                // Provider gone: fall back to a normal re-login.
+            }
+        }
+
+        $this->logoutRoute->logout($context, new RequestDataBag());
+
+        if ($request->hasSession()) {
+            $request->getSession()->invalidate();
+        }
+
+        $this->addFlash(self::INFO, $this->trans('sw6oidc.account.reauthRequired'));
+
+        return new RedirectResponse($this->generateUrl('frontend.account.login.page', ['redirectTo' => 'frontend.account.passkey.page']));
     }
 }

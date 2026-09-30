@@ -3,11 +3,14 @@
 namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
-use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
-use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
+use MartinKuhl\Sw6Oidc\Event\PasskeyRegisteredEvent;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
+use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver;
+use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
@@ -21,12 +24,22 @@ use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Controller\StorefrontController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
- * Storefront customer Passkey self-service registration + usernameless login
- * — independent of OIDC, backed directly by web-auth/webauthn-lib. Mirrors
- * the Magento module's Controller/Actions/Passkey/* controllers.
+ * Storefront customer Passkey self-service registration and usernameless
+ * login.
+ *
+ * - All ceremony endpoints answer 404 while customer passkeys are disabled
+ *   for the sales channel (H6).
+ * - Registering needs a recent login (within REAUTH_WINDOW_SECONDS);
+ *   otherwise the customer is sent to re-authenticate first — a stolen
+ *   session alone can't add a permanent way in (H7). Verification only
+ *   completes for the customer who started the ceremony (N-M2), and the
+ *   owner is notified via the PasskeyRegisteredEvent flow trigger.
+ * - The relying party comes from the sales channel's domains (M17, N-M1).
  */
 #[Route(defaults: ['_routeScope' => ['storefront']])]
 class PasskeyController extends StorefrontController
@@ -37,6 +50,8 @@ class PasskeyController extends StorefrontController
      */
     public const SESSION_KEY_LOGIN_CREDENTIAL_ID = 'sw6oidc_login_credential_id';
 
+    public const REAUTH_WINDOW_SECONDS = 600;
+
     public function __construct(
         private readonly PasskeyRegistrationService $registrationService,
         private readonly PasskeyAuthenticationService $authenticationService,
@@ -46,6 +61,8 @@ class PasskeyController extends StorefrontController
         private readonly SalesChannelContextService $salesChannelContextService,
         private readonly LoggerInterface $logger,
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
+        private readonly PasskeyRelyingPartyResolver $relyingPartyResolver,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -57,14 +74,28 @@ class PasskeyController extends StorefrontController
     )]
     public function registrationOptions(SalesChannelContext $context, CustomerEntity $customer): JsonResponse
     {
-        $result = $this->registrationService->buildCreationOptions(
-            'customer',
-            $customer->getId(),
-            $customer->getEmail(),
-            trim($customer->getFirstName() . ' ' . $customer->getLastName()),
-            $this->rpId($context),
-            $this->passkeyConfig->getRpName($context->getSalesChannel()->getTranslated()['name'] ?? 'Shop'),
-        );
+        if (!$this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())) {
+            return $this->disabled();
+        }
+
+        if (!$this->recentlyAuthenticated($customer)) {
+            return new JsonResponse([
+                'error' => 'reauthentication_required',
+                'reauthUrl' => $this->generateUrl('frontend.sw6oidc.reauth'),
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        try {
+            $result = $this->registrationService->buildCreationOptions(
+                'customer',
+                $customer->getId(),
+                $customer->getEmail(),
+                trim($customer->getFirstName() . ' ' . $customer->getLastName()),
+                $this->relyingPartyResolver->forSalesChannel($context),
+            );
+        } catch (\Throwable $exception) {
+            return PublicError::response($this->logger, 'sw6oidc: passkey registration could not start.', $exception, 'passkey_unavailable', Response::HTTP_BAD_REQUEST);
+        }
 
         return new JsonResponse(['sessionId' => $result['nonce'], 'options' => json_decode($result['optionsJson'], true)]);
     }
@@ -75,22 +106,38 @@ class PasskeyController extends StorefrontController
         defaults: ['XmlHttpRequest' => true, '_loginRequired' => true],
         methods: ['POST'],
     )]
-    public function registrationVerify(Request $request): JsonResponse
+    public function registrationVerify(Request $request, SalesChannelContext $context, CustomerEntity $customer): JsonResponse
     {
+        if (!$this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())) {
+            return $this->disabled();
+        }
+
+        $nickname = $request->request->get('nickname') !== null ? mb_substr((string) $request->request->get('nickname'), 0, 255) : null;
+
         try {
             $this->registrationService->verifyAndPersist(
                 (string) $request->request->get('sessionId'),
                 (string) $request->request->get('credential'),
                 $request->getHost(),
-                $request->request->get('nickname') !== null ? (string) $request->request->get('nickname') : null,
+                $nickname,
+                'customer',
+                $customer->getId(),
             );
-
-            return new JsonResponse(['status' => true]);
         } catch (\Throwable $exception) {
-            $this->logger->warning('sw6oidc: passkey registration failed.', ['exception' => $exception->getMessage()]);
-
-            return new JsonResponse(['status' => false, 'message' => $exception->getMessage()], 400);
+            return PublicError::response($this->logger, 'sw6oidc: passkey registration failed.', $exception, 'passkey_registration_failed', Response::HTTP_BAD_REQUEST);
         }
+
+        $this->eventDispatcher->dispatch(new PasskeyRegisteredEvent(
+            'customer',
+            $customer->getId(),
+            $customer->getEmail(),
+            trim($customer->getFirstName() . ' ' . $customer->getLastName()),
+            $nickname,
+            $context->getSalesChannelId(),
+            $context->getContext(),
+        ));
+
+        return new JsonResponse(['status' => true]);
     }
 
     #[Route(
@@ -101,9 +148,17 @@ class PasskeyController extends StorefrontController
     )]
     public function loginOptions(SalesChannelContext $context): JsonResponse
     {
-        // Empty allowCredentials: usernameless/discoverable login, the browser
-        // resolves the matching passkey itself.
-        $result = $this->authenticationService->buildRequestOptions([], $this->rpId($context));
+        if (!$this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())) {
+            return $this->disabled();
+        }
+
+        try {
+            // Empty allowCredentials: usernameless/discoverable login, the
+            // browser resolves the matching passkey itself.
+            $result = $this->authenticationService->buildRequestOptions([], $this->relyingPartyResolver->forSalesChannel($context));
+        } catch (\Throwable $exception) {
+            return PublicError::response($this->logger, 'sw6oidc: passkey login could not start.', $exception, 'passkey_unavailable', Response::HTTP_BAD_REQUEST);
+        }
 
         return new JsonResponse(['sessionId' => $result['nonce'], 'options' => json_decode($result['optionsJson'], true)]);
     }
@@ -116,6 +171,10 @@ class PasskeyController extends StorefrontController
     )]
     public function loginVerify(Request $request, SalesChannelContext $context): JsonResponse
     {
+        if (!$this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())) {
+            return $this->disabled();
+        }
+
         try {
             $resolved = $this->authenticationService->verifyAssertion(
                 (string) $request->request->get('sessionId'),
@@ -137,45 +196,46 @@ class PasskeyController extends StorefrontController
             }
 
             $tokenResponse = $this->loginRoute->loginByCustomerId($customer->getId(), $context);
-
-            $newContext = $this->salesChannelContextService->get(new SalesChannelContextServiceParameters(
-                $context->getSalesChannelId(),
-                $tokenResponse->getToken(),
-                $context->getLanguageIdChain()[0] ?? $context->getLanguageId(),
-                $context->getCurrencyId(),
-                $context->getDomainId(),
-                $context->getContext(),
-            ));
-
-            $request->attributes->set(PlatformRequest::ATTRIBUTE_SALES_CHANNEL_CONTEXT_OBJECT, $newContext);
-
-            $this->activityRecorder->recordLogin(
-                Sw6OidcSession::USER_TYPE_CUSTOMER,
-                $customer->getId(),
-                Sw6OidcSessionActivityDefinition::LOGIN_METHOD_PASSKEY,
-                $tokenResponse->getToken(),
-                $request,
-            );
-
-            // Remembered for the lifetime of this browser session so
-            // AccountPasskeyController::delete() can tell "the customer just
-            // deleted the exact passkey that's authenticating them right
-            // now" from "deleted some other, unrelated passkey of theirs" -
-            // only the former should force an immediate logout.
-            $request->getSession()->set(self::SESSION_KEY_LOGIN_CREDENTIAL_ID, $resolved['credentialId']);
-
-            return new JsonResponse(['status' => true]);
         } catch (\Throwable $exception) {
-            $this->logger->warning('sw6oidc: passkey login failed.', ['exception' => $exception->getMessage()]);
-
-            return new JsonResponse(['status' => false, 'message' => $exception->getMessage()], 401);
+            return PublicError::response($this->logger, 'sw6oidc: passkey login failed.', $exception, 'passkey_login_failed', Response::HTTP_UNAUTHORIZED);
         }
+
+        $newContext = $this->salesChannelContextService->get(new SalesChannelContextServiceParameters(
+            $context->getSalesChannelId(),
+            $tokenResponse->getToken(),
+            $context->getLanguageIdChain()[0] ?? $context->getLanguageId(),
+            $context->getCurrencyId(),
+            $context->getDomainId(),
+            $context->getContext(),
+        ));
+
+        $request->attributes->set(PlatformRequest::ATTRIBUTE_SALES_CHANNEL_CONTEXT_OBJECT, $newContext);
+
+        $this->activityRecorder->recordLogin(
+            Sw6OidcSession::USER_TYPE_CUSTOMER,
+            $customer->getId(),
+            Sw6OidcSessionActivityDefinition::LOGIN_METHOD_PASSKEY,
+            $tokenResponse->getToken(),
+            $request,
+        );
+
+        // Remembered for the lifetime of this browser session so
+        // AccountPasskeyController::delete() can tell "deleted the passkey
+        // authenticating this session" from "deleted another passkey".
+        $request->getSession()->set(self::SESSION_KEY_LOGIN_CREDENTIAL_ID, $resolved['credentialId']);
+
+        return new JsonResponse(['status' => true]);
     }
 
-    private function rpId(SalesChannelContext $context): string
+    private function recentlyAuthenticated(CustomerEntity $customer): bool
     {
-        $host = parse_url($context->getSalesChannel()->getDomains()?->first()?->getUrl() ?? '', PHP_URL_HOST) ?: '';
+        $lastLogin = $customer->getLastLogin();
 
-        return $this->passkeyConfig->getRpId($host);
+        return $lastLogin instanceof \DateTimeInterface && $lastLogin->getTimestamp() >= time() - self::REAUTH_WINDOW_SECONDS;
+    }
+
+    private function disabled(): JsonResponse
+    {
+        return new JsonResponse(['error' => 'passkeys_disabled'], Response::HTTP_NOT_FOUND);
     }
 }

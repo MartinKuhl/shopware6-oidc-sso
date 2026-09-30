@@ -27,7 +27,12 @@ final class InMemoryPasskeyCredentialStore
      */
     public function add(array $row): void
     {
-        $this->rows[(string) $row['id']] = $row + ['signCount' => 0, 'nickname' => null];
+        // Rows written before the hash column existed get it like the migration backfills it.
+        $this->rows[(string) $row['id']] = $row + [
+            'signCount' => 0,
+            'nickname' => null,
+            'credentialIdHash' => hash('sha256', (string) $row['credentialId']),
+        ];
     }
 
     public function wire(EntityRepository&MockObject $mock): EntityRepository

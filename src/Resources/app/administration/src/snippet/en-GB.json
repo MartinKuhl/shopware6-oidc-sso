@@ -315,7 +315,12 @@
             "unlinkConfirmAdmin": "Are you sure you want to unlink this admin user from their OIDC provider? They will be able to link to a different provider on next SSO login.",
             "unlinkConfirmCustomer": "Are you sure you want to unlink this customer from their OIDC provider? They will be able to link to a different provider on next SSO login.",
             "unlinkSuccess": "The account has been unlinked from its OIDC provider.",
-            "unlinkError": "The account could not be unlinked from its OIDC provider."
+            "unlinkError": "The account could not be unlinked from its OIDC provider.",
+            "connectIntro": "Connect your account to single sign-on to log in through your identity provider.",
+            "connectButton": "Connect {name}",
+            "connectSuccess": "Single sign-on has been connected to your account.",
+            "connectError": "Single sign-on could not be connected. Please try again.",
+            "connectVerificationRequired": "Please confirm it's you before connecting single sign-on."
         },
         "passkeySettings": {
             "moduleTitle": "Passkey Settings",
@@ -337,7 +342,9 @@
                 "columnOwner": "Owner",
                 "columnNickname": "Nickname",
                 "columnCreatedAt": "Registered at"
-            }
+            },
+            "disabledBadge": "Disabled (possible clone)",
+            "loadError": "The passkeys could not be loaded."
         },
         "sessions": {
             "moduleTitle": "OIDC & Passkey sessions",
@@ -374,6 +381,30 @@
                 "backchannel": "IdP (back-channel)",
                 "frontchannel": "IdP (front-channel)",
                 "forced": "Forced by an administrator"
+            }
+        },
+        "stepUp": {
+            "hint": "Or confirm it's you with:",
+            "sso": "Single sign-on",
+            "passkey": "Passkey",
+            "error": "The confirmation failed or was cancelled. Please try again."
+        }
+    },
+    "sw-login": {
+        "sw6oidc": {
+            "login": {
+                "ssoButton": "Login with SSO",
+                "ssoButtonWithProvider": "Login with {name}",
+                "error": "Single sign-on login failed. Please try again or log in with your username and password.",
+                "errorRoleMissing": "Your account could not be created automatically because no administrator role could be assigned. Please contact your administrator.",
+                "errorAutoCreateDisabled": "Automatic account creation is disabled for this login method. Please contact your administrator.",
+                "passkeyButton": "Login with Passkey",
+                "passkeyError": "Passkey login failed. Please try again or log in with your username and password.",
+                "passwordLoginDisabled": "Password login is disabled. Please sign in with single sign-on or a passkey.",
+                "errorAccessDenied": "Access denied: your account does not meet the requirements for signing in to the Administration.",
+                "errorLinkRequired": "An account with this email address already exists. Log in with your password and connect single sign-on in your profile.",
+                "errorEmailNotVerified": "Your identity provider has not verified your email address.",
+                "errorProviderMismatch": "This account is connected to a different single sign-on identity."
             }
         }
     }

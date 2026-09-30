@@ -13,6 +13,7 @@ use League\OAuth2\Server\RequestRefreshTokenEvent;
 use League\OAuth2\Server\ResponseTypes\ResponseTypeInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Shopware\Core\Framework\Api\OAuth\ScopeRepository;
+use Shopware\Core\Framework\Api\OAuth\Scope\UserVerifiedScope;
 use Shopware\Core\Framework\Api\OAuth\User\User as ShopwareOAuthUser;
 use Shopware\Core\Framework\Uuid\Uuid;
 
@@ -36,6 +37,17 @@ class AdminOidcGrant extends AbstractGrant
     public const GRANT_IDENTIFIER = 'sw6oidc_admin';
     public const REQUEST_ATTRIBUTE_USER_ID = 'sw6oidc_user_id';
 
+    /**
+     * Set (true) only by StepUpService after a fresh re-authentication:
+     * the token then carries `user-verified`, lives at most five minutes and
+     * comes without a refresh token. Any other caller never gets
+     * `user-verified`, whatever scope the client asks for (N-M17).
+     */
+    public const REQUEST_ATTRIBUTE_STEP_UP = 'sw6oidc_step_up';
+
+    private const STEP_UP_SCOPES = 'write user-verified';
+    private const STEP_UP_MAX_TTL = 'PT5M';
+
     public function __construct(
         RefreshTokenRepositoryInterface $refreshTokenRepository,
         private readonly Connection $connection,
@@ -58,8 +70,16 @@ class AdminOidcGrant extends AbstractGrant
         \DateInterval $accessTokenTTL,
     ): ResponseTypeInterface {
         $client = $this->validateClient($request);
-        $scopes = $this->validateScopes($this->getRequestParameter('scope', $request, $this->defaultScope));
         $user = $this->validateUser($request);
+        $isStepUp = $request->getAttribute(self::REQUEST_ATTRIBUTE_STEP_UP) === true;
+
+        if ($isStepUp) {
+            $scopes = $this->validateScopes(self::STEP_UP_SCOPES);
+            $accessTokenTTL = $this->shorterOf($accessTokenTTL, new \DateInterval(self::STEP_UP_MAX_TTL));
+        } else {
+            $requested = $this->getRequestParameter('scope', $request, $this->defaultScope);
+            $scopes = $this->validateScopes(\is_string($requested) ? $this->withoutUserVerified($requested) : $requested);
+        }
 
         // Shopware's ScopeRepository::finalizeScopes() only attaches `write`
         // for grant-type strings it recognizes (password, client_credentials
@@ -77,6 +97,10 @@ class AdminOidcGrant extends AbstractGrant
         $this->getEmitter()->emit(new RequestAccessTokenEvent(RequestEvent::ACCESS_TOKEN_ISSUED, $request, $accessToken));
         $responseType->setAccessToken($accessToken);
 
+        if ($isStepUp) {
+            return $responseType;
+        }
+
         $refreshToken = $this->issueRefreshToken($accessToken);
 
         if ($refreshToken instanceof \League\OAuth2\Server\Entities\RefreshTokenEntityInterface) {
@@ -90,6 +114,21 @@ class AdminOidcGrant extends AbstractGrant
     public function getIdentifier(): string
     {
         return self::GRANT_IDENTIFIER;
+    }
+
+    private function withoutUserVerified(string $scopes): string
+    {
+        return implode(' ', array_filter(
+            preg_split('/\s+/', trim($scopes)) ?: [],
+            static fn (string $scope): bool => $scope !== '' && $scope !== UserVerifiedScope::IDENTIFIER,
+        ));
+    }
+
+    private function shorterOf(\DateInterval $a, \DateInterval $b): \DateInterval
+    {
+        $now = new \DateTimeImmutable();
+
+        return $now->add($a) <= $now->add($b) ? $a : $b;
     }
 
     /**

@@ -26,14 +26,16 @@
             "emptyState": "You haven't registered any passkeys yet.",
             "noSupport": "This browser does not support passkeys (WebAuthn).",
             "nicknamePrompt": "Nickname for this passkey (optional)",
-            "registerError": "The passkey could not be registered. Please try again."
+            "registerError": "The passkey could not be registered. Please try again.",
+            "reauthRequired": "Please confirm it's you by logging in again."
         },
         "account": {
             "ssoTitle": "Single sign-on",
             "ssoIntro": "Connect your account to a single sign-on provider to log in without a password.",
             "ssoConnect": "Connect %name%",
             "ssoConnected": "Your account is connected to %name%.",
-            "linkSuccess": "Single sign-on has been connected to your account."
+            "linkSuccess": "Single sign-on has been connected to your account.",
+            "reauthRequired": "For your security, please log in again to add a passkey."
         }
     }
 }

@@ -32,6 +32,16 @@ export default class Sw6OidcPasskeyRegistrationPlugin extends Plugin {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             });
 
+            if (optionsResponse.status === 403) {
+                // Adding a passkey needs a recent login: re-authenticate first.
+                const { reauthUrl } = await optionsResponse.json();
+
+                if (typeof reauthUrl === 'string' && reauthUrl.startsWith('/')) {
+                    window.location.assign(reauthUrl);
+                    return;
+                }
+            }
+
             if (!optionsResponse.ok) {
                 throw new Error(`Registration options request failed with status ${optionsResponse.status}`);
             }

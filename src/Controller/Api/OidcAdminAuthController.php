@@ -2,14 +2,14 @@
 
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
-use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonce;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
-use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant;
+use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer;
+use MartinKuhl\Sw6Oidc\Service\AdminAuth\StepUpService;
 use MartinKuhl\Sw6Oidc\Service\Jwt\JwtPayloadReader;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext;
@@ -32,9 +32,9 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\UserVerifiedScope;
-use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
+use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
@@ -43,8 +43,6 @@ use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\PlatformRequest;
-use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
-use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
@@ -66,6 +64,9 @@ class OidcAdminAuthController extends AbstractController
     /** Token-response field / logout parameter carrying the admin's login-session handle. */
     public const LOGIN_SESSION_FIELD = 'sw6oidc_login_session';
 
+    /** Round-trip id of an SSO re-login started from the inactivity modal. */
+    public const RETURN_ID_PARAMETER = 'sw6oidc_return';
+
     /** How long an admin OIDC login may take from IdP callback to nonce exchange. */
     private const PENDING_SESSION_TTL_SECONDS = 600;
 
@@ -75,13 +76,11 @@ class OidcAdminAuthController extends AbstractController
         private readonly OidcCallbackProcessor $callbackProcessor,
         private readonly AdminProvisioningService $adminProvisioningService,
         private readonly AdminLoginNonceService $loginNonceService,
-        private readonly AuthorizationServer $adminAuthorizationServer,
-        private readonly PsrHttpFactory $psrHttpFactory,
+        private readonly AdminTokenIssuer $tokenIssuer,
         private readonly string $administrationBaseUrl,
         private readonly LoggerInterface $logger,
         private readonly PasskeyConfig $passkeyConfig,
         private readonly PasskeyCredentialRepository $passkeyCredentialRepository,
-        private readonly UserProviderBindingService $bindingService,
         private readonly PasswordLoginPolicy $passwordLoginPolicy,
         private readonly LogoutContextStore $logoutContextStore,
         private readonly RpInitiatedLogoutService $rpInitiatedLogoutService,
@@ -90,6 +89,7 @@ class OidcAdminAuthController extends AbstractController
         private readonly Sw6OidcRateLimiter $rateLimiter,
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
         private readonly IdentityResolver $identityResolver,
+        private readonly StepUpService $stepUpService,
     ) {
     }
 
@@ -170,9 +170,12 @@ class OidcAdminAuthController extends AbstractController
         }
 
         $redirectUri = $this->generateUrl('api.action.sw6oidc.admin.callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
-        $authorizeUrl = $this->requestBuilder->build($provider, 'admin', '', $redirectUri);
+        // The inactivity modal's round-trip id (service/sso-return-route.js),
+        // echoed back after the callback; nothing else is carried.
+        $returnId = (string) $request->query->get(self::RETURN_ID_PARAMETER);
+        $relayState = preg_match('/^[a-f0-9]{32}$/', $returnId) === 1 ? $returnId : '';
 
-        return new RedirectResponse($authorizeUrl);
+        return new RedirectResponse($this->requestBuilder->build($provider, 'admin', $relayState, $redirectUri));
     }
 
     #[Route(
@@ -180,7 +183,7 @@ class OidcAdminAuthController extends AbstractController
         name: 'api.action.sw6oidc.admin.callback',
         methods: ['GET'],
     )]
-    public function callback(Request $request): RedirectResponse
+    public function callback(Request $request): Response
     {
         $context = Context::createDefaultContext();
 
@@ -214,6 +217,10 @@ class OidcAdminAuthController extends AbstractController
                 return $this->completeLink($result, $context);
             }
 
+            if ($result->flow->purpose === AuthorizationFlowContext::PURPOSE_STEP_UP) {
+                return $this->completeStepUp($result, $context);
+            }
+
             if ($result->flow->purpose !== AuthorizationFlowContext::PURPOSE_LOGIN) {
                 throw new InvalidStateException(sprintf('Unsupported flow purpose "%s" on the admin callback.', $result->flow->purpose));
             }
@@ -244,7 +251,13 @@ class OidcAdminAuthController extends AbstractController
                 'userId' => $adminUser->getId(),
             ]);
 
-            return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_nonce' => $nonce]));
+            $query = ['sw6oidc_nonce' => $nonce];
+
+            if (preg_match('/^[a-f0-9]{32}$/', $result->flow->relayState) === 1) {
+                $query[self::RETURN_ID_PARAMETER] = $result->flow->relayState;
+            }
+
+            return new RedirectResponse($this->administrationLoginUrl($query));
         } catch (AccessControlDeniedException $exception) {
             $query = ['sw6oidc_error' => 'access_denied'];
             $message = $exception->getDisplayMessage();
@@ -374,28 +387,14 @@ class OidcAdminAuthController extends AbstractController
             'userId' => $userId,
         ]);
 
-        $request->attributes->set(AdminOidcGrant::REQUEST_ATTRIBUTE_USER_ID, $userId);
-        $request->request->set('grant_type', AdminOidcGrant::GRANT_IDENTIFIER);
-
-        $psrRequest = $this->psrHttpFactory->createRequest($request);
-        $psrResponse = $this->psrHttpFactory->createResponse(new Response());
-
         try {
-            $tokenResponse = $this->adminAuthorizationServer->respondToAccessTokenRequest($psrRequest, $psrResponse);
-        } catch (\League\OAuth2\Server\Exception\OAuthServerException $exception) {
-            $this->logger->warning('sw6oidc: admin token exchange failed.', [
-                'userId' => $userId,
-                'exceptionClass' => $exception::class,
-                'exception' => $exception->getMessage(),
-                'previousException' => $exception->getPrevious()?->getMessage(),
-            ]);
-
-            return $this->json(['error' => 'invalid_grant', 'error_description' => $exception->getMessage()], 400);
+            $response = $this->tokenIssuer->issue($request, $userId);
+        } catch (\Throwable $exception) {
+            return PublicError::response($this->logger, 'sw6oidc: admin token exchange failed.', $exception, 'invalid_grant', Response::HTTP_BAD_REQUEST, ['userId' => $userId]);
         }
 
         $this->logger->debug('sw6oidc: admin token exchange succeeded.', ['userId' => $userId]);
 
-        $response = (new HttpFoundationFactory())->createResponse($tokenResponse);
         $jti = $this->accessTokenJti($response);
         $registrySession = null;
 
@@ -423,78 +422,6 @@ class OidcAdminAuthController extends AbstractController
         }
 
         return $response;
-    }
-
-    /**
-     * Mints a fresh access/refresh token pair carrying the `user-verified`
-     * OAuth scope for the *currently authenticated* Administration user,
-     * without asking for a password — Shopware's own "confirm your password"
-     * modal (shown on every profile save, and independently re-enforced
-     * server-side for any user with `user:editor` rights, which includes
-     * every superadmin) has no way to succeed for an account this plugin
-     * provisioned, since its password is a random, permanently unknown
-     * value (see AdminProvisioningService::create()). The `sw-profile`
-     * override calls this first and only falls back to the real password
-     * modal if it 403s.
-     *
-     * Requires an already-valid bearer token (`auth_required: true`,
-     * overriding the class-level default) — the acting user id comes from
-     * that token's own resolved AdminApiSource, never from client input —
-     * and additionally requires the account to actually be OIDC- or
-     * Passkey-provisioned (bound in sw6oidc_user_provider, or owning at
-     * least one sw6oidc_passkey_credential row), so a normal local-password
-     * admin can't use this to skip their own password reconfirmation.
-     *
-     * The minted token is otherwise identical to a normal login token (same
-     * AdminOidcGrant, same 10-minute TTL, same write/admin scope
-     * resolution) — only `user-verified` is new. See AdminOidcGrant's own
-     * docblock for why passing that trust through this bridge is
-     * appropriate: this grant already fully vouches for the user via a
-     * pre-verified OIDC/Passkey login, the same trust level Shopware's own
-     * password check provides.
-     */
-    #[Route(
-        path: '/api/sw6oidc/admin/verify-session',
-        name: 'api.action.sw6oidc.admin.verify-session',
-        defaults: ['auth_required' => true],
-        methods: ['POST'],
-    )]
-    public function verifySession(Request $request, Context $context): Response
-    {
-        $source = $context->getSource();
-        $userId = $source instanceof AdminApiSource ? $source->getUserId() : null;
-
-        if ($userId === null) {
-            return $this->json(['error' => 'invalid_request', 'error_description' => 'No authenticated Administration user.'], 401);
-        }
-
-        if (!$this->isSsoProvisioned($userId, $context)) {
-            return $this->json(['error' => 'invalid_request', 'error_description' => 'This account was not authenticated via OIDC/Passkey SSO.'], 403);
-        }
-
-        $request->attributes->set(AdminOidcGrant::REQUEST_ATTRIBUTE_USER_ID, $userId);
-        $request->request->set('grant_type', AdminOidcGrant::GRANT_IDENTIFIER);
-        $request->request->set('client_id', 'administration');
-        $request->request->set('scope', 'user-verified');
-
-        $psrRequest = $this->psrHttpFactory->createRequest($request);
-        $psrResponse = $this->psrHttpFactory->createResponse(new Response());
-
-        try {
-            $tokenResponse = $this->adminAuthorizationServer->respondToAccessTokenRequest($psrRequest, $psrResponse);
-        } catch (\League\OAuth2\Server\Exception\OAuthServerException $exception) {
-            $this->logger->warning('sw6oidc: admin session verification failed.', [
-                'userId' => $userId,
-                'exceptionClass' => $exception::class,
-                'exception' => $exception->getMessage(),
-            ]);
-
-            return $this->json(['error' => 'invalid_grant', 'error_description' => $exception->getMessage()], 400);
-        }
-
-        $this->logger->debug('sw6oidc: admin session verification succeeded, skipping password reconfirmation.', ['userId' => $userId]);
-
-        return (new HttpFoundationFactory())->createResponse($tokenResponse);
     }
 
     /**
@@ -633,21 +560,49 @@ class OidcAdminAuthController extends AbstractController
         return $jti;
     }
 
-    private function isSsoProvisioned(string $userId, Context $context): bool
-    {
-        if ($this->bindingService->getBoundProviderId(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $userId, $context) !== null) {
-            return true;
-        }
-
-        return $this->passkeyCredentialRepository->findAllForOwner('admin', $userId, $context) !== [];
-    }
-
     /**
      * @param array<string, string> $query
      */
     private function administrationLoginUrl(array $query): string
     {
         return rtrim($this->administrationBaseUrl, '/') . '/#/login?' . http_build_query($query);
+    }
+
+    /**
+     * OIDC step-up round trip, run in a popup the Administration opened: hands
+     * the one-time step-up nonce (or the failure) back to the opener via
+     * postMessage, restricted to the Administration's own origin, and closes.
+     */
+    private function completeStepUp(OidcCallbackResult $result, Context $context): Response
+    {
+        try {
+            $message = ['type' => 'sw6oidc-step-up', 'nonce' => $this->stepUpService->completeOidc($result, $context)];
+        } catch (\Throwable $exception) {
+            $this->logger->warning('sw6oidc: OIDC step-up refused.', [
+                'exceptionClass' => $exception::class,
+                'exception' => $exception->getMessage(),
+                'userId' => $result->flow->expectedUserId,
+            ]);
+            $message = ['type' => 'sw6oidc-step-up', 'error' => 'step_up_failed'];
+        }
+
+        $parts = parse_url($this->administrationBaseUrl);
+        $origin = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '') . (isset($parts['port']) ? ':' . $parts['port'] : '');
+        $scriptNonce = base64_encode(random_bytes(16));
+        $payload = json_encode($message, JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        $targetOrigin = json_encode($origin, JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+
+        $response = new Response(
+            '<!doctype html><html><head><meta charset="utf-8"><title>Single sign-on</title></head><body>'
+            . '<script nonce="' . $scriptNonce . '">'
+            . 'if (window.opener) { window.opener.postMessage(' . $payload . ', ' . $targetOrigin . '); }'
+            . 'window.close();'
+            . '</script></body></html>',
+        );
+        $response->headers->set('Content-Security-Policy', "default-src 'none'; script-src 'nonce-" . $scriptNonce . "'");
+        $response->headers->set('Cache-Control', 'no-store');
+
+        return $response;
     }
 
     /**

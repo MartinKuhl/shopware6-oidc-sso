@@ -6,6 +6,7 @@ use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyCeremonyException;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
+use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingParty;
 use MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -83,7 +84,7 @@ final class PasskeyCeremonyTest extends TestCase
     {
         $this->register();
 
-        $result = $this->authentication->buildRequestOptions([], 'shop.example');
+        $result = $this->authentication->buildRequestOptions([], $this->rp());
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
         $assertion = $this->authenticator->assert($options, hash('sha256', 'admin:' . $this->userId, true));
 
@@ -100,7 +101,7 @@ final class PasskeyCeremonyTest extends TestCase
         $handle = hash('sha256', 'admin:' . $this->userId, true);
         $allow = array_map(static fn ($record) => $record->getPublicKeyCredentialDescriptor(), $this->credentials->findAllForUserHandle($handle));
 
-        $result = $this->authentication->buildRequestOptions($allow, 'shop.example');
+        $result = $this->authentication->buildRequestOptions($allow, $this->rp());
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
         self::assertCount(1, $options['allowCredentials']);
 
@@ -112,7 +113,7 @@ final class PasskeyCeremonyTest extends TestCase
     public function testLoginNonceIsSingleUse(): void
     {
         $this->register();
-        $result = $this->authentication->buildRequestOptions([], 'shop.example');
+        $result = $this->authentication->buildRequestOptions([], $this->rp());
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
         $handle = hash('sha256', 'admin:' . $this->userId, true);
 
@@ -124,7 +125,7 @@ final class PasskeyCeremonyTest extends TestCase
 
     public function testUnregisteredCredentialIsRejected(): void
     {
-        $result = $this->authentication->buildRequestOptions([], 'shop.example');
+        $result = $this->authentication->buildRequestOptions([], $this->rp());
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
 
         $this->expectException(PasskeyCeremonyException::class);
@@ -135,7 +136,7 @@ final class PasskeyCeremonyTest extends TestCase
     public function testWrongHostIsRejected(): void
     {
         $this->register();
-        $result = $this->authentication->buildRequestOptions([], 'shop.example');
+        $result = $this->authentication->buildRequestOptions([], $this->rp());
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
         $evil = new SoftwareAuthenticator('https://evil.example');
 
@@ -146,7 +147,84 @@ final class PasskeyCeremonyTest extends TestCase
     public function testUnknownRegistrationNonceIsRejected(): void
     {
         $this->expectException(PasskeyCeremonyException::class);
-        $this->registration->verifyAndPersist('nope', '{}', 'shop.example', null);
+        $this->registration->verifyAndPersist('nope', '{}', 'shop.example', null, 'admin', $this->userId);
+    }
+
+    public function testRequestOptionsRequireUserVerification(): void
+    {
+        $options = json_decode($this->authentication->buildRequestOptions([], $this->rp())['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
+
+        self::assertSame('required', $options['userVerification']);
+        self::assertSame('required', $this->creationOptions()['authenticatorSelection']['userVerification']);
+    }
+
+    public function testAssertionWithoutUserVerificationIsRejected(): void
+    {
+        $this->register();
+        // The same key, used without PIN/biometrics: possession alone is not enough (H6).
+        $this->authenticator->setUserVerified(false);
+        $result = $this->authentication->buildRequestOptions([], $this->rp());
+        $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
+
+        $this->expectException(PasskeyCeremonyException::class);
+        $this->expectExceptionMessage('User authentication required');
+        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, hash('sha256', 'admin:' . $this->userId, true)), 'shop.example');
+    }
+
+    public function testAssertionRelayedThroughASubdomainIsRejected(): void
+    {
+        $this->register();
+        // Same credential and RP ID, but the ceremony ran on another host of the domain (N-M1).
+        $relay = new SoftwareAuthenticator('https://blog.shop.example', 'shop.example');
+        $result = $this->authentication->buildRequestOptions([], $this->rp());
+        $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
+
+        $this->expectException(PasskeyCeremonyException::class);
+        $this->authentication->verifyAssertion($result['nonce'], $relay->assert($options, hash('sha256', 'admin:' . $this->userId, true)), 'blog.shop.example');
+    }
+
+    public function testRegistrationCannotBeCompletedByAnotherAccount(): void
+    {
+        $options = $this->creationOptions($nonce);
+
+        try {
+            $this->registration->verifyAndPersist((string) $nonce, $this->authenticator->register($options), 'shop.example', null, 'admin', Uuid::randomHex());
+            self::fail('Expected PasskeyCeremonyException');
+        } catch (PasskeyCeremonyException) {
+        }
+
+        self::assertSame([], $this->store->rows, 'nothing was planted on the victim account (N-M2)');
+    }
+
+    public function testCounterGoingBackwardsDisablesTheCredential(): void
+    {
+        $this->register();
+        $handle = hash('sha256', 'admin:' . $this->userId, true);
+
+        $first = $this->authentication->buildRequestOptions([], $this->rp());
+        $this->authentication->verifyAssertion($first['nonce'], $this->authenticator->assert(json_decode($first['optionsJson'], true, 512, \JSON_THROW_ON_ERROR), $handle), 'shop.example');
+        $this->authenticator->rewindCounter(0);
+
+        $second = $this->authentication->buildRequestOptions([], $this->rp());
+
+        try {
+            $this->authentication->verifyAssertion($second['nonce'], $this->authenticator->assert(json_decode($second['optionsJson'], true, 512, \JSON_THROW_ON_ERROR), $handle), 'shop.example');
+            self::fail('Expected PasskeyCeremonyException');
+        } catch (PasskeyCeremonyException) {
+        }
+
+        self::assertNotNull(array_values($this->store->rows)[0]['disabledAt'] ?? null, 'the possible clone was disabled');
+
+        $third = $this->authentication->buildRequestOptions([], $this->rp());
+        $this->expectException(PasskeyCeremonyException::class);
+        $this->expectExceptionMessage('disabled');
+        $this->authenticator->rewindCounter(10);
+        $this->authentication->verifyAssertion($third['nonce'], $this->authenticator->assert(json_decode($third['optionsJson'], true, 512, \JSON_THROW_ON_ERROR), $handle), 'shop.example');
+    }
+
+    private function rp(): PasskeyRelyingParty
+    {
+        return new PasskeyRelyingParty('shop.example', 'Shop', ['https://shop.example']);
     }
 
     /**
@@ -154,7 +232,7 @@ final class PasskeyCeremonyTest extends TestCase
      */
     private function creationOptions(?string &$nonce = null): array
     {
-        $result = $this->registration->buildCreationOptions('admin', $this->userId, 'admin', 'Admin', 'shop.example', 'Shop');
+        $result = $this->registration->buildCreationOptions('admin', $this->userId, 'admin', 'Admin', $this->rp());
         $nonce = $result['nonce'];
 
         return json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
@@ -163,6 +241,6 @@ final class PasskeyCeremonyTest extends TestCase
     private function register(): void
     {
         $options = $this->creationOptions($nonce);
-        $this->registration->verifyAndPersist((string) $nonce, $this->authenticator->register($options), 'shop.example', 'My key');
+        $this->registration->verifyAndPersist((string) $nonce, $this->authenticator->register($options), 'shop.example', 'My key', 'admin', $this->userId);
     }
 }

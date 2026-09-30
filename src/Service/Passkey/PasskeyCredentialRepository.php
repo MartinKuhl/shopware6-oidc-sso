@@ -28,14 +28,38 @@ use Webauthn\CredentialRecord;
  */
 class PasskeyCredentialRepository
 {
-    private readonly Context $context;
-
     public function __construct(
         private readonly EntityRepository $passkeyCredentialRepository,
         private readonly WebauthnCeremonyFactory $ceremonyFactory,
         private readonly LoggerInterface $logger,
     ) {
-        $this->context = Context::createDefaultContext();
+    }
+
+    /**
+     * Credentials are looked up and deduplicated by the sha256 of their
+     * base64 id: the column is too wide for a unique index and its
+     * case-insensitive collation can't compare base64 reliably.
+     */
+    public static function hashCredentialId(string $base64CredentialId): string
+    {
+        return hash('sha256', $base64CredentialId);
+    }
+
+    /**
+     * Disables a credential (possible clone: its signature counter went
+     * backwards). It can no longer be used to log in; the owner has to
+     * register a new one.
+     */
+    public function disable(string $base64CredentialId): void
+    {
+        $entity = $this->findEntityByCredentialId($base64CredentialId);
+
+        if ($entity instanceof Sw6OidcPasskeyCredentialEntity && !$entity->getDisabledAt() instanceof \DateTimeInterface) {
+            $this->passkeyCredentialRepository->update([[
+                'id' => $entity->getId(),
+                'disabledAt' => new \DateTimeImmutable(),
+            ]], $this->context());
+        }
     }
 
     /**
@@ -49,20 +73,26 @@ class PasskeyCredentialRepository
     }
 
     /**
-     * @param string $userHandle raw WebAuthn user handle bytes
+     * @param string $userHandle      raw WebAuthn user handle bytes
+     * @param bool   $includeDisabled registration's excludeCredentials lists disabled keys too
+     *                                (so they aren't re-registered); logins must not offer them
      *
      * @return CredentialRecord[]
      */
-    public function findAllForUserHandle(string $userHandle): array
+    public function findAllForUserHandle(string $userHandle, bool $includeDisabled = true): array
     {
         // The library's user handle is raw bytes; stored/compared as hex since
         // a varchar column can't safely round-trip arbitrary binary data.
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('userHandle', bin2hex($userHandle)));
 
+        if (!$includeDisabled) {
+            $criteria->addFilter(new EqualsFilter('disabledAt', null));
+        }
+
         $records = [];
 
-        foreach ($this->passkeyCredentialRepository->search($criteria, $this->context)->getEntities() as $entity) {
+        foreach ($this->passkeyCredentialRepository->search($criteria, $this->context())->getEntities() as $entity) {
             \assert($entity instanceof Sw6OidcPasskeyCredentialEntity);
             $records[] = $this->toRecord($entity);
         }
@@ -92,7 +122,7 @@ class PasskeyCredentialRepository
             'id' => $existing->getId(),
             'publicKey' => $this->toJson($record),
             'signCount' => $record->counter,
-        ]], $this->context);
+        ]], $this->context());
     }
 
     public function saveNewCredentialRecord(
@@ -106,11 +136,12 @@ class PasskeyCredentialRepository
             'userType' => $userType,
             'userId' => $userId,
             'credentialId' => base64_encode($record->publicKeyCredentialId),
+            'credentialIdHash' => self::hashCredentialId(base64_encode($record->publicKeyCredentialId)),
             'publicKey' => $this->toJson($record),
             'signCount' => $record->counter,
             'userHandle' => bin2hex($record->userHandle),
             'nickname' => $nickname,
-        ]], $this->context);
+        ]], $this->context());
     }
 
     /**
@@ -178,10 +209,10 @@ class PasskeyCredentialRepository
     public function findEntityByCredentialId(string $base64CredentialId): ?Sw6OidcPasskeyCredentialEntity
     {
         $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('credentialId', $base64CredentialId));
+        $criteria->addFilter(new EqualsFilter('credentialIdHash', self::hashCredentialId($base64CredentialId)));
         $criteria->setLimit(1);
 
-        $entity = $this->passkeyCredentialRepository->search($criteria, $this->context)->first();
+        $entity = $this->passkeyCredentialRepository->search($criteria, $this->context())->first();
 
         return $entity instanceof Sw6OidcPasskeyCredentialEntity ? $entity : null;
     }
@@ -194,5 +225,10 @@ class PasskeyCredentialRepository
     public function toJson(CredentialRecord $record): string
     {
         return $this->ceremonyFactory->serializer()->serialize($record, 'json');
+    }
+
+    private function context(): Context
+    {
+        return Context::createDefaultContext();
     }
 }

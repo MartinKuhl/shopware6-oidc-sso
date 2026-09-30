@@ -46,6 +46,15 @@ final class AdminOidcGrantTest extends TestCase
         $this->validate('not-a-uuid', '1', expectQuery: false);
     }
 
+    public function testUserVerifiedIsStrippedFromRequestedScopes(): void
+    {
+        $grant = new AdminOidcGrant($this->createStub(RefreshTokenRepositoryInterface::class), $this->createStub(Connection::class));
+        $method = new \ReflectionMethod($grant, 'withoutUserVerified');
+
+        self::assertSame('write admin', $method->invoke($grant, 'write  user-verified admin'));
+        self::assertSame('', $method->invoke($grant, 'user-verified'));
+    }
+
     private function validate(string $userId, string|false $active, bool $expectQuery = true): \League\OAuth2\Server\Entities\UserEntityInterface
     {
         $connection = $this->createMock(Connection::class);

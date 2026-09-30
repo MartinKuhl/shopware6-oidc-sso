@@ -315,7 +315,12 @@
             "unlinkConfirmAdmin": "Soll die Verknüpfung dieses Admin-Benutzers mit seinem OIDC-Anbieter wirklich gelöst werden? Beim nächsten SSO-Login kann er mit einem anderen Anbieter verknüpft werden.",
             "unlinkConfirmCustomer": "Soll die Verknüpfung dieses Kunden mit seinem OIDC-Anbieter wirklich gelöst werden? Beim nächsten SSO-Login kann er mit einem anderen Anbieter verknüpft werden.",
             "unlinkSuccess": "Die Verknüpfung mit dem OIDC-Anbieter wurde gelöst.",
-            "unlinkError": "Die Verknüpfung mit dem OIDC-Anbieter konnte nicht gelöst werden."
+            "unlinkError": "Die Verknüpfung mit dem OIDC-Anbieter konnte nicht gelöst werden.",
+            "connectIntro": "Verbinden Sie Ihr Konto mit Single Sign-on, um sich über Ihren Identitätsanbieter anzumelden.",
+            "connectButton": "Mit {name} verbinden",
+            "connectSuccess": "Single Sign-on wurde mit Ihrem Konto verbunden.",
+            "connectError": "Single Sign-on konnte nicht verbunden werden. Bitte versuchen Sie es erneut.",
+            "connectVerificationRequired": "Bitte bestätigen Sie Ihre Identität, bevor Sie Single Sign-on verbinden."
         },
         "passkeySettings": {
             "moduleTitle": "Passkey-Einstellungen",
@@ -337,7 +342,9 @@
                 "columnOwner": "Besitzer",
                 "columnNickname": "Bezeichnung",
                 "columnCreatedAt": "Registriert am"
-            }
+            },
+            "disabledBadge": "Deaktiviert (möglicher Klon)",
+            "loadError": "Die Passkeys konnten nicht geladen werden."
         },
         "sessions": {
             "moduleTitle": "OIDC- & Passkey-Sitzungen",
@@ -374,6 +381,30 @@
                 "backchannel": "IdP (Back-Channel)",
                 "frontchannel": "IdP (Front-Channel)",
                 "forced": "Durch Administrator erzwungen"
+            }
+        },
+        "stepUp": {
+            "hint": "Oder bestätigen Sie Ihre Identität mit:",
+            "sso": "Single Sign-on",
+            "passkey": "Passkey",
+            "error": "Die Bestätigung ist fehlgeschlagen oder wurde abgebrochen. Bitte versuchen Sie es erneut."
+        }
+    },
+    "sw-login": {
+        "sw6oidc": {
+            "login": {
+                "ssoButton": "Mit SSO anmelden",
+                "ssoButtonWithProvider": "Login mit {name}",
+                "error": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
+                "errorRoleMissing": "Ihr Konto konnte nicht automatisch angelegt werden, da keine Administratorrolle zugewiesen werden konnte. Bitte wenden Sie sich an Ihren Administrator.",
+                "errorAutoCreateDisabled": "Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.",
+                "passkeyButton": "Login mit Passkey",
+                "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
+                "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.",
+                "errorAccessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung an der Administration.",
+                "errorLinkRequired": "Es gibt bereits ein Konto mit dieser E-Mail-Adresse. Bitte melden Sie sich mit Ihrem Passwort an und verbinden Sie Single Sign-on in Ihrem Profil.",
+                "errorEmailNotVerified": "Ihr Identitätsanbieter hat Ihre E-Mail-Adresse nicht bestätigt.",
+                "errorProviderMismatch": "Dieses Konto ist mit einer anderen Single-Sign-on-Identität verbunden."
             }
         }
     }
