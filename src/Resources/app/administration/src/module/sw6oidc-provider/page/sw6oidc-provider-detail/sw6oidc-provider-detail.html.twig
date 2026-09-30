@@ -196,7 +196,12 @@
                 </sw-container>
 
                 {% block sw6oidc_provider_detail_live_test %}
-                <sw-container columns="max-content 1fr" gap="0 16px" style="align-items: center;">
+                <sw-container
+                    class="sw6oidc-live-test-actions"
+                    columns="max-content 1fr"
+                    gap="0 16px"
+                    style="align-items: center;"
+                >
                     <sw-button
                         size="small"
                         :is-loading="isRunningLiveTest"
