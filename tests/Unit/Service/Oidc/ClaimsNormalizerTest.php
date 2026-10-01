@@ -181,22 +181,4 @@ final class ClaimsNormalizerTest extends TestCase
             'Engineering' => ['orgId' => '2'],
         ]));
     }
-
-    public function testExtractEmailPrefersConfiguredAttribute(): void
-    {
-        self::assertSame('primary@example.com', $this->normalizer->extractEmail([
-            'other' => 'fallback@example.com',
-            'mail' => 'primary@example.com',
-        ], 'mail'));
-    }
-
-    public function testExtractEmailFallsBackToEmailLikeKeyThenAnyEmailValue(): void
-    {
-        self::assertSame('a@example.com', $this->normalizer->extractEmail([
-            'x' => 'b@example.com',
-            'user.email_address' => 'a@example.com',
-        ], 'email'));
-        self::assertSame('b@example.com', $this->normalizer->extractEmail(['x' => 'b@example.com'], 'email'));
-        self::assertNull($this->normalizer->extractEmail(['x' => 'no-email'], 'email'));
-    }
 }

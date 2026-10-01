@@ -18,6 +18,8 @@ use Shopware\Core\Defaults;
  */
 class DatabaseAtomicCache implements AtomicCacheInterface
 {
+    private const PURPOSE = 'sw6oidc_one_time_token.value';
+
     public function __construct(
         private readonly Connection $connection,
         private readonly Sw6OidcEncryptor $encryptor,
@@ -28,7 +30,7 @@ class DatabaseAtomicCache implements AtomicCacheInterface
     {
         $this->connection->executeStatement(
             'REPLACE INTO `sw6oidc_one_time_token` (`key_hash`, `value`, `expires_at`) VALUES (:key, :value, :expiresAt)',
-            ['key' => $this->hash($key), 'value' => $this->encryptor->encrypt($value), 'expiresAt' => $this->expiresAt($ttlSeconds)],
+            ['key' => $this->hash($key), 'value' => $this->encryptor->encrypt($value, self::PURPOSE), 'expiresAt' => $this->expiresAt($ttlSeconds)],
         );
     }
 
@@ -51,7 +53,7 @@ class DatabaseAtomicCache implements AtomicCacheInterface
             return (string) $row['expires_at'] > $this->now() ? (string) $row['value'] : null;
         });
 
-        return $value === null ? null : $this->encryptor->decryptOrNull($value);
+        return $value === null ? null : $this->encryptor->decryptOrNull($value, self::PURPOSE);
     }
 
     public function addIfAbsent(string $key, string $value, int $ttlSeconds): bool
@@ -67,7 +69,7 @@ class DatabaseAtomicCache implements AtomicCacheInterface
         try {
             $this->connection->executeStatement(
                 'INSERT INTO `sw6oidc_one_time_token` (`key_hash`, `value`, `expires_at`) VALUES (:key, :value, :expiresAt)',
-                ['key' => $keyHash, 'value' => $this->encryptor->encrypt($value), 'expiresAt' => $this->expiresAt($ttlSeconds)],
+                ['key' => $keyHash, 'value' => $this->encryptor->encrypt($value, self::PURPOSE), 'expiresAt' => $this->expiresAt($ttlSeconds)],
             );
         } catch (UniqueConstraintViolationException) {
             return false;

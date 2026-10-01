@@ -7,6 +7,7 @@ use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingColl
 use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingCollection;
 use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupEntity;
 use Shopware\Core\Framework\Api\Acl\Role\AclRoleEntity;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityIdTrait;
 
@@ -60,6 +61,7 @@ class Sw6OidcProviderEntity extends Entity
     protected bool $requireEmailVerified = true;
     protected bool $linkExistingAccounts = false;
     protected bool $frontchannelAdminLogout = false;
+    protected bool $revokeSuperadminOnSso = false;
     protected int $httpTimeout = 30;
     protected int $jwksCacheTtl = 86400;
     /** 'pass'|'fail'|'warning'|null (never tested) — set only by the live login test */
@@ -645,5 +647,26 @@ class Sw6OidcProviderEntity extends Entity
     public function setFrontchannelAdminLogout(bool $frontchannelAdminLogout): void
     {
         $this->frontchannelAdminLogout = $frontchannelAdminLogout;
+    }
+
+    public function isRevokeSuperadminOnSso(): bool
+    {
+        return $this->revokeSuperadminOnSso;
+    }
+
+    public function setRevokeSuperadminOnSso(bool $revokeSuperadminOnSso): void
+    {
+        $this->revokeSuperadminOnSso = $revokeSuperadminOnSso;
+    }
+
+    /**
+     * The decrypted client secret, or null when it is empty or could not be
+     * decrypted (hydration passes an undecryptable envelope through). Use
+     * this wherever the secret is about to be sent or exported, so
+     * ciphertext is never used as if it were the secret (N-L5).
+     */
+    public function getUsableClientSecret(): ?string
+    {
+        return $this->clientSecret === '' || Sw6OidcEncryptor::isEnvelope($this->clientSecret) ? null : $this->clientSecret;
     }
 }

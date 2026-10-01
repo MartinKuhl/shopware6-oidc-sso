@@ -10,6 +10,8 @@ use MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordSessionRevoker;
 use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
+use Psr\Log\LoggerInterface;
+use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\DeleteCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\InsertCommand;
@@ -66,6 +68,21 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     public const CODE_REDIRECT_URL_INVALID = 'SW6OIDC_REDIRECT_URL_INVALID';
     public const CODE_LOCKOUT_UNBOUND_USERS = 'SW6OIDC_LOCKOUT_UNBOUND_USERS';
     public const CODE_NO_VISIBLE_LOGIN = 'SW6OIDC_NO_VISIBLE_LOGIN';
+    public const CODE_SECRET_REQUIRED = 'SW6OIDC_SECRET_REQUIRED_FOR_ENDPOINT_CHANGE';
+
+    /**
+     * URLs the client secret (or tokens) are sent to: changing one on an
+     * existing confidential provider requires re-entering the secret in the
+     * same save, like browsers do for saved passwords — otherwise anyone
+     * with provider:update could redirect the "write-only" secret to their
+     * own host on the next login (N-M12). storage name => property name
+     */
+    private const CREDENTIAL_URL_FIELDS = [
+        'access_token_endpoint' => 'accessTokenEndpoint',
+        'revocation_endpoint' => 'revocationEndpoint',
+        'user_info_endpoint' => 'userInfoEndpoint',
+        'well_known_config_url' => 'wellKnownConfigUrl',
+    ];
 
     /** storage name => SSO button visibility column for the flag's login type */
     private const LOCKOUT_FLAG_VISIBILITY = [
@@ -112,6 +129,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         private readonly RequestStack $requestStack,
         private readonly LockoutConfirmationStore $confirmationStore,
         private readonly bool $breakGlassAllowPasswordLogin = false,
+        private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
@@ -153,6 +171,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
 
             if ($command instanceof UpdateCommand) {
                 $this->validateRemovalKeepsAdminAccess($command, $current, $violations);
+                $this->validateCredentialUrlChanges($command, $current, $violations, $event);
             }
 
             if ($violations->count() > 0) {
@@ -173,7 +192,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
 
         foreach (self::ENCRYPTED_FETCHED_URL_FIELDS as $storageName => $propertyName) {
             $value = $payload[$storageName] ?? null;
-            $urls[$propertyName] = \is_string($value) ? $this->encryptor->decrypt($value) : null;
+            $urls[$propertyName] = \is_string($value) ? $this->encryptor->decrypt($value, 'sw6oidc_provider.' . $storageName) : null;
         }
 
         foreach ($urls as $propertyName => $url) {
@@ -346,6 +365,52 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     }
 
     /**
+     * @param array<string, mixed>|null $current
+     */
+    private function validateCredentialUrlChanges(UpdateCommand $command, ?array $current, ConstraintViolationList $violations, PreWriteValidationEvent $event): void
+    {
+        if ($current === null) {
+            return;
+        }
+
+        $payload = $command->getPayload();
+        $changed = [];
+
+        foreach (self::CREDENTIAL_URL_FIELDS as $storageName => $propertyName) {
+            if (\array_key_exists($storageName, $payload) && (string) $payload[$storageName] !== (string) ($current[$storageName] ?? '')) {
+                $changed[$storageName] = $propertyName;
+            }
+        }
+
+        if ($changed === []) {
+            return;
+        }
+
+        $source = $event->getContext()->getSource();
+        $this->logger?->warning('sw6oidc: provider endpoint URLs changed.', [
+            'providerId' => \is_string($command->getPrimaryKey()['id'] ?? null) ? Uuid::fromBytesToHex($command->getPrimaryKey()['id']) : null,
+            'fields' => array_values($changed),
+            'adminUserId' => $source instanceof AdminApiSource ? $source->getUserId() : null,
+        ]);
+
+        $isPublicClient = (bool) ($payload['public_client'] ?? $current['public_client'] ?? false);
+        $secretReentered = \is_string($payload['client_secret'] ?? null) && $payload['client_secret'] !== '';
+
+        if ($isPublicClient || $secretReentered || (string) ($current['client_secret'] ?? '') === '') {
+            return;
+        }
+
+        foreach ($changed as $propertyName) {
+            $violations->add($this->violation(
+                'Changing this URL requires entering the client secret again.',
+                $propertyName,
+                $payload[array_search($propertyName, self::CREDENTIAL_URL_FIELDS, true)] ?? null,
+                self::CODE_SECRET_REQUIRED,
+            ));
+        }
+    }
+
+    /**
      * Whether another active admin-serving provider keeps SSO-only mode on.
      */
     private function adminPolicyStaysOnWithout(string $providerIdBytes): bool
@@ -375,7 +440,8 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         }
 
         $row = $this->connection->fetchAssociative(
-            'SELECT `is_active`, `login_type`, `disable_non_oidc_admin_login`, `disable_non_oidc_customer_login`, `show_admin_link`, `show_customer_link`
+            'SELECT `is_active`, `login_type`, `disable_non_oidc_admin_login`, `disable_non_oidc_customer_login`, `show_admin_link`, `show_customer_link`,
+                    `public_client`, `client_secret`, `access_token_endpoint`, `revocation_endpoint`, `user_info_endpoint`, `well_known_config_url`
              FROM `sw6oidc_provider` WHERE `id` = :id',
             ['id' => $providerId],
         );

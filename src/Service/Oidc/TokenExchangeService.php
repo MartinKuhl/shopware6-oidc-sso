@@ -98,10 +98,12 @@ class TokenExchangeService
         // Still an envelope after hydration = undecryptable with the current
         // APP_SECRET. Fail with an actionable error instead of sending the
         // ciphertext to the IdP and getting an opaque invalid_client back.
-        if (str_starts_with($provider->getClientSecret(), Sw6OidcEncryptor::PREFIX)) {
+        $secret = $provider->getUsableClientSecret();
+
+        if ($secret === null && Sw6OidcEncryptor::isEnvelope($provider->getClientSecret())) {
             throw ClientSecretUnavailableException::forProvider($provider->getId());
         }
 
-        return [$provider->getClientId(), $provider->getClientSecret()];
+        return [$provider->getClientId(), $secret ?? ''];
     }
 }

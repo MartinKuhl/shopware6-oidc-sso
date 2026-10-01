@@ -59,6 +59,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             'requireEmailVerified' => true,
             'linkExistingAccounts' => false,
             'frontchannelAdminLogout' => false,
+            'revokeSuperadminOnSso' => false,
         ];
     }
 
@@ -106,6 +107,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new BoolField('require_email_verified', 'requireEmailVerified'))->addFlags(new ApiAware()),
             (new BoolField('link_existing_accounts', 'linkExistingAccounts'))->addFlags(new ApiAware()),
             (new BoolField('frontchannel_admin_logout', 'frontchannelAdminLogout'))->addFlags(new ApiAware()),
+            (new BoolField('revoke_superadmin_on_sso', 'revokeSuperadminOnSso'))->addFlags(new ApiAware()),
             (new IntField('http_timeout', 'httpTimeout'))->addFlags(new ApiAware()),
             (new IntField('jwks_cache_ttl', 'jwksCacheTtl'))->addFlags(new ApiAware()),
             (new StringField('last_test_status', 'lastTestStatus', 16))->addFlags(new ApiAware()),

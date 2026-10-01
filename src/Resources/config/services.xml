@@ -5,7 +5,7 @@
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
 
     <parameters>
-        <parameter key="sw6oidc.default_log_level">debug</parameter>
+        <parameter key="sw6oidc.default_log_level">warning</parameter>
         <!-- Dev-only escape hatches, both off unless the env var is set to 1. -->
         <parameter key="env(SW6OIDC_ALLOW_INSECURE_IDP_URLS)">0</parameter>
         <parameter key="env(SW6OIDC_ALLOW_PASSWORD_LOGIN)">0</parameter>
@@ -104,9 +104,18 @@
         -->
         <service id="MartinKuhl\Sw6Oidc\Service\Logging\SensitiveDataProcessor" />
 
-        <service id="sw6oidc.log_handler" class="Monolog\Handler\StreamHandler">
+        <!-- Rotated daily, 14 files kept (M22); the level is decided by ConfigurableLevelHandler. -->
+        <service id="sw6oidc.log_file_handler" class="Monolog\Handler\RotatingFileHandler">
             <argument>%kernel.logs_dir%/sw6oidc-%kernel.environment%.log</argument>
+            <argument>14</argument>
+            <argument>debug</argument>
+        </service>
+
+        <service id="sw6oidc.log_handler" class="MartinKuhl\Sw6Oidc\Service\Logging\ConfigurableLevelHandler">
+            <argument type="service" id="sw6oidc.log_file_handler" />
+            <argument type="service" id="Shopware\Core\System\SystemConfig\SystemConfigService" />
             <argument>%env(default:sw6oidc.default_log_level:SW6OIDC_LOG_LEVEL)%</argument>
+            <tag name="kernel.reset" method="reset" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" class="Monolog\Logger">
@@ -215,10 +224,16 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
             <argument type="service" id="Shopware\Core\Content\Media\MediaService" />
-            <argument type="service" id="Shopware\Core\Content\Media\File\FileFetcher" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\AvatarFetcher" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\TimeZoneValidator" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="event_dispatcher" />
+            <argument type="service" id="acl_user_role.repository" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AvatarFetcher">
+            <argument type="service" id="sw6oidc.http_client" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver">
@@ -265,6 +280,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\LogoutRoute" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -280,9 +296,14 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator">
+            <argument type="service" id="router" />
         </service>
 
         <!--
@@ -441,6 +462,7 @@
         <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant">
             <argument type="service" id="Shopware\Core\Framework\Api\OAuth\RefreshTokenRepository" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument>%shopware.api.refresh_token_ttl%</argument>
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminAuthorizationServerFactory">
@@ -450,6 +472,7 @@
             <argument type="service" id="Shopware\Core\Framework\Api\OAuth\FakeCryptKey" />
             <argument>%env(APP_SECRET)%</argument>
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminOidcGrant" />
+            <argument>%shopware.api.access_token_ttl%</argument>
         </service>
 
         <!--
@@ -575,6 +598,11 @@
             </call>
         </service>
 
+        <!-- N-L6: no plaintext secrets in sw6oidc_provider.written payloads. -->
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\ProviderSecretPayloadScrubber">
+            <tag name="kernel.event_subscriber" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Subscriber\UserProviderCleanupSubscriber">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <tag name="kernel.event_subscriber" />
@@ -650,6 +678,7 @@
             <argument type="service" id="request_stack" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore" />
             <argument>%env(bool:SW6OIDC_ALLOW_PASSWORD_LOGIN)%</argument>
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <tag name="kernel.event_subscriber" />
             <tag name="kernel.reset" method="reset" />
         </service>

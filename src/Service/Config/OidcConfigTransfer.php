@@ -151,7 +151,7 @@ class OidcConfigTransfer
 
         $secret = match ($secretMode) {
             self::SECRET_OMIT => null,
-            self::SECRET_PLAINTEXT => $provider->getClientSecret(),
+            self::SECRET_PLAINTEXT => $this->plaintextSecret($provider),
             self::SECRET_ENCRYPTED => $this->storedSecretEnvelope($provider->getId()),
             default => throw new \InvalidArgumentException(sprintf('Unknown secret mode "%s".', $secretMode)),
         };
@@ -222,7 +222,7 @@ class OidcConfigTransfer
             return null;
         }
 
-        return $this->encryptor->isEncrypted($stored) ? $stored : $this->encryptor->encrypt($stored);
+        return $this->encryptor->isEncrypted($stored) ? $stored : $this->encryptor->encrypt($stored, 'sw6oidc_provider.client_secret');
     }
 
     /**
@@ -409,5 +409,27 @@ class OidcConfigTransfer
         }
 
         return $properties;
+    }
+
+    /**
+     * --plaintext must export the secret, never an envelope that merely
+     * looks like one (N-L5).
+     */
+    private function plaintextSecret(Sw6OidcProviderEntity $provider): ?string
+    {
+        if ($provider->isPublicClient() || $provider->getClientSecret() === '') {
+            return null;
+        }
+
+        $secret = $provider->getUsableClientSecret();
+
+        if ($secret === null) {
+            throw new \RuntimeException(sprintf(
+                'The client secret of provider "%s" cannot be decrypted with this APP_SECRET; re-enter it before exporting.',
+                $provider->getAppName(),
+            ));
+        }
+
+        return $secret;
     }
 }

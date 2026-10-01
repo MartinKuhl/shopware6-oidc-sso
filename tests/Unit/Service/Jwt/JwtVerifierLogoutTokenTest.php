@@ -52,29 +52,35 @@ final class JwtVerifierLogoutTokenTest extends TestCase
      */
     public static function invalidTokens(): iterable
     {
-        yield 'no events' => [self::claims(['events' => null]), 'events'];
-        yield 'events without the logout member' => [self::claims(['events' => ['http://schemas.openid.net/event/other' => []]]), 'events'];
-        yield 'logout member not an object' => [self::claims(['events' => [JwtVerifier::BACKCHANNEL_LOGOUT_EVENT => 'yes']]), 'events'];
-        yield 'nonce present (id_token substitution)' => [self::claims(['nonce' => 'n']), 'nonce'];
-        yield 'neither sub nor sid' => [self::claims(['sub' => null, 'sid' => null]), 'neither'];
-        yield 'no iat' => [self::claims(['iat' => null]), 'iat'];
-        yield 'expired' => [self::claims(['exp' => time() - JwtVerifier::LEEWAY_SECONDS - 5]), 'expired'];
-        yield 'no jti' => [self::claims(['jti' => null]), 'jti'];
-        yield 'too old' => [self::claims(['iat' => time() - 3600]), 'too old'];
-        yield 'wrong audience' => [self::claims(['aud' => 'other-client']), 'audience'];
-        yield 'wrong issuer' => [self::claims(['iss' => 'https://evil.example']), 'issuer'];
+        yield 'no events' => [['events' => null], 'events'];
+        yield 'events without the logout member' => [['events' => ['http://schemas.openid.net/event/other' => []]], 'events'];
+        yield 'logout member not an object' => [['events' => [JwtVerifier::BACKCHANNEL_LOGOUT_EVENT => 'yes']], 'events'];
+        yield 'nonce present (id_token substitution)' => [['nonce' => 'n'], 'nonce'];
+        yield 'neither sub nor sid' => [['sub' => null, 'sid' => null], 'neither'];
+        yield 'no iat' => [['iat' => null], 'iat'];
+        yield 'expired' => [['exp' => -JwtVerifier::LEEWAY_SECONDS - 5], 'expired'];
+        yield 'no jti' => [['jti' => null], 'jti'];
+        yield 'too old' => [['iat' => -3600], 'too old'];
+        yield 'wrong audience' => [['aud' => 'other-client'], 'audience'];
+        yield 'wrong issuer' => [['iss' => 'https://evil.example'], 'issuer'];
     }
 
     /**
-     * @param array<string, mixed> $claims
+     * @param array<string, mixed> $overrides iat/exp as offsets from now (resolved when the test runs, not when the provider does)
      */
     #[DataProvider('invalidTokens')]
-    public function testInvalidLogoutTokensAreRejected(array $claims, string $messagePart): void
+    public function testInvalidLogoutTokensAreRejected(array $overrides, string $messagePart): void
     {
         $this->expectException(InvalidJwtException::class);
         $this->expectExceptionMessageMatches('/' . preg_quote($messagePart, '/') . '/i');
 
-        $this->verify($claims);
+        foreach (['iat', 'exp'] as $timeClaim) {
+            if (\is_int($overrides[$timeClaim] ?? null)) {
+                $overrides[$timeClaim] += time();
+            }
+        }
+
+        $this->verify(self::claims($overrides));
     }
 
     public function testTokenSignedByAnotherKeyIsRejected(): void

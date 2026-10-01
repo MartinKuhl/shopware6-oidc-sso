@@ -24,7 +24,7 @@ use MartinKuhl\Sw6Oidc\Event\AdminBeforeCreateEvent;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Psr\Log\LoggerInterface;
-use Shopware\Core\Content\Media\File\FileFetcher;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\AvatarFetcher;
 use Shopware\Core\Content\Media\File\MediaFile;
 use Shopware\Core\Content\Media\MediaService;
 use Shopware\Core\Framework\Context;
@@ -39,6 +39,8 @@ use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\User\UserCollection;
 use Shopware\Core\System\User\UserDefinition;
 use Shopware\Core\System\User\UserEntity;
+use Shopware\Core\Framework\Api\Acl\Role\AclRoleCollection;
+use Shopware\Core\Framework\Api\Acl\Role\AclRoleEntity;
 
 #[CoversClass(AdminProvisioningService::class)]
 final class AdminProvisioningServiceTest extends TestCase
@@ -52,6 +54,11 @@ final class AdminProvisioningServiceTest extends TestCase
     private ?string $boundProviderId = null;
 
     private ?string $boundSub = null;
+
+    /** @var list<array{userId: string, aclRoleId: string}> */
+    private array $roleDeletes = [];
+
+    private bool $otherActiveSuperadmin = true;
 
     private string $subject = 'idp-subject-1';
 
@@ -83,7 +90,7 @@ final class AdminProvisioningServiceTest extends TestCase
 
     private GroupMappingResolver&MockObject $groupMappingResolver;
 
-    private FileFetcher&MockObject $fileFetcher;
+    private AvatarFetcher&MockObject $avatarFetcher;
 
     private MediaService&MockObject $mediaService;
 
@@ -98,7 +105,7 @@ final class AdminProvisioningServiceTest extends TestCase
         $this->groupMappingResolver->method('resolveAclRoleId')
             ->willReturnCallback(fn (): ?string => $this->resolvedAclRoleId);
 
-        $this->fileFetcher = $this->createMock(FileFetcher::class);
+        $this->avatarFetcher = $this->createMock(AvatarFetcher::class);
         $this->mediaService = $this->createMock(MediaService::class);
     }
 
@@ -280,6 +287,68 @@ final class AdminProvisioningServiceTest extends TestCase
         self::assertSame([['id' => $this->existingUser->getId(), 'aclRoles' => [['id' => $roleId]]]], $this->userUpdates);
     }
 
+    public function testSyncRoleReplacesRolesTheIdpNoLongerGrants(): void
+    {
+        $this->existingUser = $this->user('jane');
+        $keptRole = Uuid::randomHex();
+        $revokedRole = Uuid::randomHex();
+        $this->existingUser->setAclRoles(new AclRoleCollection([$this->role($keptRole), $this->role($revokedRole)]));
+        $this->resolvedAclRoleId = $keptRole;
+
+        $provider = $this->provider();
+        $provider->setSyncAdminRoleOnSso(true);
+
+        $this->findOrCreate($provider, new MappedProfile('jane@example.com', groups: ['editors']), $this->context);
+
+        self::assertSame([['userId' => $this->existingUser->getId(), 'aclRoleId' => $revokedRole]], $this->roleDeletes);
+        self::assertSame([], $this->userUpdates, 'the kept role needs no write');
+    }
+
+    public function testSuperadminIsOnlyRevokedWithTheOptIn(): void
+    {
+        $this->existingUser = $this->user('root');
+        $this->existingUser->setAdmin(true);
+        $this->resolvedAclRoleId = Uuid::randomHex();
+
+        $provider = $this->provider();
+        $provider->setSyncAdminRoleOnSso(true);
+        $this->boundProviderId = $provider->getId();
+        $this->boundSub = $this->subject;
+
+        $this->findOrCreate($provider, new MappedProfile('root@example.com', groups: ['editors']), $this->context);
+        self::assertNotContains(['id' => $this->existingUser->getId(), 'admin' => false], $this->userUpdates);
+
+        $provider->setRevokeSuperadminOnSso(true);
+        $this->findOrCreate($provider, new MappedProfile('root@example.com', groups: ['editors']), $this->context);
+        self::assertContains(['id' => $this->existingUser->getId(), 'admin' => false], $this->userUpdates);
+    }
+
+    public function testTheLastSuperadminIsNeverRevoked(): void
+    {
+        $this->existingUser = $this->user('root');
+        $this->existingUser->setAdmin(true);
+        $this->resolvedAclRoleId = Uuid::randomHex();
+        $this->otherActiveSuperadmin = false;
+
+        $provider = $this->provider();
+        $provider->setSyncAdminRoleOnSso(true);
+        $provider->setRevokeSuperadminOnSso(true);
+        $this->boundProviderId = $provider->getId();
+        $this->boundSub = $this->subject;
+
+        $this->findOrCreate($provider, new MappedProfile('root@example.com', groups: ['editors']), $this->context);
+
+        self::assertNotContains(['id' => $this->existingUser->getId(), 'admin' => false], $this->userUpdates);
+    }
+
+    private function role(string $id): AclRoleEntity
+    {
+        $role = new AclRoleEntity();
+        $role->setId($id);
+
+        return $role;
+    }
+
     public function testSyncRoleNeverRevokesWhenNothingMatches(): void
     {
         $this->existingUser = $this->user('jane');
@@ -376,8 +445,29 @@ final class AdminProvisioningServiceTest extends TestCase
 
         $this->findOrCreate($provider, new MappedProfile('jane@example.com', picture: 'https://idp.example.com/a.png'), $this->context);
 
-        self::assertSame([['id' => $this->existingUser->getId(), 'avatarId' => $existingAvatarId]], $this->userUpdates);
+        self::assertSame([[
+            'id' => $this->existingUser->getId(),
+            'avatarId' => $existingAvatarId,
+            'customFields' => [AdminProvisioningService::AVATAR_URL_HASH_FIELD => hash('sha256', 'https://idp.example.com/a.png')],
+        ]], $this->userUpdates);
         self::assertSame([['id' => $existingAvatarId, 'private' => false]], $this->mediaUpdates);
+    }
+
+    public function testSyncProfileSkipsUnchangedAvatar(): void
+    {
+        $this->existingUser = $this->user('jane');
+        $this->existingUser->setAvatarId(Uuid::randomHex());
+        $this->existingUser->setCustomFields([AdminProvisioningService::AVATAR_URL_HASH_FIELD => hash('sha256', 'https://idp.example.com/a.png')]);
+
+        $provider = $this->provider();
+        $provider->setSyncAdminProfileOnSso(true);
+
+        $this->avatarFetcher->expects(self::never())->method('fetch');
+        $this->mediaService->expects(self::never())->method('saveMediaFile');
+
+        $this->findOrCreate($provider, new MappedProfile('jane@example.com', picture: 'https://idp.example.com/a.png'), $this->context);
+
+        self::assertSame([], $this->userUpdates);
     }
 
     public function testSyncProfileSwallowsAvatarFetchFailure(): void
@@ -387,7 +477,7 @@ final class AdminProvisioningServiceTest extends TestCase
         $provider = $this->provider();
         $provider->setSyncAdminProfileOnSso(true);
 
-        $this->fileFetcher->method('fetchFromURL')->willThrowException(new \RuntimeException('unreachable'));
+        $this->avatarFetcher->method('fetch')->willThrowException(new \RuntimeException('unreachable'));
         $this->mediaService->expects(self::never())->method('saveMediaFile');
 
         $this->findOrCreate($provider, new MappedProfile('jane@example.com', firstName: 'Jane', picture: 'https://idp.example.com/a.png'), $this->context);
@@ -645,7 +735,11 @@ final class AdminProvisioningServiceTest extends TestCase
 
         $userId = $this->userCreates[0]['id'];
         self::assertArrayNotHasKey('avatarId', $this->userCreates[0]);
-        self::assertSame([['id' => $userId, 'avatarId' => $newAvatarId]], $this->userUpdates);
+        self::assertSame([[
+            'id' => $userId,
+            'avatarId' => $newAvatarId,
+            'customFields' => [AdminProvisioningService::AVATAR_URL_HASH_FIELD => hash('sha256', 'https://idp.example.com/a.png')],
+        ]], $this->userUpdates);
         self::assertSame([['id' => $newAvatarId, 'private' => false]], $this->mediaUpdates);
     }
 
@@ -655,7 +749,7 @@ final class AdminProvisioningServiceTest extends TestCase
         $provider->setAutoCreateAdmin(true);
         $this->resolvedAclRoleId = Uuid::randomHex();
 
-        $this->fileFetcher->method('fetchFromURL')->willThrowException(new \RuntimeException('blocked'));
+        $this->avatarFetcher->method('fetch')->willThrowException(new \RuntimeException('blocked'));
 
         $result = $this->findOrCreate($provider, new MappedProfile('jane@example.com', picture: 'https://10.0.0.1/a.png'), $this->context);
 
@@ -686,28 +780,34 @@ final class AdminProvisioningServiceTest extends TestCase
             $bindingService,
             new IdentityResolver($bindingService, $this->createStub(LoggerInterface::class)),
             $this->mediaService,
-            $this->fileFetcher,
+            $this->avatarFetcher,
             new TimeZoneValidator(),
             $this->createStub(LoggerInterface::class),
             $this->eventDispatcher ??= new EventDispatcher(),
+            $this->aclUserRoleRepository(),
         );
+    }
+
+    private function aclUserRoleRepository(): EntityRepository
+    {
+        $repository = $this->createStub(EntityRepository::class);
+        $repository->method('delete')->willReturnCallback(function (array $ids, Context $context): EntityWrittenContainerEvent {
+            array_push($this->roleDeletes, ...$ids);
+
+            return $this->writtenEvent($context);
+        });
+
+        return $repository;
     }
 
     private function expectAvatarImport(string $url, ?string $expectedExistingMediaId, string $returnedMediaId): void
     {
-        $this->fileFetcher->expects(self::once())
-            ->method('fetchFromURL')
+        $this->avatarFetcher->expects(self::once())
+            ->method('fetch')
             ->willReturnCallback(static function (string $pictureUrl, string $tempFile) use ($url): MediaFile {
                 self::assertSame($url, $pictureUrl);
 
                 return new MediaFile($tempFile, 'image/png', 'png', 123);
-            });
-        $this->fileFetcher->expects(self::once())
-            ->method('cleanUpTempFile')
-            ->willReturnCallback(static function (MediaFile $file): void {
-                if (is_file($file->getFileName())) {
-                    unlink($file->getFileName());
-                }
             });
         $this->mediaService->expects(self::once())
             ->method('saveMediaFile')
@@ -780,6 +880,12 @@ final class AdminProvisioningServiceTest extends TestCase
         });
 
         $repository->method('searchIds')->willReturnCallback(function (Criteria $criteria, Context $context): IdSearchResult {
+            foreach ($criteria->getFilters() as $filter) {
+                if ($filter instanceof EqualsFilter && $filter->getField() === 'admin') {
+                    return $this->idSearchResult($this->otherActiveSuperadmin ? [Uuid::randomHex()] : [], $criteria, $context);
+                }
+            }
+
             $username = $this->filterValue($criteria, 'username');
             $ids = \in_array($username, $this->takenUsernames, true) ? [Uuid::randomHex()] : [];
 

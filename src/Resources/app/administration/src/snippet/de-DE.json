@@ -306,7 +306,9 @@
                     "multi_node_without_redis": "Mehrere App-Server haben kürzlich SSO-Anmeldungen verarbeitet, Redis wird aber nicht verwendet. Anmeldungen bleiben korrekt, aber Rate-Limiter und JWKS-Cache sind pro Server getrennt, sofern die Cache-Pools von Shopware nicht gemeinsam genutzt werden. Bitte SW6OIDC_REDIS_DSN setzen."
                 },
                 "frontchannelAdminLogout": "Front-Channel-Logout beendet Admin-Sitzungen",
-                "frontchannelAdminLogoutHelp": "Front-Channel-Logout-Anfragen sind nicht authentifiziert (nur iss und sid). Administrationssitzungen können nur alle gemeinsam beendet werden und bleiben daher standardmäßig bestehen; Back-Channel-Logout (signiert) beendet sie immer. Nur aktivieren, wenn Ihr IdP ausschließlich Front-Channel-Logout unterstützt."
+                "frontchannelAdminLogoutHelp": "Front-Channel-Logout-Anfragen sind nicht authentifiziert (nur iss und sid). Administrationssitzungen können nur alle gemeinsam beendet werden und bleiben daher standardmäßig bestehen; Back-Channel-Logout (signiert) beendet sie immer. Nur aktivieren, wenn Ihr IdP ausschließlich Front-Channel-Logout unterstützt.",
+                "revokeSuperadminOnSso": "Rollen-Sync darf Superadmin entziehen",
+                "revokeSuperadminOnSsoHelp": "Bei aktivem Admin-Rollen-Sync: Gewähren die Gruppen eines Logins keinen Superadmin mehr, wird das Superadmin-Flag entfernt (die zugeordnete ACL-Rolle bleibt). Wird nie beim letzten aktiven Superadmin angewendet."
             }
         },
         "userProvider": {

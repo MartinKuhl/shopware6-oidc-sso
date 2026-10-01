@@ -62,7 +62,7 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
 
     public function testEncryptedWebhookUrlIsDecryptedAndSsrfChecked(): void
     {
-        $encrypted = (new Sw6OidcEncryptor(self::APP_SECRET))->encrypt('https://hooks.internal.example/T000/B000/xyz');
+        $encrypted = (new Sw6OidcEncryptor(self::APP_SECRET))->encrypt('https://hooks.internal.example/T000/B000/xyz', 'sw6oidc_provider.health_alert_webhook_url');
 
         $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, ['health_alert_webhook_url' => $encrypted])], privateIps: true));
         self::assertSame('/healthAlertWebhookUrl', $violation->getPropertyPath());

@@ -668,6 +668,12 @@
                         :label="$tc('sw6oidc.provider.detail.allowSuperadminGroupMapping')"
                         :help-text="$tc('sw6oidc.provider.detail.allowSuperadminGroupMappingHelp')"
                     />
+                    <sw-switch-field
+                        v-model:value="provider.revokeSuperadminOnSso"
+                        :disabled="!provider.syncAdminRoleOnSso"
+                        :label="$tc('sw6oidc.provider.detail.revokeSuperadminOnSso')"
+                        :help-text="$tc('sw6oidc.provider.detail.revokeSuperadminOnSsoHelp')"
+                    />
                 </sw-container>
                 <mt-banner
                     v-if="provider.allowSuperadminGroupMapping"

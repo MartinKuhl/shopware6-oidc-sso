@@ -110,28 +110,4 @@ class ClaimsNormalizer
         // Associative: Zitadel-style nested role object — parent keys are the groups.
         return array_map(strval(...), array_keys($groupsClaim));
     }
-
-    /**
-     * @param array<string, mixed> $flattened
-     */
-    public function extractEmail(array $flattened, string $emailAttribute): ?string
-    {
-        if (isset($flattened[$emailAttribute]) && \is_string($flattened[$emailAttribute])) {
-            return $flattened[$emailAttribute];
-        }
-
-        foreach ($flattened as $key => $value) {
-            if (\is_string($value) && str_contains($key, 'email') && filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                return $value;
-            }
-        }
-
-        foreach ($flattened as $value) {
-            if (\is_string($value) && filter_var($value, FILTER_VALIDATE_EMAIL)) {
-                return $value;
-            }
-        }
-
-        return null;
-    }
 }

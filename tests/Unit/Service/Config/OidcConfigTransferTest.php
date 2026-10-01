@@ -61,6 +61,9 @@ final class OidcConfigTransferTest extends TestCase
 
     private string $storedSecret = 'plain-legacy';
 
+    /** What entity hydration produced (an envelope when it could not decrypt). */
+    private string $hydratedSecret = 'decrypted-secret';
+
     protected function setUp(): void
     {
         $this->encryptor = new Sw6OidcEncryptor('app-secret');
@@ -98,12 +101,22 @@ final class OidcConfigTransferTest extends TestCase
         self::assertSame('decrypted-secret', $this->exportOne(OidcConfigTransfer::SECRET_PLAINTEXT)['clientSecret']);
     }
 
+    public function testExportPlaintextRefusesAnUndecryptableSecret(): void
+    {
+        $this->hydratedSecret = (new Sw6OidcEncryptor('rotated'))->encrypt('secret', 'sw6oidc_provider.client_secret');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('cannot be decrypted');
+
+        $this->exportOne(OidcConfigTransfer::SECRET_PLAINTEXT);
+    }
+
     public function testExportEncryptedKeepsEnvelopeAndEncryptsLegacyPlaintextRows(): void
     {
         $this->storedSecret = 'legacy-plain';
-        self::assertSame('legacy-plain', $this->encryptor->decrypt($this->exportOne(OidcConfigTransfer::SECRET_ENCRYPTED)['clientSecret']));
+        self::assertSame('legacy-plain', $this->encryptor->decrypt($this->exportOne(OidcConfigTransfer::SECRET_ENCRYPTED)['clientSecret'], 'sw6oidc_provider.client_secret'));
 
-        $this->storedSecret = $this->encryptor->encrypt('already');
+        $this->storedSecret = $this->encryptor->encrypt('already', 'sw6oidc_provider.client_secret');
         self::assertSame($this->storedSecret, $this->exportOne(OidcConfigTransfer::SECRET_ENCRYPTED)['clientSecret']);
     }
 
@@ -336,7 +349,7 @@ final class OidcConfigTransferTest extends TestCase
             'id' => $this->providerId,
             'appName' => 'authelia',
             'clientId' => 'shop',
-            'clientSecret' => 'decrypted-secret',
+            'clientSecret' => $this->hydratedSecret,
             'accessTokenEndpoint' => 'https://idp.example/token',
             'publicClient' => false,
             'lastTestStatus' => 'passed',

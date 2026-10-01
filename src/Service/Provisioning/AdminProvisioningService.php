@@ -9,12 +9,12 @@ use MartinKuhl\Sw6Oidc\Event\AdminAfterCreateEvent;
 use MartinKuhl\Sw6Oidc\Event\AdminBeforeCreateEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
 use Psr\Log\LoggerInterface;
-use Shopware\Core\Content\Media\File\FileFetcher;
 use Shopware\Core\Content\Media\MediaService;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\User\UserEntity;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
@@ -29,6 +29,9 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
  */
 class AdminProvisioningService
 {
+    /** user.customFields key: sha256 of the picture URL last imported (M19). */
+    public const AVATAR_URL_HASH_FIELD = 'sw6oidc_avatar_url_hash';
+
     public function __construct(
         private readonly EntityRepository $userRepository,
         private readonly EntityRepository $localeRepository,
@@ -37,10 +40,11 @@ class AdminProvisioningService
         private readonly UserProviderBindingService $bindingService,
         private readonly IdentityResolver $identityResolver,
         private readonly MediaService $mediaService,
-        private readonly FileFetcher $fileFetcher,
+        private readonly AvatarFetcher $avatarFetcher,
         private readonly TimeZoneValidator $timeZoneValidator,
         private readonly LoggerInterface $logger,
         private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly EntityRepository $aclUserRoleRepository,
     ) {
     }
 
@@ -153,10 +157,10 @@ class AdminProvisioningService
         $this->createWithUniqueUsername($payload, $profile, $context);
 
         if ($profile->picture !== null) {
-            $avatarId = $this->syncAvatar($userId, $profile->picture, null, $context);
+            $avatarPayload = $this->syncAvatar($userId, $profile->picture, null, $context);
 
-            if ($avatarId !== null) {
-                $this->userRepository->update([['id' => $userId, 'avatarId' => $avatarId]], $context);
+            if ($avatarPayload !== []) {
+                $this->userRepository->update([['id' => $userId, ...$avatarPayload]], $context);
             }
         }
 
@@ -230,12 +234,17 @@ class AdminProvisioningService
     }
 
     /**
-     * Only ever grants — a superadmin flag or ACL role from a previous
-     * successful match is never revoked here just because this login's
-     * groups no longer match (e.g. a transient IdP claims glitch), since
-     * that could silently strip the only superadmin's access. Deliberate,
-     * matching the create-time superadmin gate: explicit group match AND
-     * the provider's `allowSuperadminGroupMapping` toggle.
+     * Makes the admin's permissions match the IdP groups of this login:
+     *
+     * - A superadmin group match (two gates: provider flag + explicit
+     *   mapping row) grants superadmin.
+     * - Otherwise the resolved ACL role *replaces* the user's roles, so a
+     *   role taken away at the IdP is taken away here too (H3). When nothing
+     *   resolves (not even the provider default) the roles are left alone
+     *   rather than emptied — a claims glitch must not strip everything.
+     * - Superadmin is only revoked with the provider's
+     *   `revoke_superadmin_on_sso` opt-in, and never from the last active
+     *   superadmin.
      *
      * @param string[] $groups
      */
@@ -256,10 +265,70 @@ class AdminProvisioningService
             return;
         }
 
-        $this->userRepository->update([[
-            'id' => $userId,
-            'aclRoles' => [['id' => $aclRoleId]],
-        ]], $context);
+        $criteria = (new Criteria([$userId]))->addAssociation('aclRoles');
+        $user = $this->userRepository->search($criteria, $context)->first();
+
+        if (!$user instanceof UserEntity) {
+            return;
+        }
+
+        $obsolete = [];
+        $hasRole = false;
+
+        foreach ($user->getAclRoles() ?? [] as $role) {
+            if ($role->getId() === $aclRoleId) {
+                $hasRole = true;
+
+                continue;
+            }
+
+            $obsolete[] = ['userId' => $userId, 'aclRoleId' => $role->getId()];
+        }
+
+        if ($obsolete !== []) {
+            $this->aclUserRoleRepository->delete($obsolete, $context);
+        }
+
+        if (!$hasRole) {
+            $this->userRepository->update([['id' => $userId, 'aclRoles' => [['id' => $aclRoleId]]]], $context);
+        }
+
+        if ($user->isAdmin() && $provider->isRevokeSuperadminOnSso()) {
+            $this->revokeSuperadmin($provider, $userId, $context);
+        }
+
+        if ($obsolete !== [] || !$hasRole) {
+            $this->logger->info('sw6oidc: admin roles synced from IdP groups.', [
+                'providerId' => $provider->getId(),
+                'userId' => $userId,
+                'removedRoles' => \count($obsolete),
+            ]);
+        }
+    }
+
+    private function revokeSuperadmin(Sw6OidcProviderEntity $provider, string $userId, Context $context): void
+    {
+        $others = (new Criteria())
+            ->addFilter(new EqualsFilter('admin', true))
+            ->addFilter(new EqualsFilter('active', true))
+            ->addFilter(new NotFilter(NotFilter::CONNECTION_AND, [new EqualsFilter('id', $userId)]))
+            ->setLimit(1);
+
+        if ($this->userRepository->searchIds($others, $context)->getTotal() === 0) {
+            $this->logger->warning('sw6oidc: superadmin not revoked by role sync — this is the last active superadmin.', [
+                'providerId' => $provider->getId(),
+                'userId' => $userId,
+            ]);
+
+            return;
+        }
+
+        $this->userRepository->update([['id' => $userId, 'admin' => false]], $context);
+
+        $this->logger->warning('sw6oidc: superadmin revoked by role sync (IdP groups no longer grant it).', [
+            'providerId' => $provider->getId(),
+            'userId' => $userId,
+        ]);
     }
 
     /**
@@ -295,11 +364,7 @@ class AdminProvisioningService
             $existing = $this->userRepository->search(new Criteria([$userId]), $context)->first();
             \assert($existing instanceof UserEntity);
 
-            $avatarId = $this->syncAvatar($userId, $profile->picture, $existing->getAvatarId(), $context);
-
-            if ($avatarId !== null) {
-                $payload['avatarId'] = $avatarId;
-            }
+            $payload = [...$payload, ...$this->syncAvatar($userId, $profile->picture, $existing, $context)];
         }
 
         if (\count($payload) > 1) {
@@ -308,13 +373,12 @@ class AdminProvisioningService
     }
 
     /**
-     * Fetches the picture claim's URL and imports it as (or overwrites) the
-     * user's avatar Media entity, reusing Shopware core's own SSRF-hardened
-     * FileFetcher (NoPrivateNetworkHttpClient + blocked-subnet resolver,
-     * gated by the core.media.enableUrlUploadFeature/enableUrlValidation
-     * system config). A bad/unreachable picture claim must never break
-     * login, so any failure is logged and swallowed, returning the
-     * previous avatar id (if any) unchanged.
+     * Fetches the picture claim's URL (AvatarFetcher, SSRF-guarded) and
+     * imports it as (or overwrites) the user's avatar Media entity. Skipped
+     * when the URL's hash matches the one stored in the user's custom fields
+     * at the last import and the avatar still exists (M19). A bad or
+     * unreachable picture claim must never break login, so any failure is
+     * logged and swallowed and the previous avatar stays.
      *
      * Uses Shopware core's own 'user' default media folder (seeded by
      * BasicData's `avatarUser` association) rather than leaving the Media
@@ -329,16 +393,26 @@ class AdminProvisioningService
      * was created private, self-healing on the next login rather than
      * requiring a one-off manual fix.
      */
-    private function syncAvatar(string $userId, string $pictureUrl, ?string $existingAvatarId, Context $context): ?string
+    /**
+     * @return array<string, mixed> user update fields (empty = nothing to write)
+     */
+    private function syncAvatar(string $userId, string $pictureUrl, ?UserEntity $existing, Context $context): array
     {
+        $existingAvatarId = $existing?->getAvatarId();
+        $urlHash = hash('sha256', $pictureUrl);
+
+        if ($existingAvatarId !== null && ($existing?->getCustomFields()[self::AVATAR_URL_HASH_FIELD] ?? null) === $urlHash) {
+            return [];
+        }
+
         $tempFile = tempnam(sys_get_temp_dir(), 'sw6oidc_avatar_');
 
         if ($tempFile === false) {
-            return $existingAvatarId;
+            return [];
         }
 
         try {
-            $mediaFile = $this->fileFetcher->fetchFromURL($pictureUrl, $tempFile);
+            $mediaFile = $this->avatarFetcher->fetch($pictureUrl, $tempFile);
 
             $avatarId = $this->mediaService->saveMediaFile(
                 $mediaFile,
@@ -359,20 +433,17 @@ class AdminProvisioningService
                 'fileSize' => $mediaFile->getFileSize(),
             ]);
 
-            return $avatarId;
+            return ['avatarId' => $avatarId, 'customFields' => [self::AVATAR_URL_HASH_FIELD => $urlHash]];
         } catch (\Throwable $e) {
             $this->logger->warning('sw6oidc: failed to import Administration user avatar from picture claim.', [
                 'userId' => $userId,
-                'pictureUrl' => $pictureUrl,
                 'exception' => $e::class,
                 'error' => $e->getMessage(),
             ]);
 
-            return $existingAvatarId;
+            return [];
         } finally {
-            if (isset($mediaFile)) {
-                $this->fileFetcher->cleanUpTempFile($mediaFile);
-            } elseif (is_file($tempFile)) {
+            if (is_file($tempFile)) {
                 unlink($tempFile);
             }
         }

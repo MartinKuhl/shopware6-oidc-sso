@@ -98,13 +98,22 @@ class RpInitiatedLogoutService
             $params['client_id'] = $provider->getClientId();
         }
 
+        $secret = $provider->isPublicClient() ? null : $provider->getUsableClientSecret();
+
+        if (!$provider->isPublicClient() && $secret === null) {
+            // Undecryptable secret: never send the envelope to the IdP (N-L5).
+            $this->logger->warning('sw6oidc: RFC 7009 revocation skipped, the client secret is unavailable.', ['providerId' => $provider->getId()]);
+
+            return;
+        }
+
         try {
             $this->httpClient->postForm(
                 $revocationEndpoint,
                 $params,
                 $provider->getHttpTimeout(),
                 $provider->isPublicClient() ? null : $provider->getClientId(),
-                $provider->isPublicClient() ? null : $provider->getClientSecret(),
+                $secret,
             );
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: RFC 7009 token revocation failed (non-fatal).', [

@@ -104,7 +104,7 @@ class OidcProviderAdminController extends AbstractController
         // provider sends nothing unless the admin typed a new one: fall back
         // to the stored secret.
         if (($clientSecret === null || $clientSecret === '') && Uuid::isValid($providerId)) {
-            $clientSecret = $this->loadProvider($providerId, $context)?->getClientSecret();
+            $clientSecret = $this->loadProvider($providerId, $context)?->getUsableClientSecret();
         }
 
         $config = [

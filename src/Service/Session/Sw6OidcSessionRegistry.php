@@ -80,12 +80,12 @@ class Sw6OidcSessionRegistry
             'sid' => $session->sid,
             'user_type' => $userType,
             'user_id' => Uuid::fromHexToBytes($userId),
-            'session_key' => $this->encryptor->encrypt($sessionKey),
+            'session_key' => $this->encryptor->encrypt($sessionKey, 'sw6oidc_session.session_key'),
             'session_key_hash' => self::hashSessionKey($sessionKey),
             'sales_channel_id' => $salesChannelId !== null ? Uuid::fromHexToBytes($salesChannelId) : null,
-            'id_token' => $this->encryptNullable($idToken),
-            'idp_access_token' => $this->encryptNullable($idpAccessToken),
-            'idp_refresh_token' => $this->encryptNullable($idpRefreshToken),
+            'id_token' => $this->encryptNullable($idToken, 'id_token'),
+            'idp_access_token' => $this->encryptNullable($idpAccessToken, 'idp_access_token'),
+            'idp_refresh_token' => $this->encryptNullable($idpRefreshToken, 'idp_refresh_token'),
             'created_at' => (new \DateTimeImmutable('@' . $session->createdAt))->format(Defaults::STORAGE_DATE_TIME_FORMAT),
             'expires_at' => $this->expiresAt($ttl),
         ]);
@@ -174,7 +174,7 @@ class Sw6OidcSessionRegistry
             'UPDATE `sw6oidc_session` SET `session_key` = :key, `session_key_hash` = :hash, `expires_at` = :expiresAt WHERE `id` = :id',
             [
                 'id' => $id,
-                'key' => $this->encryptor->encrypt($sessionKey),
+                'key' => $this->encryptor->encrypt($sessionKey, 'sw6oidc_session.session_key'),
                 'hash' => self::hashSessionKey($sessionKey),
                 'expiresAt' => $this->expiresAt($this->adminTtlSeconds),
             ],
@@ -258,7 +258,7 @@ class Sw6OidcSessionRegistry
      */
     private function hydrate(array $row): ?Sw6OidcSession
     {
-        $sessionKey = $this->encryptor->decryptOrNull((string) $row['session_key']);
+        $sessionKey = $this->encryptor->decryptOrNull((string) $row['session_key'], 'sw6oidc_session.session_key');
 
         if ($sessionKey === null) {
             // Written under a different APP_SECRET: the session can't be targeted anymore.
@@ -276,20 +276,20 @@ class Sw6OidcSessionRegistry
             Uuid::fromBytesToHex((string) $row['user_id']),
             $sessionKey,
             \is_string($row['sales_channel_id']) ? Uuid::fromBytesToHex($row['sales_channel_id']) : null,
-            $this->decryptNullable($row['id_token']),
+            $this->decryptNullable($row['id_token'], 'id_token'),
             $createdAt !== false ? $createdAt->getTimestamp() : 0,
-            $this->decryptNullable($row['idp_access_token']),
-            $this->decryptNullable($row['idp_refresh_token']),
+            $this->decryptNullable($row['idp_access_token'], 'idp_access_token'),
+            $this->decryptNullable($row['idp_refresh_token'], 'idp_refresh_token'),
         );
     }
 
-    private function encryptNullable(?string $value): ?string
+    private function encryptNullable(?string $value, string $column): ?string
     {
-        return $value === null || $value === '' ? null : $this->encryptor->encrypt($value);
+        return $value === null || $value === '' ? null : $this->encryptor->encrypt($value, 'sw6oidc_session.' . $column);
     }
 
-    private function decryptNullable(mixed $value): ?string
+    private function decryptNullable(mixed $value, string $column): ?string
     {
-        return \is_string($value) ? $this->encryptor->decryptOrNull($value) : null;
+        return \is_string($value) ? $this->encryptor->decryptOrNull($value, 'sw6oidc_session.' . $column) : null;
     }
 }

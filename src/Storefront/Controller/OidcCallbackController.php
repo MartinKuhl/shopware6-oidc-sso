@@ -15,6 +15,7 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+use MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
@@ -53,6 +54,7 @@ class OidcCallbackController extends StorefrontController
         private readonly Sw6OidcRateLimiter $rateLimiter,
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
         private readonly IdentityResolver $identityResolver,
+        private readonly RelayStateValidator $relayStateValidator,
     ) {
     }
 
@@ -142,7 +144,8 @@ class OidcCallbackController extends StorefrontController
                 $registrySession,
             );
 
-            return new RedirectResponse($this->resolveSafeRelayState($result->flow->relayState));
+            // Validated again: the stored value is what the login link carried.
+            return new RedirectResponse($this->relayStateValidator->safePath($result->flow->relayState) ?? $this->generateUrl('frontend.account.home.page'));
         } catch (AccessControlDeniedException $exception) {
             // Already logged by the evaluator. Plain text only: flash messages render through sw_sanitize.
             $this->addFlash(self::DANGER, $exception->getDisplayMessage() ?? $this->trans('sw6oidc.login.accessDenied'));
@@ -193,29 +196,5 @@ class OidcCallbackController extends StorefrontController
         $this->addFlash(self::SUCCESS, $this->trans('sw6oidc.account.linkSuccess'));
 
         return new RedirectResponse($this->generateUrl('frontend.account.profile.page'));
-    }
-
-    /**
-     * Relay state is attacker-influenced (it's echoed back through the IdP
-     * redirect), so only ever redirect to a path on this same request's host —
-     * never to an absolute URL pointing somewhere else.
-     */
-    private function resolveSafeRelayState(string $relayState): string
-    {
-        if ($relayState === '' || str_starts_with($relayState, '//')) {
-            return $this->generateUrl('frontend.account.home.page');
-        }
-
-        $parts = parse_url($relayState);
-
-        if ($parts === false || isset($parts['scheme'], $parts['host'])) {
-            // Absolute URL: only allow it through unchanged if it was one we
-            // generated ourselves (i.e. the "path" survives re-parsing) —
-            // simplest safe rule is to just take the path+query, dropping any
-            // attacker-supplied scheme/host entirely.
-            return ($parts['path'] ?? '/') . (isset($parts['query']) ? '?' . $parts['query'] : '');
-        }
-
-        return $relayState;
     }
 }

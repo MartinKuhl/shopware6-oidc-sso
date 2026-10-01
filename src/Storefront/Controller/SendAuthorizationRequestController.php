@@ -7,6 +7,7 @@ use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
+use MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator;
 use Shopware\Core\Checkout\Customer\SalesChannel\AbstractLogoutRoute;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Psr\Log\LoggerInterface;
@@ -30,6 +31,7 @@ class SendAuthorizationRequestController extends StorefrontController
         private readonly LoggerInterface $logger,
         private readonly UserProviderBindingService $bindingService,
         private readonly AbstractLogoutRoute $logoutRoute,
+        private readonly RelayStateValidator $relayStateValidator,
     ) {
     }
 
@@ -42,7 +44,10 @@ class SendAuthorizationRequestController extends StorefrontController
     public function login(Request $request, SalesChannelContext $context): RedirectResponse
     {
         $providerId = $request->query->get('providerId');
-        $relayState = (string) $request->query->get('redirectTo', $this->generateUrl('frontend.account.home.page'));
+        $relayState = $this->relayStateValidator->resolve(
+            (string) $request->query->get('redirectTo', ''),
+            $request->query->get('redirectParameters'),
+        ) ?? $this->generateUrl('frontend.account.home.page');
 
         try {
             $provider = $providerId !== null

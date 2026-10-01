@@ -48,9 +48,13 @@ class AdminOidcGrant extends AbstractGrant
     private const STEP_UP_SCOPES = 'write user-verified';
     private const STEP_UP_MAX_TTL = 'PT5M';
 
+    /**
+     * @param string $refreshTokenTtl the shop's `shopware.api.refresh_token_ttl` (H10)
+     */
     public function __construct(
         RefreshTokenRepositoryInterface $refreshTokenRepository,
         private readonly Connection $connection,
+        string $refreshTokenTtl = 'P1W',
     ) {
         // AuthorizationServer::enableGrantType() never sets this - League
         // only wires up client/access-token/scope repositories, default
@@ -61,7 +65,7 @@ class AdminOidcGrant extends AbstractGrant
         // ...::$refreshTokenRepository must not be accessed before
         // initialization" the first time a token is actually issued.
         $this->setRefreshTokenRepository($refreshTokenRepository);
-        $this->refreshTokenTTL = new \DateInterval('P1M');
+        $this->refreshTokenTTL = new \DateInterval($refreshTokenTtl);
     }
 
     public function respondToAccessTokenRequest(

@@ -85,9 +85,11 @@ class OidcHttpClient
         // (client_secret/code/code_verifier/*_token). $options['headers'] is
         // deliberately never logged at all - that's where a Basic-auth
         // Authorization header lives for a confidential client.
+        $logUrl = $this->withoutQuery($url);
+
         $this->logger->debug('sw6oidc: sending IdP HTTP request.', [
             'method' => $method,
-            'url' => $url,
+            'url' => $logUrl,
             'formParamKeys' => array_keys($options['body'] ?? []),
         ]);
 
@@ -96,9 +98,17 @@ class OidcHttpClient
             $content = $response->getContent(false);
             $statusCode = $response->getStatusCode();
         } catch (HttpClientExceptionInterface $exception) {
+            // Only idempotent GETs are retried: a POST to the token endpoint
+            // carries a single-use authorization code that a retry would burn
+            // (or replay, making the IdP revoke the session). A destination
+            // the SSRF guard blocked stays blocked (M3).
+            if ($method !== 'GET' || $this->isBlockedAddress($exception)) {
+                throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed.', $logUrl), 0, $exception);
+            }
+
             $this->logger->warning('sw6oidc: retrying HTTP request after transport error.', [
-                'url' => $url,
-                'exception' => $exception->getMessage(),
+                'url' => $logUrl,
+                'exceptionClass' => $exception::class,
             ]);
 
             [$content, $statusCode] = $this->retryOnce($method, $url, $options);
@@ -108,20 +118,32 @@ class OidcHttpClient
 
         $this->logger->log($statusCode >= 400 ? 'warning' : 'debug', 'sw6oidc: received IdP HTTP response.', [
             'method' => $method,
-            'url' => $url,
+            'url' => $logUrl,
             'statusCode' => $statusCode,
             'bodyKeys' => \is_array($decoded) ? array_keys($decoded) : null,
         ]);
 
         if ($statusCode >= 400) {
-            throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed with status %d.', $url, $statusCode));
+            throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed with status %d.', $logUrl, $statusCode));
         }
 
         if (!\is_array($decoded)) {
-            throw new OidcHttpException(sprintf('OIDC HTTP response from "%s" was not valid JSON.', $url));
+            throw new OidcHttpException(sprintf('OIDC HTTP response from "%s" was not valid JSON.', $logUrl));
         }
 
         return $decoded;
+    }
+
+    private function withoutQuery(string $url): string
+    {
+        $position = strcspn($url, '?#');
+
+        return substr($url, 0, $position);
+    }
+
+    private function isBlockedAddress(\Throwable $exception): bool
+    {
+        return str_contains($exception->getMessage(), ' is blocked for ');
     }
 
     /**
@@ -138,7 +160,7 @@ class OidcHttpClient
 
             return [$response->getContent(false), $response->getStatusCode()];
         } catch (HttpClientExceptionInterface $exception) {
-            throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed: %s', $url, $exception->getMessage()), 0, $exception);
+            throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed.', $this->withoutQuery($url)), 0, $exception);
         }
     }
 }
