@@ -3,7 +3,9 @@
 /node_modules/
 /src/Resources/app/administration/node_modules/
 /src/Resources/app/storefront/node_modules/
-/src/Resources/public/
+# The built Administration bundle is committed (like the storefront dist/),
+# so installs need no build; source maps stay out of the package.
+/src/Resources/public/**/*.map
 .DS_Store
 .idea/
 /var/

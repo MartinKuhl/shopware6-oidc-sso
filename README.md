@@ -58,6 +58,15 @@ bin/console plugin:install --activate Sw6Oidc
 bin/console cache:clear
 ```
 
+No JavaScript build is needed: the built Administration bundle (`src/Resources/public/administration`) and Storefront bundle (`src/Resources/app/storefront/dist`) ship with the plugin. `plugin:install` copies the Administration assets to `public/bundles`, and activating the plugin recompiles the theme, which picks up the Storefront bundle (unless `SHOPWARE_SKIP_THEME_COMPILE` is set; then run `bin/console theme:compile`).
+
+Only when you change the plugin's JavaScript or templates do you need to rebuild — and commit the result:
+
+```bash
+SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS=1 ./bin/build-administration.sh   # plugins only; core ships prebuilt
+./bin/build-storefront.sh
+```
+
 The plugin's database schema is created by a migration, not an install hook — it runs automatically as part of `plugin:install`. If you ever need to run it explicitly (or re-run after a manual reset):
 
 ```bash

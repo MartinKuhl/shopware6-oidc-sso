@@ -191,9 +191,10 @@ jobs:
         run: composer test-integration
 
   assets:
-    # F-H1: the storefront bundle is committed (dist/), so it must match the
-    # sources; the Administration build must at least succeed. Non-blocking
-    # until it has proven stable.
+    # F-H1: both built bundles are committed (storefront dist/ and
+    # public/administration), so they must match the sources. Non-blocking
+    # until it has proven stable (a different 6.7 patch release can change
+    # the generated output).
     name: Asset build (Administration + Storefront)
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -246,6 +247,8 @@ jobs:
 
       - name: Build Administration
         working-directory: shop
+        env:
+          SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS: '1'
         run: ./bin/build-administration.sh
 
       - name: Build Storefront
@@ -254,9 +257,11 @@ jobs:
           SHOPWARE_SKIP_THEME_COMPILE: 'true'
         run: ./bin/build-storefront.sh
 
-      - name: Committed storefront bundle is up to date
+      - name: Committed bundles are up to date
         working-directory: plugin
-        run: git diff --exit-code -- src/Resources/app/storefront/dist
+        run: |
+          git status --porcelain -- src/Resources/app/storefront/dist src/Resources/public/administration
+          test -z "$(git status --porcelain -- src/Resources/app/storefront/dist src/Resources/public/administration)"
 
   e2e:
     # Browser E2E (tests/E2E/README.md). Non-blocking until it has proven stable.
