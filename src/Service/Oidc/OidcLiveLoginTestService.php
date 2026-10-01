@@ -117,7 +117,7 @@ class OidcLiveLoginTestService
         }
 
         $merged = array_merge($idTokenClaims, $userInfoClaims);
-        $claims = $this->claimsNormalizer->flatten($merged, $provider->getClaimEncoding());
+        $claims = $this->claimsNormalizer->flatten($merged, $provider->getBase64Claims());
 
         $statuses = array_column($steps, 'status');
         $status = \in_array('fail', $statuses, true) ? 'fail' : 'pass';

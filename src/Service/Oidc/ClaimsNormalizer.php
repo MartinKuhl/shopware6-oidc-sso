@@ -23,18 +23,59 @@ class ClaimsNormalizer
      *
      * @throws ClaimsTooComplexException
      */
-    public function flatten(array $claims, string $claimEncoding = 'none'): array
+    /**
+     * @param list<string> $base64Claims claim names whose values are base64-decoded ("*" = all, M10)
+     */
+    public function flatten(array $claims, array $base64Claims = []): array
     {
         $flattened = [];
-        $this->flattenRecursive($claims, '', 0, $claimEncoding, $flattened);
+        $this->flattenRecursive($claims, '', 0, $base64Claims, $flattened);
 
         return $flattened;
     }
 
     /**
+     * Whether a (flattened) claim key is covered by the base64 list: the
+     * name itself, anything nested under it, or "*".
+     *
+     * @param list<string> $base64Claims
+     */
+    public function isBase64Claim(string $key, array $base64Claims): bool
+    {
+        foreach ($base64Claims as $claim) {
+            if ($claim === '*' || $key === $claim || str_starts_with($key, $claim . '.')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Decodes the normalized group names when the group claim is listed, so
+     * groups and the flattened claims (access-control rules) agree.
+     *
+     * @param list<string> $groups
+     * @param list<string> $base64Claims
+     *
+     * @return list<string>
+     */
+    public function decodeGroups(array $groups, string $groupAttribute, array $base64Claims): array
+    {
+        if (!$this->isBase64Claim($groupAttribute, $base64Claims)) {
+            return $groups;
+        }
+
+        return array_map(fn (string $group): string => (string) $this->decode($group), $groups);
+    }
+
+    /**
      * @param array<string, mixed> $target
      */
-    private function flattenRecursive(array $claims, string $prefix, int $depth, string $claimEncoding, array &$target): void
+    /**
+     * @param list<string> $base64Claims
+     */
+    private function flattenRecursive(array $claims, string $prefix, int $depth, array $base64Claims, array &$target): void
     {
         if ($depth > self::MAX_RECURSION_DEPTH) {
             return;
@@ -48,18 +89,18 @@ class ClaimsNormalizer
             }
 
             if (\is_array($value)) {
-                $this->flattenRecursive($value, $flatKey, $depth + 1, $claimEncoding, $target);
+                $this->flattenRecursive($value, $flatKey, $depth + 1, $base64Claims, $target);
 
                 continue;
             }
 
-            $target[$flatKey] = $this->maybeDecode($value, $claimEncoding);
+            $target[$flatKey] = $this->isBase64Claim($flatKey, $base64Claims) ? $this->decode($value) : $value;
         }
     }
 
-    private function maybeDecode(mixed $value, string $claimEncoding): mixed
+    private function decode(mixed $value): mixed
     {
-        if ($claimEncoding !== 'base64' || !\is_string($value) || $value === '') {
+        if (!\is_string($value) || $value === '') {
             return $value;
         }
 

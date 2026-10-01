@@ -206,6 +206,37 @@ final class OidcConfigTransferTest extends TestCase
         self::assertSame(['begin', 'commit'], $this->transactionLog);
     }
 
+    public function testOverwriteKeepsCollectionsAndReferencesMissingFromTheFile(): void
+    {
+        $this->existingProviderIds = [$this->providerId];
+        $this->existingRefs['acl_role'] = [$this->aclRole()->getId()];
+
+        $file = $this->exportFile(withSecret: false);
+        unset($file['providers'][0]['accessControlRules'], $file['providers'][0]['defaultAclRole']);
+
+        $result = $this->transfer()->import($file, true, false, false, Context::createDefaultContext());
+
+        self::assertSame(['attribute', 'role'], $this->childDeletes, 'stored access-control rules are kept (N-L11)');
+        self::assertArrayNotHasKey('accessControlRules', $this->upserts[0]);
+        self::assertArrayNotHasKey('defaultAclRoleId', $this->upserts[0]);
+        self::assertArrayHasKey('attributeMappings', $this->upserts[0]);
+        self::assertStringContainsString('accessControlRules', implode(' ', $result->warnings['authelia'] ?? []));
+    }
+
+    public function testOverwriteWithAnEmptyListStillClearsThatCollection(): void
+    {
+        $this->existingProviderIds = [$this->providerId];
+        $this->existingRefs['acl_role'] = [$this->aclRole()->getId()];
+
+        $file = $this->exportFile(withSecret: false);
+        $file['providers'][0]['accessControlRules'] = [];
+
+        $this->transfer()->import($file, true, false, false, Context::createDefaultContext());
+
+        self::assertSame(['attribute', 'role', 'rule'], $this->childDeletes);
+        self::assertSame([], $this->upserts[0]['accessControlRules']);
+    }
+
     public function testDryRunWrapsEverythingInARolledBackTransaction(): void
     {
         $this->existingRefs['acl_role'] = [$this->aclRole()->getId()];

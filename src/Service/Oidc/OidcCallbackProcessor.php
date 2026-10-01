@@ -116,9 +116,13 @@ class OidcCallbackProcessor
         // nested role object would turn its group-name keys into dotted leaf
         // paths and lose them (see ClaimsNormalizer::normalizeGroups()).
         $rawGroupsClaim = $mergedClaims[$provider->getGroupAttribute()] ?? null;
-        $groups = $this->claimsNormalizer->normalizeGroups($rawGroupsClaim);
+        $groups = $this->claimsNormalizer->decodeGroups(
+            $this->claimsNormalizer->normalizeGroups($rawGroupsClaim),
+            $provider->getGroupAttribute(),
+            $provider->getBase64Claims(),
+        );
 
-        $flattenedClaims = $this->claimsNormalizer->flatten($mergedClaims, $provider->getClaimEncoding());
+        $flattenedClaims = $this->claimsNormalizer->flatten($mergedClaims, $provider->getBase64Claims());
 
         // Before mapping, so a denied login never reaches lookup/JIT-create/sync.
         $this->accessControlEvaluator->evaluate($provider->getId(), $flattenedClaims, $context);

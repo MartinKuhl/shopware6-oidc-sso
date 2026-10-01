@@ -16,12 +16,14 @@ use Shopware\Core\Framework\DataAbstractionLayer\Field\FkField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\AllowHtml;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ApiAware;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\CascadeDelete;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Choice;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\PrimaryKey;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Required;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\WriteProtected;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IdField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IntField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\JsonField;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\ListField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\ManyToOneAssociationField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\OneToManyAssociationField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\StringField;
@@ -85,6 +87,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new StringField('scope', 'scope', 512))->addFlags(new ApiAware(), new Required()),
             (new StringField('pkce_flow', 'pkceFlow'))->addFlags(new ApiAware(), new Required()),
             (new StringField('claim_encoding', 'claimEncoding'))->addFlags(new ApiAware(), new Required()),
+            (new ListField('base64_claims', 'base64Claims', StringField::class))->addFlags(new ApiAware()),
             (new BoolField('public_client', 'publicClient'))->addFlags(new ApiAware()),
             (new StringField('group_attribute', 'groupAttribute'))->addFlags(new ApiAware(), new Required()),
             (new BoolField('auto_create_customer', 'autoCreateCustomer'))->addFlags(new ApiAware()),
@@ -110,7 +113,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new BoolField('revoke_superadmin_on_sso', 'revokeSuperadminOnSso'))->addFlags(new ApiAware()),
             (new IntField('http_timeout', 'httpTimeout'))->addFlags(new ApiAware()),
             (new IntField('jwks_cache_ttl', 'jwksCacheTtl'))->addFlags(new ApiAware()),
-            (new StringField('last_test_status', 'lastTestStatus', 16))->addFlags(new ApiAware()),
+            (new StringField('last_test_status', 'lastTestStatus', 16))->addFlags(new ApiAware(), new Choice(['pass', 'fail'], true)),
             (new DateTimeField('last_test_at', 'lastTestAt'))->addFlags(new ApiAware()),
             (new JsonField('last_test_claims', 'lastTestClaims'))->addFlags(new ApiAware()),
             // Health alerting: the webhook URL usually embeds a token, so it is

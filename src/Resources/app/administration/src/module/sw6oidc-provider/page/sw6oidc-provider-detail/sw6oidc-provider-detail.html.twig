@@ -180,11 +180,11 @@
                         :help-text="$tc('sw6oidc.provider.detail.pkceFlowHelp')"
                         :options="pkceFlowOptions"
                     />
-                    <sw-single-select
-                        v-model:value="provider.claimEncoding"
-                        :label="$tc('sw6oidc.provider.detail.claimEncoding')"
-                        :help-text="$tc('sw6oidc.provider.detail.claimEncodingHelp')"
-                        :options="claimEncodingOptions"
+                    <sw-multi-tag-select
+                        v-model:value="base64Claims"
+                        :label="$tc('sw6oidc.provider.detail.base64Claims')"
+                        :help-text="$tc('sw6oidc.provider.detail.base64ClaimsHelp')"
+                        :placeholder="$tc('sw6oidc.provider.detail.base64ClaimsPlaceholder')"
                     />
                 </sw-container>
                 {# Own row: next to the label-on-top selects, the switch sat

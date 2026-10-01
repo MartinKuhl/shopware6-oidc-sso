@@ -61,6 +61,9 @@ class Sw6OidcProviderEntity extends Entity
     protected bool $requireEmailVerified = true;
     protected bool $linkExistingAccounts = false;
     protected bool $frontchannelAdminLogout = false;
+
+    /** @var list<string>|null */
+    protected ?array $base64Claims = null;
     protected bool $revokeSuperadminOnSso = false;
     protected int $httpTimeout = 30;
     protected int $jwksCacheTtl = 86400;
@@ -637,6 +640,28 @@ class Sw6OidcProviderEntity extends Entity
     public function setLinkExistingAccounts(bool $linkExistingAccounts): void
     {
         $this->linkExistingAccounts = $linkExistingAccounts;
+    }
+
+    /**
+     * Claim names whose values are base64-encoded ("*" = all). A name covers
+     * the claim and everything nested under it.
+     *
+     * @return list<string>
+     */
+    public function getBase64Claims(): array
+    {
+        return array_values(array_filter(
+            array_map(static fn (mixed $claim): string => \is_string($claim) ? trim($claim) : '', $this->base64Claims ?? []),
+            static fn (string $claim): bool => $claim !== '',
+        ));
+    }
+
+    /**
+     * @param list<string>|null $base64Claims
+     */
+    public function setBase64Claims(?array $base64Claims): void
+    {
+        $this->base64Claims = $base64Claims;
     }
 
     public function isFrontchannelAdminLogout(): bool

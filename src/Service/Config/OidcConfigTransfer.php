@@ -45,6 +45,8 @@ class OidcConfigTransfer
     public const SECRET_PLAINTEXT = 'plaintext';
 
     /** Provider properties never exported/imported as plain fields. */
+    private const CHILD_COLLECTIONS = ['attributeMappings', 'roleMappings', 'accessControlRules'];
+
     private const EXCLUDED_PROPERTIES = [
         'clientSecret',
         'defaultAclRoleId',
@@ -260,8 +262,24 @@ class OidcConfigTransfer
             throw new \InvalidArgumentException('New confidential provider without "clientSecret": export it with --keep-encrypted (same APP_SECRET) or --plaintext.');
         }
 
-        $payload['defaultAclRoleId'] = $this->resolveReference($provider['defaultAclRole'] ?? null, 'acl_role', $skipUnresolved, $result, $label, $context);
-        $payload['defaultCustomerGroupId'] = $this->resolveReference($provider['defaultCustomerGroup'] ?? null, 'customer_group', $skipUnresolved, $result, $label, $context);
+        // A key the file doesn't carry (hand-edited, filtered, older export)
+        // keeps what is stored: an overwrite must never silently drop
+        // access-control rules or mappings (N-L11).
+        if (!$exists || \array_key_exists('defaultAclRole', $provider)) {
+            $payload['defaultAclRoleId'] = $this->resolveReference($provider['defaultAclRole'] ?? null, 'acl_role', $skipUnresolved, $result, $label, $context);
+        }
+
+        if (!$exists || \array_key_exists('defaultCustomerGroup', $provider)) {
+            $payload['defaultCustomerGroupId'] = $this->resolveReference($provider['defaultCustomerGroup'] ?? null, 'customer_group', $skipUnresolved, $result, $label, $context);
+        }
+
+        if ($exists) {
+            foreach (self::CHILD_COLLECTIONS as $collection) {
+                if (!\array_key_exists($collection, $provider)) {
+                    $result->warnings[$label][] = sprintf('"%s" is missing from the file; the stored ones were kept.', $collection);
+                }
+            }
+        }
 
         $payload['attributeMappings'] = [];
 
@@ -323,11 +341,23 @@ class OidcConfigTransfer
 
         // One transaction per provider: a rejected upsert (SSRF, lockout
         // guard, validation) must not leave its mappings deleted.
-        $this->connection->transactional(function () use ($exists, $id, $payload, $context): void {
+        $repositories = [
+            'attributeMappings' => $this->attributeMappingRepository,
+            'roleMappings' => $this->roleMappingRepository,
+            'accessControlRules' => $this->accessControlRuleRepository,
+        ];
+
+        foreach (self::CHILD_COLLECTIONS as $collection) {
+            if ($exists && !\array_key_exists($collection, $provider)) {
+                unset($payload[$collection], $repositories[$collection]);
+            }
+        }
+
+        $this->connection->transactional(function () use ($exists, $id, $payload, $repositories, $context): void {
             if ($exists) {
-                $this->deleteChildren($this->attributeMappingRepository, $id, $context);
-                $this->deleteChildren($this->roleMappingRepository, $id, $context);
-                $this->deleteChildren($this->accessControlRuleRepository, $id, $context);
+                foreach ($repositories as $repository) {
+                    $this->deleteChildren($repository, $id, $context);
+                }
             }
 
             $this->providerRepository->upsert([$payload], $context);

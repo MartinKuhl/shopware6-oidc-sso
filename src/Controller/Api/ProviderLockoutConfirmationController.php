@@ -29,7 +29,7 @@ class ProviderLockoutConfirmationController extends AbstractController
     #[Route(
         path: '/api/_action/sw6oidc/provider/{providerId}/confirm-lockout',
         name: 'api.action.sw6oidc.provider.confirm-lockout',
-        defaults: ['_acl' => ['sw6oidc_provider.editor']],
+        defaults: ['_acl' => ['sw6oidc_provider:update']],
         methods: ['POST'],
     )]
     public function confirm(string $providerId, Context $context): JsonResponse

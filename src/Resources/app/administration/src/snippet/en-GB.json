@@ -132,8 +132,9 @@
                 "groupAttributeHelp": "The claim key holding the user's group/role memberships (default: \"groups\"), used by the Group/Role Mapping below.",
                 "pkceFlow": "PKCE method",
                 "pkceFlowHelp": "Code challenge method used for PKCE. \"S256\" is preferred; use \"plain\" only if your IdP doesn't support S256.",
-                "claimEncoding": "Claim encoding",
-                "claimEncodingHelp": "Set to \"base64\" if this IdP base64-encodes claim values (e.g. Zitadel-style nested role objects).",
+                "base64Claims": "Base64-encoded claims",
+                "base64ClaimsHelp": "Only for IdPs that base64-encode some claim values: list exactly those claims (a name also covers everything nested under it; * = all claims, not recommended). Other claims are never decoded.",
+                "base64ClaimsPlaceholder": "Claim name, then Enter",
                 "publicClient": "Public client (PKCE, no client secret)",
                 "publicClientHelp": "Enable for a PKCE-only client with no client secret (RFC 6749 §2.1).",
                 "httpTimeout": "HTTP timeout (seconds)",
@@ -240,7 +241,7 @@
                     "closeButton": "Close window"
                 },
                 "cardAccessControl": "Access control (claims-based rules)",
-                "accessControlHint": "Every rule must pass (AND, in sort order) for a login to succeed; the first failing rule denies the login with its message. Claim keys use the flattened dot notation (e.g. realm_access.roles). List claims such as groups are matched by membership. Comparisons ignore case; true/1 and false/0 are treated as equal. No rules = everyone may log in.",
+                "accessControlHint": "Every rule must pass (AND, in sort order) for a login to succeed; the first failing rule denies the login with its message. Claim keys use the flattened dot notation (e.g. realm_access.roles). List claims such as groups are matched by membership (\"equals\" = any member). \"Contains\" on a single value matches a whole word, never part of one — use \"email domain is\" to restrict by domain. \"Does not equal\" and \"does not contain\" deny when the claim is missing. Comparisons ignore case; true/1 and false/0 are treated as equal. No rules = everyone may log in.",
                 "accessControlDiscoveredClaims": "Claims seen on the last live test: {claims}",
                 "claimKey": "Claim",
                 "operator": "Operator",
@@ -254,7 +255,9 @@
                     "contains": "contains",
                     "not_contains": "does not contain",
                     "exists": "exists",
-                    "not_exists": "does not exist"
+                    "not_exists": "does not exist",
+                    "ends_with": "ends with",
+                    "email_domain": "email domain is"
                 },
                 "postLogoutUrl": "Post-logout redirect URI",
                 "postLogoutUrlHelp": "Where the IdP sends the user after logging out there. Leave empty for the defaults (customers: the Storefront login page, admins: the Administration). For IdPs that accept only one post-logout URI, enter the shown /sw6oidc/postlogout URL and register just that one — it sends customers and admins to the right login page.",

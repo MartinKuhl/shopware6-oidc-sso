@@ -132,8 +132,9 @@
                 "groupAttributeHelp": "Der Claim-Schlüssel mit den Gruppen-/Rollenzugehörigkeiten des Nutzers (Standard: „groups“), Grundlage für die Rollen-/Gruppenzuordnung unten.",
                 "pkceFlow": "PKCE-Methode",
                 "pkceFlowHelp": "Code-Challenge-Methode für PKCE. „S256“ wird bevorzugt; „plain“ nur verwenden, wenn der IdP S256 nicht unterstützt.",
-                "claimEncoding": "Claim-Kodierung",
-                "claimEncodingHelp": "Auf „base64“ setzen, wenn dieser IdP Claim-Werte Base64-kodiert (z. B. Zitadel-artige verschachtelte Rollenobjekte).",
+                "base64Claims": "Base64-kodierte Claims",
+                "base64ClaimsHelp": "Nur für IdPs, die einzelne Claim-Werte Base64-kodieren: genau diese Claims eintragen (ein Name umfasst auch alles darunter Verschachtelte; * = alle Claims, nicht empfohlen). Andere Claims werden nie dekodiert.",
+                "base64ClaimsPlaceholder": "Claim-Name, dann Enter",
                 "publicClient": "Public Client (PKCE, ohne Client-Secret)",
                 "publicClientHelp": "Aktivieren für einen reinen PKCE-Client ohne Client-Secret (RFC 6749 §2.1).",
                 "httpTimeout": "HTTP-Timeout (Sekunden)",
@@ -240,7 +241,7 @@
                     "closeButton": "Fenster schließen"
                 },
                 "cardAccessControl": "Zugriffskontrolle (Claim-basierte Regeln)",
-                "accessControlHint": "Jede Regel muss erfüllt sein (UND-Verknüpfung, in Sortierreihenfolge), damit eine Anmeldung gelingt; die erste nicht erfüllte Regel lehnt die Anmeldung mit ihrer Meldung ab. Claim-Schlüssel verwenden die abgeflachte Punktnotation (z. B. realm_access.roles). Listen-Claims wie groups werden über ihre Einträge geprüft. Groß-/Kleinschreibung wird ignoriert; true/1 und false/0 gelten als gleich. Keine Regeln = jeder darf sich anmelden.",
+                "accessControlHint": "Jede Regel muss erfüllt sein (UND-Verknüpfung, in Sortierreihenfolge), damit eine Anmeldung gelingt; die erste nicht erfüllte Regel lehnt die Anmeldung mit ihrer Meldung ab. Claim-Schlüssel verwenden die abgeflachte Punktnotation (z. B. realm_access.roles). Listen-Claims wie groups werden über ihre Einträge geprüft (\"ist gleich\" = irgendein Eintrag). \"Enthält\" auf einem Einzelwert prüft ganze Wörter, nie Teile davon – zur Einschränkung nach Domain \"E-Mail-Domain ist\" verwenden. \"Ist ungleich\" und \"enthält nicht\" lehnen ab, wenn der Claim fehlt. Groß-/Kleinschreibung wird ignoriert; true/1 und false/0 gelten als gleich. Keine Regeln = jeder darf sich anmelden.",
                 "accessControlDiscoveredClaims": "Beim letzten Live-Test empfangene Claims: {claims}",
                 "claimKey": "Claim",
                 "operator": "Operator",
@@ -254,7 +255,9 @@
                     "contains": "enthält",
                     "not_contains": "enthält nicht",
                     "exists": "existiert",
-                    "not_exists": "existiert nicht"
+                    "not_exists": "existiert nicht",
+                    "ends_with": "endet mit",
+                    "email_domain": "E-Mail-Domain ist"
                 },
                 "postLogoutUrl": "Weiterleitungs-URI nach dem Logout",
                 "postLogoutUrlHelp": "Wohin der IdP den Benutzer nach dem Logout dort schickt. Leer lassen für die Standardwerte (Kunden: Storefront-Login-Seite, Admins: die Administration). Für IdPs, die nur eine Post-Logout-URI akzeptieren, die angezeigte /sw6oidc/postlogout-URL eintragen und nur diese registrieren – sie leitet Kunden und Admins zur jeweils richtigen Login-Seite.",

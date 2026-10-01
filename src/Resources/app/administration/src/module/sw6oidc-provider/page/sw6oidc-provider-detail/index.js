@@ -156,7 +156,7 @@ Component.register('sw6oidc-provider-detail', () => {
 
             /** Sw6OidcAccessControlRuleDefinition::OPERATORS */
             operatorOptions() {
-                return ['eq', 'neq', 'contains', 'not_contains', 'exists', 'not_exists'].map((value) => ({
+                return ['eq', 'neq', 'contains', 'not_contains', 'ends_with', 'email_domain', 'exists', 'not_exists'].map((value) => ({
                     value,
                     label: this.$tc(`sw6oidc.provider.detail.operators.${value}`),
                 }));
@@ -215,8 +215,13 @@ Component.register('sw6oidc-provider-detail', () => {
                 return ['S256', 'plain'].map((value) => ({ value, label: value }));
             },
 
-            claimEncodingOptions() {
-                return ['none', 'base64'].map((value) => ({ value, label: value }));
+            base64Claims: {
+                get() {
+                    return Array.isArray(this.provider?.base64Claims) ? this.provider.base64Claims : [];
+                },
+                set(value) {
+                    this.provider.base64Claims = (value ?? []).map((claim) => String(claim).trim()).filter((claim) => claim !== '');
+                },
             },
 
             /**
@@ -314,6 +319,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 this.provider.scope = 'openid profile email';
                 this.provider.pkceFlow = 'S256';
                 this.provider.claimEncoding = 'none';
+                this.provider.base64Claims = [];
                 this.provider.groupAttribute = 'groups';
                 this.provider.loginType = 'both';
                 this.provider.isActive = true;

@@ -45,6 +45,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 #[Route(defaults: ['_routeScope' => ['api']])]
 class OidcProviderAdminController extends AbstractController
 {
+    private const MAX_STORED_CLAIM_KEYS = 500;
+
     public function __construct(
         private readonly EntityRepository $providerRepository,
         private readonly AuthorizationRequestBuilder $requestBuilder,
@@ -61,7 +63,7 @@ class OidcProviderAdminController extends AbstractController
     #[Route(
         path: '/api/_action/sw6oidc/provider/discover',
         name: 'api.action.sw6oidc.provider.discover',
-        defaults: ['_acl' => ['sw6oidc_provider.editor']],
+        defaults: ['_acl' => ['sw6oidc_provider:update']],
         methods: ['POST'],
     )]
     public function discover(Request $request): JsonResponse
@@ -92,7 +94,7 @@ class OidcProviderAdminController extends AbstractController
     #[Route(
         path: '/api/_action/sw6oidc/provider/test-connection',
         name: 'api.action.sw6oidc.provider.test-connection',
-        defaults: ['_acl' => ['sw6oidc_provider.editor']],
+        defaults: ['_acl' => ['sw6oidc_provider:update']],
         methods: ['POST'],
     )]
     public function testConnection(Request $request, Context $context): JsonResponse
@@ -128,7 +130,7 @@ class OidcProviderAdminController extends AbstractController
     #[Route(
         path: '/api/_action/sw6oidc/provider/{id}/test',
         name: 'api.action.sw6oidc.provider.test-start',
-        defaults: ['_acl' => ['sw6oidc_provider.viewer']],
+        defaults: ['_acl' => ['sw6oidc_provider:update']],
         methods: ['POST'],
     )]
     public function startLiveTest(string $id, Request $request, Context $context): JsonResponse
@@ -281,8 +283,13 @@ class OidcProviderAdminController extends AbstractController
         // any $claims) must not wipe out the claims a prior successful test
         // already gave the admin to work with in the attribute-mapping
         // picker.
+        //
+        // Only the claim *keys* are kept (M13): the attribute-mapping picker
+        // needs nothing else, and the values are the tester's personal data,
+        // readable by every provider viewer. The values are shown once, in
+        // the result popup of the admin who ran the test.
         if ($claims !== []) {
-            $payload['lastTestClaims'] = $claims;
+            $payload['lastTestClaims'] = array_fill_keys(\array_slice(array_map(strval(...), array_keys($claims)), 0, self::MAX_STORED_CLAIM_KEYS), null);
         }
 
         $this->providerRepository->update([$payload], $context);

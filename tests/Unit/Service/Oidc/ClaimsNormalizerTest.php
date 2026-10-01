@@ -100,15 +100,33 @@ final class ClaimsNormalizerTest extends TestCase
         $this->normalizer->flatten($claims);
     }
 
-    public function testFlattenDecodesBase64LeafStringsWhenEncodingIsBase64(): void
+    public function testFlattenDecodesOnlyListedClaimsAndTheirChildren(): void
     {
         $flattened = $this->normalizer->flatten([
             'given_name' => base64_encode('Jürgen'),
             'org' => ['name' => base64_encode('ACME GmbH')],
-        ], 'base64');
+            'organisation' => 'YWJj',
+            'nickname' => 'YWJj',
+        ], ['given_name', 'org']);
 
         self::assertSame('Jürgen', $flattened['given_name']);
         self::assertSame('ACME GmbH', $flattened['org.name']);
+        self::assertSame('YWJj', $flattened['organisation'], 'a name prefix is not a parent');
+        self::assertSame('YWJj', $flattened['nickname'], 'plain claims that happen to be valid base64 stay untouched (M10)');
+    }
+
+    public function testWildcardDecodesEveryClaim(): void
+    {
+        self::assertSame(['a' => 'abc', 'b.c' => 'abc'], $this->normalizer->flatten(['a' => 'YWJj', 'b' => ['c' => 'YWJj']], ['*']));
+    }
+
+    public function testDecodeGroupsOnlyWhenTheGroupClaimIsListed(): void
+    {
+        $groups = [base64_encode('Admins'), base64_encode('Staff')];
+
+        self::assertSame(['Admins', 'Staff'], $this->normalizer->decodeGroups($groups, 'groups', ['groups']));
+        self::assertSame(['Admins', 'Staff'], $this->normalizer->decodeGroups($groups, 'groups', ['*']));
+        self::assertSame($groups, $this->normalizer->decodeGroups($groups, 'groups', ['given_name']));
     }
 
     public function testFlattenLeavesInvalidBase64AndNonUtf8ResultsUntouched(): void
@@ -120,7 +138,7 @@ final class ClaimsNormalizerTest extends TestCase
             'binary' => $binary,
             'empty' => '',
             'number' => 7,
-        ], 'base64');
+        ], ['*']);
 
         self::assertSame('user@example.com', $flattened['email']);
         self::assertSame($binary, $flattened['binary']);
