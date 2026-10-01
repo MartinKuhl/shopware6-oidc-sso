@@ -8,6 +8,7 @@ use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use Shopware\Core\Checkout\Customer\SalesChannel\AbstractLogoutRoute;
 use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
 use Psr\Log\LoggerInterface;
@@ -32,6 +33,7 @@ class SendAuthorizationRequestController extends StorefrontController
         private readonly UserProviderBindingService $bindingService,
         private readonly AbstractLogoutRoute $logoutRoute,
         private readonly RelayStateValidator $relayStateValidator,
+        private readonly Sw6OidcRateLimiter $rateLimiter,
     ) {
     }
 
@@ -43,6 +45,14 @@ class SendAuthorizationRequestController extends StorefrontController
     )]
     public function login(Request $request, SalesChannelContext $context): RedirectResponse
     {
+        // Every flow start stores a flow context: a consuming budget (N-M15).
+        if (!$this->rateLimiter->consume(Sw6OidcRateLimiter::SCOPE_FLOW_START, $request->getClientIp())) {
+            $this->logger->warning('sw6oidc: customer SSO flow start rate-limited.');
+            $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.failed'));
+
+            return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
+        }
+
         $providerId = $request->query->get('providerId');
         $relayState = $this->relayStateValidator->resolve(
             (string) $request->query->get('redirectTo', ''),

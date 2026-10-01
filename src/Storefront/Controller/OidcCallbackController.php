@@ -15,6 +15,7 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\UnknownStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
@@ -66,7 +67,7 @@ class OidcCallbackController extends StorefrontController
     )]
     public function callback(Request $request, SalesChannelContext $context): Response
     {
-        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp())) {
+        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_CALLBACK_STOREFRONT, $request->getClientIp())) {
             $this->logger->warning('sw6oidc: customer OIDC callback rate-limited.');
             $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.failed'));
 
@@ -165,8 +166,14 @@ class OidcCallbackController extends StorefrontController
             }));
 
             return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
+        } catch (UnknownStateException $exception) {
+            // Expired/reused state (back button, second tab) or junk: not counted (N-M3).
+            $this->logger->notice('sw6oidc: customer OIDC callback with an unknown state.', ['exception' => $exception->getMessage()]);
+            $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.failed'));
+
+            return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
         } catch (\Throwable $exception) {
-            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp());
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK_STOREFRONT, $request->getClientIp());
             $this->logger->warning('sw6oidc: customer OIDC callback failed.', [
                 'exceptionClass' => $exception::class,
                 'exception' => $exception->getMessage(),

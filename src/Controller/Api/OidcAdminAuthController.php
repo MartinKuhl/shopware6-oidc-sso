@@ -31,6 +31,7 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedExcept
 use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\UnknownStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\UserVerifiedScope;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
@@ -103,9 +104,19 @@ class OidcAdminAuthController extends AbstractController
         name: 'api.action.sw6oidc.admin.login-error',
         methods: ['GET'],
     )]
-    public function loginError(string $ticket): JsonResponse
+    public function loginError(string $ticket, Request $request): JsonResponse
     {
-        return new JsonResponse(['message' => $this->loginErrorTicketStore->redeem($ticket)]);
+        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp())) {
+            return new JsonResponse(['message' => null], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
+        $message = $this->loginErrorTicketStore->redeem($ticket);
+
+        if ($message === null) {
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp());
+        }
+
+        return new JsonResponse(['message' => $message]);
     }
 
     /**
@@ -154,6 +165,13 @@ class OidcAdminAuthController extends AbstractController
     )]
     public function login(Request $request): RedirectResponse
     {
+        // Every flow start stores a flow context: a consuming budget (N-M15).
+        if (!$this->rateLimiter->consume(Sw6OidcRateLimiter::SCOPE_FLOW_START, $request->getClientIp())) {
+            $this->logger->warning('sw6oidc: admin SSO flow start rate-limited.');
+
+            return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_error' => 'oidc_failed']));
+        }
+
         $context = Context::createDefaultContext();
         $providerId = $request->query->get('providerId');
 
@@ -187,7 +205,7 @@ class OidcAdminAuthController extends AbstractController
     {
         $context = Context::createDefaultContext();
 
-        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp())) {
+        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_CALLBACK_ADMIN, $request->getClientIp())) {
             $this->logger->warning('sw6oidc: admin OIDC callback rate-limited.');
 
             return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_error' => 'oidc_failed']));
@@ -292,8 +310,13 @@ class OidcAdminAuthController extends AbstractController
                     ? 'admin_role_missing'
                     : 'admin_auto_create_disabled',
             ]));
+        } catch (UnknownStateException $exception) {
+            // Expired/reused state or junk: not counted (N-M3).
+            $this->logger->notice('sw6oidc: admin OIDC callback with an unknown state.', ['exception' => $exception->getMessage()]);
+
+            return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_error' => 'oidc_failed']));
         } catch (\Throwable $exception) {
-            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK, $request->getClientIp());
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK_ADMIN, $request->getClientIp());
             $this->logger->warning('sw6oidc: admin OIDC callback failed.', [
                 'exceptionClass' => $exception::class,
                 'exception' => $exception->getMessage(),
@@ -365,10 +388,16 @@ class OidcAdminAuthController extends AbstractController
     )]
     public function exchangeNonce(Request $request): Response
     {
+        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp())) {
+            return $this->json(['error' => 'too_many_requests'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         $nonce = $request->request->get('sw6oidc_nonce');
         $loginNonce = $this->loginNonceService->redeemNonce(\is_string($nonce) ? $nonce : null);
 
         if (!$loginNonce instanceof AdminLoginNonce) {
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp());
+
             // Was silent before - a redirect back from the IdP that looks
             // clean in the logs above (provisioning succeeded, nonce
             // minted, redirect issued) can still end here if the SPA calls

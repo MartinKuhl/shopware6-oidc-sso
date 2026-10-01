@@ -45,4 +45,38 @@ final class Sw6OidcRateLimiterTest extends TestCase
         self::assertNotSame([], $dedicated->getValues());
         self::assertSame([], $fallback->getValues());
     }
+
+    public function testConsumingBudgetCountsEveryRequestAndIsSeparateFromFailures(): void
+    {
+        $limiter = new Sw6OidcRateLimiter(null, new ArrayAdapter(), 1, 60, 3);
+
+        self::assertTrue($limiter->consume(Sw6OidcRateLimiter::SCOPE_FLOW_START, '198.51.100.1'));
+        self::assertTrue($limiter->consume(Sw6OidcRateLimiter::SCOPE_FLOW_START, '198.51.100.1'));
+        self::assertTrue($limiter->consume(Sw6OidcRateLimiter::SCOPE_FLOW_START, '198.51.100.1'));
+        self::assertFalse($limiter->consume(Sw6OidcRateLimiter::SCOPE_FLOW_START, '198.51.100.1'));
+
+        self::assertTrue($limiter->consume(Sw6OidcRateLimiter::SCOPE_OPTIONS, '198.51.100.1'), 'per scope');
+        self::assertFalse($limiter->isBlocked(Sw6OidcRateLimiter::SCOPE_FLOW_START, '198.51.100.1'), 'failure budget untouched');
+    }
+
+    public function testStorefrontAndAdminCallbacksDoNotShareABudget(): void
+    {
+        $limiter = new Sw6OidcRateLimiter(null, new ArrayAdapter(), 1);
+        $limiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK_STOREFRONT, '198.51.100.1');
+
+        self::assertTrue($limiter->isBlocked(Sw6OidcRateLimiter::SCOPE_CALLBACK_STOREFRONT, '198.51.100.1'));
+        self::assertFalse($limiter->isBlocked(Sw6OidcRateLimiter::SCOPE_CALLBACK_ADMIN, '198.51.100.1'));
+    }
+
+    public function testIpv6AddressesShareTheirSlash64(): void
+    {
+        $limiter = new Sw6OidcRateLimiter(null, new ArrayAdapter(), 1);
+        $limiter->recordFailure('scope', '2001:db8:1:2:aaaa::1');
+
+        self::assertTrue($limiter->isBlocked('scope', '2001:db8:1:2:bbbb::2'), 'same /64');
+        self::assertFalse($limiter->isBlocked('scope', '2001:db8:1:3::1'), 'other /64');
+        self::assertSame('2001:db8:1:2::/64', Sw6OidcRateLimiter::clientKey('2001:db8:1:2:aaaa::1'));
+        self::assertSame('198.51.100.1', Sw6OidcRateLimiter::clientKey('198.51.100.1'));
+        self::assertSame('unknown', Sw6OidcRateLimiter::clientKey(null));
+    }
 }

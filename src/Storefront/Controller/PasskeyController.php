@@ -9,6 +9,7 @@ use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
@@ -63,6 +64,7 @@ class PasskeyController extends StorefrontController
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
         private readonly PasskeyRelyingPartyResolver $relyingPartyResolver,
         private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly Sw6OidcRateLimiter $rateLimiter,
     ) {
     }
 
@@ -146,10 +148,15 @@ class PasskeyController extends StorefrontController
         defaults: ['XmlHttpRequest' => true, '_loginRequired' => false],
         methods: ['POST'],
     )]
-    public function loginOptions(SalesChannelContext $context): JsonResponse
+    public function loginOptions(Request $request, SalesChannelContext $context): JsonResponse
     {
         if (!$this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())) {
             return $this->disabled();
+        }
+
+        // Every call stores a ceremony: a consuming budget (N-M15).
+        if (!$this->rateLimiter->consume(Sw6OidcRateLimiter::SCOPE_OPTIONS, $request->getClientIp())) {
+            return $this->rateLimited();
         }
 
         try {
@@ -175,6 +182,10 @@ class PasskeyController extends StorefrontController
             return $this->disabled();
         }
 
+        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp())) {
+            return $this->rateLimited();
+        }
+
         try {
             $resolved = $this->authenticationService->verifyAssertion(
                 (string) $request->request->get('sessionId'),
@@ -197,6 +208,8 @@ class PasskeyController extends StorefrontController
 
             $tokenResponse = $this->loginRoute->loginByCustomerId($customer->getId(), $context);
         } catch (\Throwable $exception) {
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp());
+
             return PublicError::response($this->logger, 'sw6oidc: passkey login failed.', $exception, 'passkey_login_failed', Response::HTTP_UNAUTHORIZED);
         }
 
@@ -232,6 +245,11 @@ class PasskeyController extends StorefrontController
         $lastLogin = $customer->getLastLogin();
 
         return $lastLogin instanceof \DateTimeInterface && $lastLogin->getTimestamp() >= time() - self::REAUTH_WINDOW_SECONDS;
+    }
+
+    private function rateLimited(): JsonResponse
+    {
+        return new JsonResponse(['error' => 'too_many_requests'], Response::HTTP_TOO_MANY_REQUESTS);
     }
 
     private function disabled(): JsonResponse

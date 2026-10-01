@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Security;
 
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\UnknownStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -112,13 +113,13 @@ final class OidcSecurityHelperTest extends TestCase
 
     public function testConsumeRejectsNullState(): void
     {
-        $this->expectException(InvalidStateException::class);
+        $this->expectException(UnknownStateException::class);
         $this->helper->consumeAuthorizationFlow(null);
     }
 
     public function testConsumeRejectsEmptyState(): void
     {
-        $this->expectException(InvalidStateException::class);
+        $this->expectException(UnknownStateException::class);
         $this->helper->consumeAuthorizationFlow('');
     }
 
@@ -126,7 +127,7 @@ final class OidcSecurityHelperTest extends TestCase
     {
         $this->helper->beginAuthorizationRequest('provider-1', 'customer', '/', 'S256');
 
-        $this->expectException(InvalidStateException::class);
+        $this->expectException(UnknownStateException::class);
         $this->helper->consumeAuthorizationFlow('not-a-real-state');
     }
 
@@ -136,7 +137,7 @@ final class OidcSecurityHelperTest extends TestCase
         // Simulate TTL expiry: the cache entry is gone.
         unset($this->cache->items['sw6oidc_flow_' . $result['state']]);
 
-        $this->expectException(InvalidStateException::class);
+        $this->expectException(UnknownStateException::class);
         $this->helper->consumeAuthorizationFlow($result['state']);
     }
 

@@ -6,6 +6,7 @@ use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\StepUpService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
@@ -31,6 +32,7 @@ class StepUpController extends AbstractController
         private readonly AdminTokenIssuer $tokenIssuer,
         private readonly PasskeyConfig $passkeyConfig,
         private readonly LoggerInterface $logger,
+        private readonly Sw6OidcRateLimiter $rateLimiter,
     ) {
     }
 
@@ -70,7 +72,15 @@ class StepUpController extends AbstractController
     {
         $userId = $this->currentUserId($context);
 
+        if ($userId !== null && $this->rateLimiter->isBlocked($this->failureScope($userId), $request->getClientIp())) {
+            return new JsonResponse(['error' => 'too_many_requests'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         if ($userId === null || !$this->stepUpService->redeemNonce((string) $request->request->get('nonce'), $userId)) {
+            if ($userId !== null) {
+                $this->rateLimiter->recordFailure($this->failureScope($userId), $request->getClientIp());
+            }
+
             return new JsonResponse(['error' => 'invalid_grant'], Response::HTTP_BAD_REQUEST);
         }
 
@@ -99,6 +109,10 @@ class StepUpController extends AbstractController
             return new JsonResponse(['error' => 'step_up_unavailable'], Response::HTTP_NOT_FOUND);
         }
 
+        if ($this->rateLimiter->isBlocked($this->failureScope($userId), $request->getClientIp())) {
+            return new JsonResponse(['error' => 'too_many_requests'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         try {
             $this->stepUpService->verifyPasskey(
                 (string) $request->request->get('sessionId'),
@@ -107,10 +121,20 @@ class StepUpController extends AbstractController
                 $userId,
             );
         } catch (\Throwable $exception) {
+            $this->rateLimiter->recordFailure($this->failureScope($userId), $request->getClientIp());
+
             return PublicError::response($this->logger, 'sw6oidc: passkey step-up failed.', $exception, 'step_up_failed', Response::HTTP_UNAUTHORIZED, ['userId' => $userId]);
         }
 
         return $this->issue($request, $userId);
+    }
+
+    /**
+     * Per admin and address: a failing step-up must not lock out other admins.
+     */
+    private function failureScope(string $userId): string
+    {
+        return Sw6OidcRateLimiter::SCOPE_REDEEM . ':step_up:' . $userId;
     }
 
     private function issue(Request $request, string $userId): Response

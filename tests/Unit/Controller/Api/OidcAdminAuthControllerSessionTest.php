@@ -67,8 +67,8 @@ final class OidcAdminAuthControllerSessionTest extends TestCase
         $ticket = $tickets->create('Staff only.');
         $controller = $this->buildAdminAuthController(['loginErrorTicketStore' => $tickets]);
 
-        self::assertSame('{"message":"Staff only."}', $controller->loginError($ticket)->getContent());
-        self::assertSame('{"message":null}', $controller->loginError($ticket)->getContent());
+        self::assertSame('{"message":"Staff only."}', $controller->loginError($ticket, new Request())->getContent());
+        self::assertSame('{"message":null}', $controller->loginError($ticket, new Request())->getContent());
     }
 
     private function exchange(AdminLoginNonceService $nonces, Sw6OidcSessionRegistry $registry, string $nonce, string $accessToken): \Symfony\Component\HttpFoundation\Response

@@ -14,6 +14,7 @@ use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Security\UserVerifiedScope;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
@@ -60,6 +61,7 @@ class PasskeyAdminController extends AbstractController
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
         private readonly PasskeyRelyingPartyResolver $relyingPartyResolver,
         private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly Sw6OidcRateLimiter $rateLimiter,
     ) {
     }
 
@@ -174,10 +176,15 @@ class PasskeyAdminController extends AbstractController
     }
 
     #[Route(path: '/api/sw6oidc/admin/passkey/login-options', name: 'api.action.sw6oidc.admin.passkey.login-options', defaults: ['auth_required' => false], methods: ['POST'])]
-    public function loginOptions(): JsonResponse
+    public function loginOptions(Request $request): JsonResponse
     {
         if (!$this->passkeyConfig->isEnabledForAdmin()) {
             return $this->disabled();
+        }
+
+        // Every call stores a ceremony: a consuming budget (N-M15).
+        if (!$this->rateLimiter->consume(Sw6OidcRateLimiter::SCOPE_OPTIONS, $request->getClientIp())) {
+            return $this->rateLimited();
         }
 
         try {
@@ -198,6 +205,10 @@ class PasskeyAdminController extends AbstractController
             return $this->disabled();
         }
 
+        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp())) {
+            return $this->rateLimited();
+        }
+
         try {
             $resolved = $this->authenticationService->verifyAssertion(
                 (string) $request->request->get('sessionId'),
@@ -213,6 +224,8 @@ class PasskeyAdminController extends AbstractController
 
             $httpResponse = $this->tokenIssuer->issue($request, $resolved['userId']);
         } catch (\Throwable $exception) {
+            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp());
+
             return PublicError::response($this->logger, 'sw6oidc: admin passkey login failed.', $exception, 'passkey_login_failed', Response::HTTP_UNAUTHORIZED);
         }
 
@@ -252,6 +265,11 @@ class PasskeyAdminController extends AbstractController
         $accessToken = \is_array($payload) ? ($payload['access_token'] ?? null) : null;
 
         return \is_string($accessToken) ? JwtPayloadReader::stringClaim($accessToken, 'jti') : null;
+    }
+
+    private function rateLimited(): JsonResponse
+    {
+        return new JsonResponse(['error' => 'too_many_requests'], Response::HTTP_TOO_MANY_REQUESTS);
     }
 
     private function disabled(): JsonResponse

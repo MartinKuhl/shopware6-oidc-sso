@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Security;
 
 use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\UnknownStateException;
 
 /**
  * PKCE, OAuth state, and OIDC nonce generation/consumption — the Shopware
@@ -72,13 +73,13 @@ class OidcSecurityHelper
     public function consumeAuthorizationFlow(?string $state): AuthorizationFlowContext
     {
         if ($state === null || $state === '') {
-            throw new InvalidStateException('Callback is missing the "state" parameter.');
+            throw new UnknownStateException('Callback is missing the "state" parameter.');
         }
 
         $raw = $this->cache->getAndDelete(self::FLOW_CACHE_PREFIX . $state);
 
         if ($raw === null) {
-            throw new InvalidStateException('Unknown, expired, or already-used OAuth state.');
+            throw new UnknownStateException('Unknown, expired, or already-used OAuth state.');
         }
 
         try {
