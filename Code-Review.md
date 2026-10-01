@@ -24,7 +24,7 @@ Backend paths are relative to `src/`. Frontend paths are relative to `src/Resour
 
 ## Status on branch `fix/code-review-rev2`
 
-Added after the fixes, for tracking. Line numbers in the findings below still refer to `6986e4f`. "Needs build" means the source is fixed but the committed storefront bundle (`app/storefront/dist`) must be rebuilt. Future Improvements 1–4 (TECHNICAL_DOCUMENTATION.md): 1 in `53bb4a5`, 2 in `53bb4a5`, 3 in `e2555ee`, 4 in `0d8f457`.
+Added after the fixes, for tracking. Line numbers in the findings below still refer to `6986e4f`. Future Improvements 1–4 (TECHNICAL_DOCUMENTATION.md): 1 in `53bb4a5`, 2 in `53bb4a5`, 3 in `e2555ee`, 4 in `0d8f457`.
 
 | Finding | Status | Commit | Note |
 |---|---|---|---|
@@ -44,9 +44,9 @@ Added after the fixes, for tracking. Line numbers in the findings below still re
 | N-H1 | Fixed | `d718a39` | UserRepository decorator. |
 | N-H2 | Fixed | `c66c944` | kid-based selection, per-kid cooldown. |
 | N-H3 | Fixed | `0d8f457` | DB-backed registry. |
-| F-H1 | Partial | `73d4202` | CI `assets` job added; the committed storefront `dist/` still has to be rebuilt. |
+| F-H1 | Fixed | `73d4202`, `b4c4c9a` | CI `assets` job added; storefront `dist/` rebuilt. |
 | F-H2 | Fixed | `53bb4a5` |  |
-| F-H3 | Fixed (needs build) | `73d4202` | Source fixed; takes effect with the rebuilt storefront bundle. |
+| F-H3 | Fixed | `73d4202`, `b4c4c9a` | |
 | F-H4 | Fixed | `73d4202` | Sw6oidcApiService everywhere. |
 | F-H5 | Fixed | `73d4202` | acl/index.js. |
 | F-H6 | Fixed | `f19a344` |  |
@@ -99,8 +99,8 @@ Added after the fixes, for tracking. Line numbers in the findings below still re
 | F-M8 | Fixed | `73d4202` |  |
 | F-M9 | Fixed | `73d4202` |  |
 | F-M10 | Fixed | `73d4202` |  |
-| F-M11 | Fixed (needs build) | `73d4202` |  |
-| F-M12 | Fixed (needs build) | `73d4202` |  |
+| F-M11 | Fixed | `73d4202` |  |
+| F-M12 | Fixed | `73d4202` |  |
 | F-M13 | Fixed | `f19a344` |  |
 | F-M14 | Partial | `73d4202` | Pinia store used; the separate pre-auth bundle is not done. |
 | F-M15 | Fixed | `53bb4a5` |  |
