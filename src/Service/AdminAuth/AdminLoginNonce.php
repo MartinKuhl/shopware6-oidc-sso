@@ -14,6 +14,8 @@ final readonly class AdminLoginNonce
         public string $userId,
         public ?string $providerId = null,
         public ?string $registrySessionId = null,
+        /** BrowserBinding hash of the browser that completed the IdP login (M1) */
+        public ?string $browserBinding = null,
     ) {
     }
 }

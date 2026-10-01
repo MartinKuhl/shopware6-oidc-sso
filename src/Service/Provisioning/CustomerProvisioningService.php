@@ -9,6 +9,7 @@ use MartinKuhl\Sw6Oidc\Event\CustomerBeforeCreateEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\CustomerProvisioningDeniedException;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
+use Shopware\Core\Checkout\Customer\Event\CustomerRegisterEvent;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -20,16 +21,25 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Finds-or-JIT-creates a Shopware customer from a MappedProfile, enforcing
- * per-user IdP binding and resolving group mapping — Shopware equivalent of
- * the Magento module's Model/Service/CustomerUserCreator.php.
- *
- * NOTE: field requirements here (customer + customer_address) are written
- * against the documented Shopware 6.7 DAL contract but have not been exercised
- * against a live instance in this environment — verify end-to-end per the
- * plan's Verification section before relying on this in production.
+ * per-user IdP binding and resolving group mapping. The create payload
+ * follows the Shopware 6.7 DAL contract for customer + customer_address and
+ * is exercised by the integration suite (StorefrontOidcLoginTest).
  */
 class CustomerProvisioningService
 {
+    /**
+     * customer_address.customFields flag: the address was created from
+     * placeholders because the IdP sent no address claims. Shopware 6.7
+     * requires default addresses (street, city); the customer completes it
+     * at checkout or in the account, and address sync replaces it once the
+     * IdP sends one (M16).
+     */
+    public const PLACEHOLDER_ADDRESS_FIELD = 'sw6oidc_placeholder_address';
+
+    private const PLACEHOLDER = '-';
+
+    private const MIN_BIRTH_YEAR = 1900;
+
     public function __construct(
         private readonly EntityRepository $customerRepository,
         private readonly EntityRepository $salutationRepository,
@@ -100,6 +110,10 @@ class CustomerProvisioningService
 
         $this->eventDispatcher->dispatch(new CustomerAfterCreateEvent($provider, $profile, $created, $salesChannelContext));
 
+        // Core's registration event, so Flow Builder flows (welcome mail,
+        // tagging, ...) run for SSO-created customers too (M16).
+        $this->eventDispatcher->dispatch(new CustomerRegisterEvent($salesChannelContext, $created));
+
         return $created;
     }
 
@@ -149,34 +163,40 @@ class CustomerProvisioningService
         // quirk rather than a real finding; following its suggested fix
         // (plain ->) would throw on a null $billing instead of falling
         // through to the '-' default.
+        $firstName = $this->fallbackFirstName($profile);
+        $lastName = $profile->lastName ?? self::PLACEHOLDER;
+
         $addressPayload = [
             'id' => $billingAddressId,
             'customerId' => $customerId,
-            'firstName' => $profile->firstName ?? $profile->email,
-            'lastName' => $profile->lastName ?? '-',
-            'street' => $billing?->street ?? '-', // @phpstan-ignore nullsafe.neverNull
-            'zipcode' => $billing?->zipcode ?? '-', // @phpstan-ignore nullsafe.neverNull
-            'city' => $billing?->city ?? '-', // @phpstan-ignore nullsafe.neverNull
+            'firstName' => $firstName,
+            'lastName' => $lastName,
+            'street' => $billing?->street ?? self::PLACEHOLDER, // @phpstan-ignore nullsafe.neverNull
+            'zipcode' => $billing?->zipcode,
+            'city' => $billing?->city ?? self::PLACEHOLDER, // @phpstan-ignore nullsafe.neverNull
             'phoneNumber' => $billing?->phone ?? $profile->phone, // @phpstan-ignore nullsafe.neverNull
             'countryId' => $billingCountryId,
             'countryStateId' => $this->countryResolver->resolveCountryStateId($billing?->state, $billingCountryId, $context),
         ];
+
+        if ($billing?->street === null || $billing->city === null) {
+            $addressPayload['customFields'] = [self::PLACEHOLDER_ADDRESS_FIELD => true];
+        }
 
         $customerPayload = [
             'id' => $customerId,
             'salesChannelId' => $salesChannelContext->getSalesChannelId(),
             'languageId' => $salesChannelContext->getLanguageId(),
             'groupId' => $groupId,
-            'defaultPaymentMethodId' => $salesChannelContext->getPaymentMethod()->getId(),
             'salutationId' => $this->resolveSalutationId($profile->salutationTechnicalName, $context),
             'customerNumber' => $customerNumber,
-            'firstName' => $profile->firstName ?? $profile->email,
-            'lastName' => $profile->lastName ?? '-',
+            'firstName' => $firstName,
+            'lastName' => $lastName,
             'email' => $profile->email,
             'guest' => false,
             'active' => true,
             'password' => bin2hex(random_bytes(32)),
-            'birthday' => $profile->birthday !== null ? new \DateTimeImmutable($profile->birthday) : null,
+            'birthday' => $this->parseBirthday($profile->birthday),
             'addresses' => [$addressPayload],
             'defaultBillingAddressId' => $billingAddressId,
             'defaultShippingAddressId' => $billingAddressId,
@@ -192,11 +212,11 @@ class CustomerProvisioningService
             $customerPayload['addresses'][] = [
                 'id' => $shippingAddressId,
                 'customerId' => $customerId,
-                'firstName' => $profile->firstName ?? $profile->email,
-                'lastName' => $profile->lastName ?? '-',
-                'street' => $shipping->street ?? '-',
-                'zipcode' => $shipping->zipcode ?? '-',
-                'city' => $shipping->city ?? '-',
+                'firstName' => $firstName,
+                'lastName' => $lastName,
+                'street' => $shipping->street ?? self::PLACEHOLDER,
+                'zipcode' => $shipping->zipcode,
+                'city' => $shipping->city ?? self::PLACEHOLDER,
                 'phoneNumber' => $shipping->phone,
                 'countryId' => $shippingCountryId,
                 'countryStateId' => $this->countryResolver->resolveCountryStateId($shipping->state, $shippingCountryId, $context),
@@ -255,8 +275,10 @@ class CustomerProvisioningService
                 $payload['lastName'] = $profile->lastName;
             }
 
-            if ($profile->birthday !== null) {
-                $payload['birthday'] = new \DateTimeImmutable($profile->birthday);
+            $birthday = $this->parseBirthday($profile->birthday);
+
+            if ($birthday instanceof \DateTimeImmutable) {
+                $payload['birthday'] = $birthday;
             }
 
             if ($profile->salutationTechnicalName !== null) {
@@ -352,6 +374,49 @@ class CustomerProvisioningService
         }
 
         return \count($addressPayload) > 1 ? $addressPayload : null;
+    }
+
+    /**
+     * Never the email address as a name (L9): it would end up on invoices
+     * and in mails. The local part is a readable, editable stand-in.
+     */
+    private function fallbackFirstName(MappedProfile $profile): string
+    {
+        if ($profile->firstName !== null) {
+            return $profile->firstName;
+        }
+
+        $localPart = trim(explode('@', $profile->email)[0]);
+
+        return $localPart !== '' ? mb_substr($localPart, 0, 255) : self::PLACEHOLDER;
+    }
+
+    /**
+     * Strict Y-m-d (OIDC `birthdate`), between 1900 and today. Anything else
+     * — including partial dates like "0000-05-17" — is logged and skipped
+     * instead of failing the login or storing nonsense (M9).
+     */
+    private function parseBirthday(?string $value): ?\DateTimeImmutable
+    {
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', trim($value));
+        $errors = \DateTimeImmutable::getLastErrors();
+
+        if (
+            !$date instanceof \DateTimeImmutable
+            || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+            || (int) $date->format('Y') < self::MIN_BIRTH_YEAR
+            || $date > new \DateTimeImmutable('today')
+        ) {
+            $this->logger->notice('sw6oidc: ignoring an invalid birthdate claim.');
+
+            return null;
+        }
+
+        return $date;
     }
 
     private function resolveSalutationId(?string $technicalName, Context $context): ?string

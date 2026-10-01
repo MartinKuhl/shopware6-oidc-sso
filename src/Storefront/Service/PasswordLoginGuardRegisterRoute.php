@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\Service;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\PasswordLoginDisabledException;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use Shopware\Core\Checkout\Customer\SalesChannel\AbstractRegisterRoute;
@@ -35,7 +36,7 @@ class PasswordLoginGuardRegisterRoute extends AbstractRegisterRoute
         bool $validateStorefrontUrl = true,
         ?DataValidationDefinition $additionalValidationDefinitions = null,
     ): CustomerResponse {
-        if (!$data->getBoolean('guest') && $this->passwordLoginPolicy->isPasswordLoginDisabled('customer', $context->getContext())) {
+        if (!$data->getBoolean('guest') && $this->passwordLoginPolicy->isPasswordLoginDisabled(LoginType::Customer->value, $context->getContext())) {
             throw new PasswordLoginDisabledException();
         }
 

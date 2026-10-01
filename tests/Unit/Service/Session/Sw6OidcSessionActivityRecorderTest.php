@@ -39,6 +39,16 @@ final class Sw6OidcSessionActivityRecorderTest extends TestCase
         self::assertStringNotContainsString('ctx-token', (string) json_encode($row));
     }
 
+    public function testIpCanBeStoredTruncated(): void
+    {
+        $recorder = new Sw6OidcSessionActivityRecorder($this->store->mock(fn (string $class) => $this->createMock($class)), new NullLogger(), null, true);
+
+        $recorder->recordLogin('customer', 'c1', 'passkey', 'ctx-a', Request::create('/', 'GET', [], [], [], ['REMOTE_ADDR' => '198.51.100.7']));
+        $recorder->recordLogin('customer', 'c1', 'passkey', 'ctx-b', Request::create('/', 'GET', [], [], [], ['REMOTE_ADDR' => '2001:db8:1:2:aaaa::1']));
+
+        self::assertSame(['198.51.100.0', '2001:db8:1:2::'], array_column(array_values($this->store->rows), 'ipAddress'));
+    }
+
     public function testLogoutClosesTheMatchingSessionOnly(): void
     {
         $this->login('ctx-a', null, '-2 minutes');

@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Service\AdminAuth;
 
 use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
+use MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding;
 
 /**
  * The one-time nonce hand-off from the OIDC callback (a full browser
@@ -11,17 +12,23 @@ use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
  *
  * Carries only references (user, provider, pending registry entry) — the
  * id_token itself is stored once, encrypted, in the session registry.
+ *
+ * A nonce minted in one browser is only redeemable from that browser
+ * (BrowserBinding, M1): a leaked or attacker-supplied nonce can't log a
+ * victim's browser into someone else's session.
  */
 class AdminLoginNonceService
 {
     private const TTL_SECONDS = 120;
     private const CACHE_PREFIX = 'sw6oidc_admin_nonce_';
 
-    public function __construct(private readonly AtomicCacheInterface $cache)
-    {
+    public function __construct(
+        private readonly AtomicCacheInterface $cache,
+        private readonly ?BrowserBinding $browserBinding = null,
+    ) {
     }
 
-    public function createNonce(string $userId, ?string $providerId = null, ?string $registrySessionId = null): string
+    public function createNonce(string $userId, ?string $providerId = null, ?string $registrySessionId = null, ?string $browserBinding = null): string
     {
         $nonce = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 
@@ -29,6 +36,7 @@ class AdminLoginNonceService
             'userId' => $userId,
             'providerId' => $providerId,
             'registrySessionId' => $registrySessionId,
+            'browserBinding' => $browserBinding,
         ], JSON_THROW_ON_ERROR), self::TTL_SECONDS);
 
         return $nonce;
@@ -57,11 +65,17 @@ class AdminLoginNonceService
         }
 
         $string = static fn (mixed $value): ?string => \is_string($value) && $value !== '' ? $value : null;
+        $binding = $string($data['browserBinding'] ?? null);
+
+        if ($this->browserBinding instanceof BrowserBinding && !$this->browserBinding->matchesCurrentBrowser($binding)) {
+            return null;
+        }
 
         return new AdminLoginNonce(
             $data['userId'],
             $string($data['providerId'] ?? null),
             $string($data['registrySessionId'] ?? null),
+            $binding,
         );
     }
 }

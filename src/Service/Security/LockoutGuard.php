@@ -104,7 +104,7 @@ class LockoutGuard
      */
     public function otherVisibleProviderExists(string $providerId, string $loginType): bool
     {
-        $showColumn = $loginType === 'admin' ? 'show_admin_link' : 'show_customer_link';
+        $showColumn = $loginType === LoginType::Admin->value ? 'show_admin_link' : 'show_customer_link';
 
         return $this->connection->fetchOne(
             sprintf(

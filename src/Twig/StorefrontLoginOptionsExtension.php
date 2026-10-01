@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Twig;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
@@ -64,19 +65,19 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
                     ? $this->translator->trans('sw6oidc.login.buttonWithProvider', ['%name%' => $provider->getDisplayName()])
                     : $this->translator->trans('sw6oidc.login.button'),
             ],
-            $this->providerResolver->getVisibleProviders('customer', $context->getContext()),
+            $this->providerResolver->getVisibleProviders(LoginType::Customer->value, $context->getContext()),
         );
     }
 
     public function isPasskeyAvailable(SalesChannelContext $context): bool
     {
         return $this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())
-            && $this->passkeyCredentialRepository->existsForUserType('customer', $context->getContext());
+            && $this->passkeyCredentialRepository->existsForUserType(LoginType::Customer->value, $context->getContext());
     }
 
     public function isPasswordLoginDisabled(SalesChannelContext $context): bool
     {
-        return $this->passwordLoginPolicy->isPasswordLoginDisabled('customer', $context->getContext());
+        return $this->passwordLoginPolicy->isPasswordLoginDisabled(LoginType::Customer->value, $context->getContext());
     }
 
     /**
@@ -94,8 +95,8 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
             return ['bound' => false, 'boundLabel' => null, 'providers' => []];
         }
 
-        $providers = $this->providerResolver->getVisibleProviders('customer', $context->getContext());
-        $boundProviderId = $this->bindingService->getBoundProviderId('customer', $customer->getId(), $context->getContext());
+        $providers = $this->providerResolver->getVisibleProviders(LoginType::Customer->value, $context->getContext());
+        $boundProviderId = $this->bindingService->getBoundProviderId(LoginType::Customer->value, $customer->getId(), $context->getContext());
 
         if ($boundProviderId !== null) {
             $label = null;

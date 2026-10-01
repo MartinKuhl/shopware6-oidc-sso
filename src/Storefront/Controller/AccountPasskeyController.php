@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
@@ -13,7 +14,7 @@ use Shopware\Storefront\Controller\StorefrontController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * Self-service Passkey register/delete under My Account - lists and manages
@@ -49,7 +50,7 @@ class AccountPasskeyController extends StorefrontController
     )]
     public function index(SalesChannelContext $context, CustomerEntity $customer): Response
     {
-        $credentials = $this->passkeyCredentialRepository->findAllForOwner('customer', $customer->getId(), $context->getContext());
+        $credentials = $this->passkeyCredentialRepository->findAllForOwner(LoginType::Customer->value, $customer->getId(), $context->getContext());
 
         return $this->renderStorefront('@Sw6Oidc/storefront/page/account/passkey/index.html.twig', [
             'sw6oidcCredentials' => $credentials,
@@ -65,7 +66,7 @@ class AccountPasskeyController extends StorefrontController
     )]
     public function delete(string $credentialId, Request $request, SalesChannelContext $context, CustomerEntity $customer): RedirectResponse
     {
-        $deleted = $this->passkeyCredentialRepository->deleteOwnedByUser($credentialId, 'customer', $customer->getId(), $context->getContext());
+        $deleted = $this->passkeyCredentialRepository->deleteOwnedByUser($credentialId, LoginType::Customer->value, $customer->getId(), $context->getContext());
 
         if (!$deleted) {
             $this->addFlash(self::DANGER, $this->trans('sw6oidc.passkey.deleteError'));

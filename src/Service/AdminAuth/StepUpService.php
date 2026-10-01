@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\AdminAuth;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
@@ -170,7 +171,7 @@ class StepUpService
         }
 
         try {
-            return $this->providerResolver->getActiveById($providerId, 'admin', $context);
+            return $this->providerResolver->getActiveById($providerId, LoginType::Admin->value, $context);
         } catch (ProviderNotFoundException) {
             return null;
         }

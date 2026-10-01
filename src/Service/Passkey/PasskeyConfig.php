@@ -7,7 +7,7 @@ use Shopware\Core\System\SystemConfig\SystemConfigService;
 /**
  * Global (non-provider-scoped) Passkey configuration — enable toggles + RP
  * name/id override, read from the plugin's own config.xml-backed system
- * config. Mirrors Helper/PasskeyConfig.php in the Magento module.
+ * config.
  */
 class PasskeyConfig
 {

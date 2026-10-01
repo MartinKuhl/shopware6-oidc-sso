@@ -37,6 +37,8 @@ final readonly class AuthorizationFlowContext
         public ?string $expectedUserId = null,
         /** unix time the flow started, for step-up `auth_time` checks */
         public int $startedAt = 0,
+        /** BrowserBinding hash of the browser that started the flow (M1) */
+        public ?string $browserBinding = null,
     ) {
     }
 
@@ -50,7 +52,8 @@ final readonly class AuthorizationFlowContext
      *     nonce: string,
      *     purpose: string,
      *     expectedUserId: string|null,
-     *     startedAt: int
+     *     startedAt: int,
+     *     browserBinding: string|null
      * }
      */
     public function toArray(): array
@@ -65,6 +68,7 @@ final readonly class AuthorizationFlowContext
             'purpose' => $this->purpose,
             'expectedUserId' => $this->expectedUserId,
             'startedAt' => $this->startedAt,
+            'browserBinding' => $this->browserBinding,
         ];
     }
 
@@ -84,12 +88,14 @@ final readonly class AuthorizationFlowContext
         $purpose = $data['purpose'] ?? self::PURPOSE_LOGIN;
         $expectedUserId = $data['expectedUserId'] ?? null;
         $startedAt = $data['startedAt'] ?? 0;
+        $browserBinding = $data['browserBinding'] ?? null;
 
         if (
             !\in_array($data['loginType'], self::LOGIN_TYPES, true)
             || !\in_array($purpose, self::PURPOSES, true)
             || ($expectedUserId !== null && !\is_string($expectedUserId))
             || !\is_int($startedAt)
+            || ($browserBinding !== null && !\is_string($browserBinding))
             || ($purpose !== self::PURPOSE_LOGIN && $expectedUserId === null)
         ) {
             throw new InvalidStateException('Stored OAuth state is malformed.');
@@ -105,6 +111,7 @@ final readonly class AuthorizationFlowContext
             $purpose,
             $expectedUserId,
             $startedAt,
+            $browserBinding,
         );
     }
 }

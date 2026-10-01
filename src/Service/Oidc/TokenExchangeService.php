@@ -9,9 +9,7 @@ use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 
 /**
  * Exchanges an authorization code (+ PKCE verifier) for tokens at the provider's
- * token endpoint. Mirrors the Magento sibling module's
- * Helper/OAuth/AccessTokenRequestBody.php + Curl::sendAccessTokenRequest():
- * confidential clients authenticate via HTTP Basic (RFC 6749 §2.3.1) — the
+ * token endpoint. Confidential clients authenticate via HTTP Basic (RFC 6749 §2.3.1) — the
  * de facto default `token_endpoint_auth_method` for Authelia, Keycloak, and
  * most other IdPs — with client_id/client_secret omitted from the body to
  * avoid duplicating client authentication across two mechanisms; only public
@@ -45,24 +43,6 @@ class TokenExchangeService
             'code' => $code,
             'redirect_uri' => $redirectUri,
             'code_verifier' => $codeVerifier,
-        ], $this->clientIdBodyParam($provider));
-
-        return $this->httpClient->postForm(
-            (string) $provider->getAccessTokenEndpoint(),
-            $params,
-            $provider->getHttpTimeout(),
-            ...$this->basicAuthCredentials($provider),
-        );
-    }
-
-    /**
-     * @return array{access_token?: string, id_token?: string, refresh_token?: string, expires_in?: int}
-     */
-    public function refreshAccessToken(Sw6OidcProviderEntity $provider, string $refreshToken): array
-    {
-        $params = array_merge([
-            'grant_type' => 'refresh_token',
-            'refresh_token' => $refreshToken,
         ], $this->clientIdBodyParam($provider));
 
         return $this->httpClient->postForm(

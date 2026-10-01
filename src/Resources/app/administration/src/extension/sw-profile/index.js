@@ -5,8 +5,7 @@ const { Component, Module } = Shopware;
 
 /**
  * Adds a "Passkeys" tab to the admin's own profile page ("Mein Profil") for
- * self-service register/delete of that admin's own credentials - mirrors the
- * Magento reference module's own-account passkey management, and is kept
+ * self-service register/delete of that admin's own credentials, kept
  * entirely separate from the Settings > Passkey-Einstellungen grid (that one
  * is the cross-admin lockout-recovery tool; this is "manage my own").
  *

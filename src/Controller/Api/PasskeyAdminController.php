@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Event\PasskeyRegisteredEvent;
@@ -29,7 +30,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
@@ -139,7 +140,7 @@ class PasskeyAdminController extends AbstractController
     {
         $user = $this->currentUser($context);
 
-        $credentials = $this->passkeyCredentialRepository->findAllForOwner('admin', $user->getId(), $context);
+        $credentials = $this->passkeyCredentialRepository->findAllForOwner(LoginType::Admin->value, $user->getId(), $context);
 
         return new JsonResponse([
             'credentials' => array_map(static fn (Sw6OidcPasskeyCredentialEntity $credential): array => [
@@ -165,7 +166,7 @@ class PasskeyAdminController extends AbstractController
         $user = $this->currentUser($context);
         $id = (string) $request->request->get('id');
 
-        if ($id === '' || !$this->passkeyCredentialRepository->deleteOwnedByUser($id, 'admin', $user->getId(), $context)) {
+        if ($id === '' || !$this->passkeyCredentialRepository->deleteOwnedByUser($id, LoginType::Admin->value, $user->getId(), $context)) {
             return new JsonResponse(['status' => false, 'error' => 'not_found'], 404);
         }
 

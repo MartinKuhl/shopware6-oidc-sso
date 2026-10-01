@@ -44,8 +44,6 @@ class Sw6OidcProviderEntity extends Entity
     /** 'customer'|'admin'|'both' */
     protected string $loginType = 'both';
     protected int $sortOrder = 0;
-    protected ?string $buttonLabel = null;
-    protected ?string $buttonColor = null;
     protected bool $syncCustomerProfileOnSso = false;
     protected bool $syncCustomerAddressOnSso = false;
     protected bool $syncCustomerGroupOnSso = false;
@@ -414,26 +412,6 @@ class Sw6OidcProviderEntity extends Entity
     public function setSortOrder(int $sortOrder): void
     {
         $this->sortOrder = $sortOrder;
-    }
-
-    public function getButtonLabel(): ?string
-    {
-        return $this->buttonLabel;
-    }
-
-    public function setButtonLabel(?string $buttonLabel): void
-    {
-        $this->buttonLabel = $buttonLabel;
-    }
-
-    public function getButtonColor(): ?string
-    {
-        return $this->buttonColor;
-    }
-
-    public function setButtonColor(?string $buttonColor): void
-    {
-        $this->buttonColor = $buttonColor;
     }
 
     public function isSyncCustomerProfileOnSso(): bool

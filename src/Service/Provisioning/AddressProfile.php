@@ -5,7 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 /**
  * Billing/shipping address claims, mapped separately from MappedProfile because
  * Shopware stores addresses as their own `customer_address` entities rather than
- * inline customer fields (see plan: "Address mapping nuance vs. Magento").
+ * inline customer fields.
  */
 final readonly class AddressProfile
 {

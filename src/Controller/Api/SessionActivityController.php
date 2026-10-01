@@ -11,7 +11,7 @@ use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * "Force logout" for the session activity module (sw6oidc-sessions).
@@ -35,7 +35,7 @@ class SessionActivityController extends AbstractController
     #[Route(
         path: '/api/_action/sw6oidc/session-activity/{activityId}/force-logout',
         name: 'api.action.sw6oidc.session-activity.force-logout',
-        defaults: ['_acl' => ['sw6oidc_session_activity:update']],
+        defaults: ['_acl' => ['sw6oidc_session_activity:force_logout']],
         methods: ['POST'],
     )]
     public function forceLogout(string $activityId): JsonResponse

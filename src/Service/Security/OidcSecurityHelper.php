@@ -7,17 +7,20 @@ use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\UnknownStateException;
 
 /**
- * PKCE, OAuth state, and OIDC nonce generation/consumption — the Shopware
- * equivalent of the Magento module's Helper/OAuthSecurityHelper.php, built on
- * AtomicCacheInterface so state can never be replayed (getAndDelete is atomic).
+ * PKCE, OAuth state, and OIDC nonce generation/consumption, built on
+ * AtomicCacheInterface so state can never be replayed (getAndDelete is
+ * atomic). Each flow is also bound to the browser that started it
+ * (BrowserBinding).
  */
 class OidcSecurityHelper
 {
     private const FLOW_TTL_SECONDS = 600;
     private const FLOW_CACHE_PREFIX = 'sw6oidc_flow_';
 
-    public function __construct(private readonly AtomicCacheInterface $cache)
-    {
+    public function __construct(
+        private readonly AtomicCacheInterface $cache,
+        private readonly ?BrowserBinding $browserBinding = null,
+    ) {
     }
 
     /**
@@ -49,6 +52,7 @@ class OidcSecurityHelper
             $purpose,
             $expectedUserId,
             time(),
+            $this->browserBinding?->bindCurrentBrowser(),
         );
 
         $this->cache->save(
@@ -92,7 +96,13 @@ class OidcSecurityHelper
             throw new InvalidStateException('Stored OAuth state is corrupted.');
         }
 
-        return AuthorizationFlowContext::fromArray($data);
+        $flow = AuthorizationFlowContext::fromArray($data);
+
+        if ($this->browserBinding instanceof BrowserBinding && !$this->browserBinding->matchesCurrentBrowser($flow->browserBinding)) {
+            throw new InvalidStateException('The login was started in a different browser (login CSRF protection).');
+        }
+
+        return $flow;
     }
 
     public function deriveCodeChallenge(string $codeVerifier, string $codeChallengeMethod): string

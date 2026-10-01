@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\Service;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext;
 use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
 use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
@@ -87,7 +88,7 @@ class OidcLogoutRoute extends AbstractLogoutRoute
         $logoutContext = new LogoutContext($session->providerId, $session->idToken, $session->idpAccessToken, $session->idpRefreshToken);
 
         try {
-            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, 'customer', $context->getContext());
+            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, LoginType::Customer->value, $context->getContext());
         } catch (ProviderNotFoundException $exception) {
             $this->logger->warning('sw6oidc: RP-initiated logout skipped, provider no longer active.', [
                 'providerId' => $logoutContext->providerId,

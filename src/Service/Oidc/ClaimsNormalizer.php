@@ -6,10 +6,8 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\Exception\ClaimsTooComplexException;
 
 /**
  * Flattens nested OIDC claim responses into dot-notation keys and normalizes
- * IdP-specific quirks — ported from the Magento module's
- * Model/Service/OidcAuthenticationService.php, in particular its Zitadel
- * handling (claim_encoding=base64, nested role objects) called out as in-scope
- * for Phase 1.
+ * IdP-specific quirks, in particular Zitadel's (base64-encoded claims,
+ * nested role objects).
  */
 class ClaimsNormalizer
 {

@@ -9,9 +9,8 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
  * Thin wrapper around Symfony's HttpClientInterface for the token/userinfo/
- * discovery/webhook calls the OIDC flow needs — replaces the Magento module's
- * Helper/Curl.php. One retry on an empty/network-error response, matching the
- * Magento module's single 500ms-later retry for token/JWKS calls.
+ * discovery calls the OIDC flow needs. Idempotent GETs are retried once,
+ * 500 ms after a transport error; POSTs never are (see requestJson()).
  */
 class OidcHttpClient
 {

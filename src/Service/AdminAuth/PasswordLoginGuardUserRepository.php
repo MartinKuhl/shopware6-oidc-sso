@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\AdminAuth;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Entities\UserEntityInterface;
 use League\OAuth2\Server\Repositories\UserRepositoryInterface;
@@ -35,7 +36,7 @@ class PasswordLoginGuardUserRepository implements UserRepositoryInterface
         string $grantType,
         ClientEntityInterface $clientEntity,
     ): ?UserEntityInterface {
-        if ($this->passwordLoginPolicy->isPasswordLoginDisabled('admin', Context::createDefaultContext())) {
+        if ($this->passwordLoginPolicy->isPasswordLoginDisabled(LoginType::Admin->value, Context::createDefaultContext())) {
             $this->logger->notice('sw6oidc: Administration password login refused, password login is disabled.', [
                 'grantType' => $grantType,
             ]);

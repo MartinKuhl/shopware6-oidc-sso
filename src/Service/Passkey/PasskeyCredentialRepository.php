@@ -15,7 +15,7 @@ use Webauthn\CredentialRecord;
 /**
  * Persists WebAuthn credentials to sw6oidc_passkey_credential — the sole seam
  * between web-auth/webauthn-lib's CredentialRecord objects and our DAL
- * storage. Mirrors the Magento module's ResourceModel/PasskeyCredentialRepository.php.
+ * storage.
  *
  * webauthn-lib 5.x has no repository contract of its own: the ceremony
  * services look a record up here, hand it to the validator's check(), and

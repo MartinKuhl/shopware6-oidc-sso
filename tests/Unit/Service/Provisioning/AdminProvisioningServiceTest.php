@@ -668,7 +668,7 @@ final class AdminProvisioningServiceTest extends TestCase
 
         $payload = $this->userCreates[0];
         self::assertSame('jane', $payload['username']);
-        self::assertSame('jane@example.com', $payload['firstName']);
+        self::assertSame('jane', $payload['firstName'], 'never the email address as a name (L9)');
         self::assertSame('-', $payload['lastName']);
         self::assertSame($enLocaleId, $payload['localeId']);
         self::assertArrayNotHasKey('timeZone', $payload);

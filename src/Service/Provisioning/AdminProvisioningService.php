@@ -21,11 +21,7 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Finds-or-JIT-creates a Shopware Administration `user` from a MappedProfile,
- * with ACL role mapping and per-user IdP binding — Shopware equivalent of the
- * Magento module's Model/Service/AdminUserCreator.php +
- * Model/Service/AdminProfileSyncService.php's role re-sync.
- *
- * NOTE: same live-instance verification caveat as CustomerProvisioningService.
+ * with ACL role mapping, role/profile sync and per-user IdP binding.
  */
 class AdminProvisioningService
 {
@@ -81,7 +77,7 @@ class AdminProvisioningService
             }
 
             if ($provider->isSyncAdminProfileOnSso()) {
-                $this->syncProfile($existing->getId(), $profile, $context);
+                $this->syncProfile($existing, $profile, $context);
             }
 
             return $existing;
@@ -135,7 +131,8 @@ class AdminProvisioningService
             'id' => $userId,
             'localeId' => $this->resolveLocaleId($profile->locale, $context),
             'username' => $this->resolveUniqueUsername($profile, $context),
-            'firstName' => $profile->firstName ?? $profile->email,
+            // Never the email address itself as a name (L9).
+            'firstName' => $profile->firstName ?? (trim(explode('@', $profile->email)[0]) ?: '-'),
             'lastName' => $profile->lastName ?? '-',
             'email' => $profile->email,
             'password' => bin2hex(random_bytes(32)),
@@ -338,8 +335,9 @@ class AdminProvisioningService
      * have no birthday/gender/salutation fields, unlike customers, so this
      * only touches first/last name plus locale/timezone/avatar.
      */
-    private function syncProfile(string $userId, MappedProfile $profile, Context $context): void
+    private function syncProfile(UserEntity $existing, MappedProfile $profile, Context $context): void
     {
+        $userId = $existing->getId();
         $payload = ['id' => $userId];
 
         if ($profile->firstName !== null) {
@@ -361,9 +359,7 @@ class AdminProvisioningService
         }
 
         if ($profile->picture !== null) {
-            $existing = $this->userRepository->search(new Criteria([$userId]), $context)->first();
-            \assert($existing instanceof UserEntity);
-
+            // The entity loaded by findOrCreateAdmin(): no second query (L8).
             $payload = [...$payload, ...$this->syncAvatar($userId, $profile->picture, $existing, $context)];
         }
 

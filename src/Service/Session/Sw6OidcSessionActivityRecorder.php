@@ -6,6 +6,7 @@ use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefini
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityEntity;
 use MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Framework\Api\Context\SystemSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -13,6 +14,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\IpUtils;
 
 /**
  * Writes the sw6oidc_session_activity log: one row per login, closed on
@@ -29,6 +31,8 @@ class Sw6OidcSessionActivityRecorder
         private readonly EntityRepository $activityRepository,
         private readonly LoggerInterface $logger,
         private readonly ?NodeHeartbeat $nodeHeartbeat = null,
+        /** SW6OIDC_SESSION_ACTIVITY_TRUNCATE_IP: keep only IPv4 /24 and IPv6 /64 (N-L12) */
+        private readonly bool $truncateIp = false,
     ) {
     }
 
@@ -52,10 +56,10 @@ class Sw6OidcSessionActivityRecorder
                 'loginMethod' => $loginMethod,
                 'sessionKeyHash' => $this->hash($sessionKey),
                 'registrySessionId' => $registrySession?->id,
-                'ipAddress' => $request?->getClientIp(),
+                'ipAddress' => $this->ipAddress($request),
                 'userAgent' => $this->userAgent($request),
                 'loggedInAt' => new \DateTimeImmutable(),
-            ]], Context::createDefaultContext());
+            ]], $this->systemContext());
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: could not record session login.', ['exception' => $exception->getMessage()]);
         }
@@ -157,7 +161,15 @@ class Sw6OidcSessionActivityRecorder
         $this->activityRepository->update(array_map(
             static fn (Sw6OidcSessionActivityEntity $activity): array => ['id' => $activity->getId(), 'loggedOutAt' => $now, 'logoutReason' => $reason],
             $activities,
-        ), Context::createDefaultContext());
+        ), $this->systemContext());
+    }
+
+    /**
+     * The activity fields are WriteProtected(system) (N-M8).
+     */
+    private function systemContext(): Context
+    {
+        return new Context(new SystemSource());
     }
 
     private function userAgent(?Request $request): ?string
@@ -170,5 +182,12 @@ class Sw6OidcSessionActivityRecorder
     private function hash(string $sessionKey): string
     {
         return hash('sha256', $sessionKey);
+    }
+
+    private function ipAddress(?Request $request): ?string
+    {
+        $ip = $request?->getClientIp();
+
+        return $ip !== null && $this->truncateIp ? IpUtils::anonymize($ip) : $ip;
     }
 }

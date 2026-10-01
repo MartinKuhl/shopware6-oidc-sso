@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
@@ -49,15 +50,16 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
  * The Administration OIDC bridge: SP-initiated login, IdP callback, and the
  * nonce-exchange endpoint the `sw-login` override calls to obtain a real
- * Shopware admin access token — see the plan's "bridging pattern" and
- * "Administration (Backend user) OIDC flow" sections for the full picture of
- * why this needs three legs instead of one.
+ * Shopware admin access token. Three legs instead of one, because the
+ * Administration is an SPA: the IdP redirect lands on a server route, which
+ * hands a one-time, browser-bound nonce to the SPA, which exchanges it for
+ * a token over XHR (see CLAUDE.md, "Admin OIDC ↔ League OAuth2 bridge").
  */
 #[Route(defaults: ['_routeScope' => ['api'], 'auth_required' => false])]
 class OidcAdminAuthController extends AbstractController
@@ -150,11 +152,11 @@ class OidcAdminAuthController extends AbstractController
                     'id' => $provider->getId(),
                     'label' => $provider->getDisplayName(),
                 ],
-                $this->providerResolver->getVisibleProviders('admin', $context),
+                $this->providerResolver->getVisibleProviders(LoginType::Admin->value, $context),
             ),
             'passkeyAvailable' => $this->passkeyConfig->isEnabledForAdmin()
-                && $this->passkeyCredentialRepository->existsForUserType('admin', $context),
-            'passwordLoginDisabled' => $this->passwordLoginPolicy->isPasswordLoginDisabled('admin', $context),
+                && $this->passkeyCredentialRepository->existsForUserType(LoginType::Admin->value, $context),
+            'passwordLoginDisabled' => $this->passwordLoginPolicy->isPasswordLoginDisabled(LoginType::Admin->value, $context),
         ]);
     }
 
@@ -177,8 +179,8 @@ class OidcAdminAuthController extends AbstractController
 
         try {
             $provider = $providerId !== null
-                ? $this->providerResolver->getActiveById((string) $providerId, 'admin', $context)
-                : $this->providerResolver->resolveDefault('admin', $context);
+                ? $this->providerResolver->getActiveById((string) $providerId, LoginType::Admin->value, $context)
+                : $this->providerResolver->resolveDefault(LoginType::Admin->value, $context);
         } catch (ProviderNotFoundException $exception) {
             $this->logger->warning('sw6oidc: admin SSO login requested but no active provider is configured.', [
                 'exception' => $exception->getMessage(),
@@ -193,7 +195,7 @@ class OidcAdminAuthController extends AbstractController
         $returnId = (string) $request->query->get(self::RETURN_ID_PARAMETER);
         $relayState = preg_match('/^[a-f0-9]{32}$/', $returnId) === 1 ? $returnId : '';
 
-        return new RedirectResponse($this->requestBuilder->build($provider, 'admin', $relayState, $redirectUri));
+        return new RedirectResponse($this->requestBuilder->build($provider, LoginType::Admin->value, $relayState, $redirectUri));
     }
 
     #[Route(
@@ -264,7 +266,7 @@ class OidcAdminAuthController extends AbstractController
                 self::PENDING_SESSION_TTL_SECONDS,
             );
 
-            $nonce = $this->loginNonceService->createNonce($adminUser->getId(), $result->provider->getId(), $pendingSession->id);
+            $nonce = $this->loginNonceService->createNonce($adminUser->getId(), $result->provider->getId(), $pendingSession->id, $result->flow->browserBinding);
             $this->logger->debug('sw6oidc: admin OIDC callback succeeded, redirecting back into the Administration SPA.', [
                 'userId' => $adminUser->getId(),
             ]);
@@ -357,7 +359,7 @@ class OidcAdminAuthController extends AbstractController
         }
 
         try {
-            $provider = $this->providerResolver->getActiveById((string) $request->request->get('providerId'), 'admin', $context);
+            $provider = $this->providerResolver->getActiveById((string) $request->request->get('providerId'), LoginType::Admin->value, $context);
         } catch (ProviderNotFoundException) {
             return $this->json(['error' => 'provider_unavailable'], Response::HTTP_NOT_FOUND);
         }
@@ -495,7 +497,7 @@ class OidcAdminAuthController extends AbstractController
         }
 
         try {
-            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, 'admin', $context);
+            $provider = $this->providerResolver->getActiveById($logoutContext->providerId, LoginType::Admin->value, $context);
         } catch (ProviderNotFoundException $exception) {
             $this->logger->warning('sw6oidc: admin RP-initiated logout skipped, provider no longer active.', [
                 'providerId' => $logoutContext->providerId,

@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
@@ -16,12 +17,11 @@ use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Storefront\Controller\StorefrontController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
- * Step 1 of the Storefront customer OIDC flow: redirects to the IdP. Mirrors
- * the Magento module's Controller/Actions/SendAuthorizationRequest.php.
+ * Step 1 of the Storefront customer OIDC flow: redirects to the IdP.
  */
 #[Route(defaults: ['_routeScope' => ['storefront']])]
 class SendAuthorizationRequestController extends StorefrontController
@@ -40,7 +40,7 @@ class SendAuthorizationRequestController extends StorefrontController
     #[Route(
         path: '/sw6oidc/login',
         name: 'frontend.sw6oidc.login',
-        defaults: ['XmlHttpRequest' => true, '_loginRequired' => false],
+        defaults: ['_loginRequired' => false],
         methods: ['GET'],
     )]
     public function login(Request $request, SalesChannelContext $context): RedirectResponse
@@ -61,8 +61,8 @@ class SendAuthorizationRequestController extends StorefrontController
 
         try {
             $provider = $providerId !== null
-                ? $this->providerResolver->getActiveById((string) $providerId, 'customer', $context->getContext())
-                : $this->providerResolver->resolveDefault('customer', $context->getContext());
+                ? $this->providerResolver->getActiveById((string) $providerId, LoginType::Customer->value, $context->getContext())
+                : $this->providerResolver->resolveDefault(LoginType::Customer->value, $context->getContext());
         } catch (ProviderNotFoundException $exception) {
             $this->logger->warning('sw6oidc: SSO login requested but no active provider is configured.', [
                 'exception' => $exception->getMessage(),
@@ -74,7 +74,7 @@ class SendAuthorizationRequestController extends StorefrontController
         }
 
         $redirectUri = $this->generateUrl('frontend.sw6oidc.callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
-        $authorizeUrl = $this->requestBuilder->build($provider, 'customer', $relayState, $redirectUri);
+        $authorizeUrl = $this->requestBuilder->build($provider, LoginType::Customer->value, $relayState, $redirectUri);
 
         return new RedirectResponse($authorizeUrl);
     }
@@ -97,7 +97,7 @@ class SendAuthorizationRequestController extends StorefrontController
         \assert($customer instanceof \Shopware\Core\Checkout\Customer\CustomerEntity);
 
         try {
-            $provider = $this->providerResolver->getActiveById((string) $request->request->get('providerId'), 'customer', $context->getContext());
+            $provider = $this->providerResolver->getActiveById((string) $request->request->get('providerId'), LoginType::Customer->value, $context->getContext());
         } catch (ProviderNotFoundException) {
             $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.providerUnavailable'));
 
@@ -133,11 +133,11 @@ class SendAuthorizationRequestController extends StorefrontController
         $customer = $context->getCustomer();
         \assert($customer instanceof \Shopware\Core\Checkout\Customer\CustomerEntity);
 
-        $providerId = $this->bindingService->getBoundProviderId('customer', $customer->getId(), $context->getContext());
+        $providerId = $this->bindingService->getBoundProviderId(LoginType::Customer->value, $customer->getId(), $context->getContext());
 
         if ($providerId !== null) {
             try {
-                $provider = $this->providerResolver->getActiveById($providerId, 'customer', $context->getContext());
+                $provider = $this->providerResolver->getActiveById($providerId, LoginType::Customer->value, $context->getContext());
 
                 return new RedirectResponse($this->requestBuilder->build(
                     $provider,

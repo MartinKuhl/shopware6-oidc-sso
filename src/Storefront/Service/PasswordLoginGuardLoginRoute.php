@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Storefront\Service;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\PasswordLoginDisabledException;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use Shopware\Core\Checkout\Customer\SalesChannel\AbstractLoginRoute;
@@ -30,7 +31,7 @@ class PasswordLoginGuardLoginRoute extends AbstractLoginRoute
 
     public function login(#[\SensitiveParameter] RequestDataBag $data, SalesChannelContext $context): ContextTokenResponse
     {
-        if ($this->passwordLoginPolicy->isPasswordLoginDisabled('customer', $context->getContext())) {
+        if ($this->passwordLoginPolicy->isPasswordLoginDisabled(LoginType::Customer->value, $context->getContext())) {
             throw new PasswordLoginDisabledException();
         }
 

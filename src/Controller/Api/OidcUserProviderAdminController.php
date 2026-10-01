@@ -17,13 +17,12 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * Read/unlink access to sw6oidc_user_provider for the Administration's
- * user and customer pages - the "OIDC Provider" info row, mirroring the
- * Magento reference module's OidcUserInfoPlugin/OidcInfoPlugin and its
- * "Unlink IdP" button (Controller/Adminhtml/Provider/UnlinkUser).
+ * user and customer pages - the "OIDC Provider" info row and its "Unlink
+ * IdP" button.
  *
  * A dedicated endpoint rather than the generic entity API because the
  * binding's userId is polymorphic (no DAL association to user/customer), and

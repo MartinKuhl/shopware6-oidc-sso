@@ -74,32 +74,6 @@ final class TokenExchangeServiceTest extends TestCase
         $service->exchangeCodeForTokens($provider, 'the-code', 'https://shop.example/callback', 'verifier');
     }
 
-    public function testRefreshAccessTokenAlsoAuthenticatesConfidentialClientsViaBasicAuth(): void
-    {
-        $provider = $this->buildProvider(publicClient: false);
-
-        $httpClient = $this->createMock(OidcHttpClient::class);
-        $httpClient->expects(self::once())
-            ->method('postForm')
-            ->with(
-                'https://idp.example/token',
-                self::callback(static function (array $params): bool {
-                    self::assertArrayNotHasKey('client_id', $params);
-                    self::assertArrayNotHasKey('client_secret', $params);
-                    self::assertSame('refresh_token', $params['grant_type']);
-
-                    return true;
-                }),
-                10,
-                'client-1',
-                'the-secret',
-            )
-            ->willReturn(['access_token' => 'at']);
-
-        $service = new TokenExchangeService($httpClient);
-        $service->refreshAccessToken($provider, 'refresh-token-value');
-    }
-
     public function testUndecryptableSecretFailsBeforeAnyRequest(): void
     {
         $provider = $this->buildProvider(publicClient: false);

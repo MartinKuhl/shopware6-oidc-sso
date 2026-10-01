@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Subscriber;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use Shopware\Core\Framework\Context;
@@ -60,7 +61,7 @@ class AdminLockoutGuardSubscriber implements EventSubscriberInterface
 
         if (
             $removedUserIds === []
-            || !$this->passwordLoginPolicy->isPasswordLoginDisabled('admin', Context::createDefaultContext())
+            || !$this->passwordLoginPolicy->isPasswordLoginDisabled(LoginType::Admin->value, Context::createDefaultContext())
             || $this->lockoutGuard->adminLoginRemainsPossible(excludedUserIds: $removedUserIds)
         ) {
             return;

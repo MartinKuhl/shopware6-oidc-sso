@@ -60,6 +60,12 @@
                     "tokenExchangeNoAccessToken": "Die Antwort des Token-Endpunkts enthielt kein access_token.",
                     "idTokenVerificationPass": "Signatur und Claims des id_token erfolgreich geprüft.",
                     "idTokenVerificationSkipped": "Die Token-Antwort enthielt kein id_token.",
+                    "idTokenVerificationMissing": "Die Token-Antwort enthielt kein id_token, das der Scope \"openid\" erfordert. Echte Anmeldungen mit diesem Anbieter schlagen fehl.",
+                    "claimsSubjectMismatch": "Die Userinfo-Antwort beschreibt ein anderes Subjekt (sub) als das id_token. Echte Anmeldungen mit diesem Anbieter schlagen fehl.",
+                    "groupsNone": "Keine Gruppen im Claim \"{claim}\" gefunden.",
+                    "groupsFound": "{count} Gruppe(n) gefunden.",
+                    "accessControlAllowed": "Die Zugriffsregeln lassen dieses Konto zu.",
+                    "accessControlDenied": "Dieses Konto würde von der Zugriffsregel auf \"{claim}\" abgelehnt.",
                     "userinfoFetchPass": "Der Userinfo-Endpunkt hat erfolgreich geantwortet.",
                     "userinfoFetchSkipped": "Kein Userinfo-Endpunkt konfiguriert.",
                     "wellKnownReachablePass": "Well-Known-Konfigurationsdokument erfolgreich abgerufen und ausgewertet.",
@@ -87,6 +93,9 @@
                         "token_exchange": "Token-Austausch",
                         "id_token_verification": "ID-Token-Prüfung",
                         "userinfo_fetch": "Userinfo-Abruf",
+                        "claims": "Claims",
+                        "groups": "Gruppen",
+                        "access_control": "Zugriffskontrolle",
                         "callback": "Rückruf",
                         "authorization": "Autorisierung"
                     }

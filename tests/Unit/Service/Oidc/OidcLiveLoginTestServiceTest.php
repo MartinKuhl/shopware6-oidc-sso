@@ -58,7 +58,7 @@ final class OidcLiveLoginTestServiceTest extends TestCase
         $jwtVerifier->method('verify')->willReturn(['sub' => '123']);
 
         $userInfoService = $this->createMock(UserInfoService::class);
-        $userInfoService->method('fetchClaims')->willReturn(['email' => 'alice@example.com']);
+        $userInfoService->method('fetchClaims')->willReturn(['sub' => '123', 'email' => 'alice@example.com']);
 
         $claimsNormalizer = $this->createMock(ClaimsNormalizer::class);
         $claimsNormalizer->method('flatten')->willReturn(['sub' => '123', 'email' => 'alice@example.com']);
@@ -74,8 +74,55 @@ final class OidcLiveLoginTestServiceTest extends TestCase
         self::assertSame(['sub' => '123', 'email' => 'alice@example.com'], $result['claims']);
 
         foreach ($result['steps'] as $step) {
-            self::assertSame('pass', $step['status']);
+            self::assertContains($step['status'], ['pass', 'skipped'], $step['id']);
         }
+    }
+
+    public function testAMissingIdTokenFailsWhenTheOpenidScopeIsRequested(): void
+    {
+        $tokenExchangeService = $this->createMock(TokenExchangeService::class);
+        $tokenExchangeService->method('exchangeCodeForTokens')->willReturn(['access_token' => 'at']);
+
+        $provider = $this->buildProvider();
+        $provider->setScope('openid email');
+
+        $result = $this->buildService($tokenExchangeService)->run($provider, 'code', 'verifier', 'https://shop.example/callback', 'nonce');
+
+        self::assertSame('fail', $result['status'], 'a real login refuses this');
+    }
+
+    public function testUserinfoForAnotherSubjectFails(): void
+    {
+        $tokenExchangeService = $this->createMock(TokenExchangeService::class);
+        $tokenExchangeService->method('exchangeCodeForTokens')->willReturn(['access_token' => 'at', 'id_token' => 'idt']);
+        $jwtVerifier = $this->createMock(JwtVerifier::class);
+        $jwtVerifier->method('verify')->willReturn(['sub' => '123']);
+        $userInfoService = $this->createMock(UserInfoService::class);
+        $userInfoService->method('fetchClaims')->willReturn(['sub' => 'someone-else']);
+
+        $provider = $this->buildProvider();
+        $provider->setUserInfoEndpoint('https://idp.example/userinfo');
+
+        $result = $this->buildService($tokenExchangeService, $jwtVerifier, $userInfoService, new ClaimsNormalizer())->run($provider, 'code', 'verifier', 'https://shop.example/callback', 'nonce');
+
+        self::assertSame('fail', $result['status']);
+        self::assertContains('claims', array_column($result['steps'], 'id'));
+    }
+
+    public function testGroupsAreNormalizedLikeARealLogin(): void
+    {
+        $tokenExchangeService = $this->createMock(TokenExchangeService::class);
+        $tokenExchangeService->method('exchangeCodeForTokens')->willReturn(['access_token' => 'at', 'id_token' => 'idt']);
+        $jwtVerifier = $this->createMock(JwtVerifier::class);
+        $jwtVerifier->method('verify')->willReturn(['sub' => '123', 'roles' => ['Admins' => ['orgId' => '1'], 'Staff' => ['orgId' => '1']]]);
+
+        $provider = $this->buildProvider();
+        $provider->setGroupAttribute('roles');
+
+        $result = $this->buildService($tokenExchangeService, $jwtVerifier, null, new ClaimsNormalizer())->run($provider, 'code', 'verifier', 'https://shop.example/callback', 'nonce');
+
+        $groups = array_values(array_filter($result['steps'], static fn (array $step): bool => $step['id'] === 'groups'))[0];
+        self::assertSame(['count' => 2], $groups['messageParams'] ?? null);
     }
 
     public function testSkipsIdTokenVerificationWhenNoIdTokenIsPresent(): void
@@ -88,7 +135,10 @@ final class OidcLiveLoginTestServiceTest extends TestCase
 
         $service = $this->buildService($tokenExchangeService, $jwtVerifier);
 
-        $result = $service->run($this->buildProvider(), 'code', 'verifier', 'https://shop.example/callback', 'nonce');
+        $provider = $this->buildProvider();
+        $provider->setScope('profile email');
+
+        $result = $service->run($provider, 'code', 'verifier', 'https://shop.example/callback', 'nonce');
 
         $idTokenStep = array_values(array_filter($result['steps'], static fn (array $step): bool => $step['id'] === 'id_token_verification'))[0];
         self::assertSame('skipped', $idTokenStep['status']);

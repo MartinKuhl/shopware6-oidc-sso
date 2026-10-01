@@ -99,8 +99,6 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new BoolField('is_active', 'isActive'))->addFlags(new ApiAware()),
             (new StringField('login_type', 'loginType'))->addFlags(new ApiAware(), new Required()),
             (new IntField('sort_order', 'sortOrder'))->addFlags(new ApiAware()),
-            (new StringField('button_label', 'buttonLabel'))->addFlags(new ApiAware()),
-            (new StringField('button_color', 'buttonColor'))->addFlags(new ApiAware()),
             (new BoolField('sync_customer_profile_on_sso', 'syncCustomerProfileOnSso'))->addFlags(new ApiAware()),
             (new BoolField('sync_customer_address_on_sso', 'syncCustomerAddressOnSso'))->addFlags(new ApiAware()),
             (new BoolField('sync_customer_group_on_sso', 'syncCustomerGroupOnSso'))->addFlags(new ApiAware()),

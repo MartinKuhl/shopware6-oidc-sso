@@ -22,6 +22,8 @@ final class GroupMappingResolverTest extends TestCase
 {
     private ?Criteria $capturedCriteria = null;
 
+    private int $searches = 0;
+
     public function testResolvesCustomerGroupCaseInsensitively(): void
     {
         $provider = $this->provider();
@@ -72,19 +74,20 @@ final class GroupMappingResolverTest extends TestCase
         );
     }
 
-    public function testQueriesMappingsScopedToProviderAndTypeSortedBySortOrderAscending(): void
+    public function testQueriesTheProvidersMappingsOnceSortedBySortOrderAscending(): void
     {
         $provider = $this->provider();
 
         $resolver = new GroupMappingResolver($this->repositoryReturning([]));
         $resolver->resolveCustomerGroupId($provider, ['any'], Context::createDefaultContext());
+        $resolver->resolveAclRoleId($provider, ['any'], Context::createDefaultContext());
+        $resolver->matchesSuperadminGroup($provider, ['any'], Context::createDefaultContext());
+
+        self::assertSame(1, $this->searches, 'one query per provider and request (L8)');
 
         $criteria = $this->capturedCriteria;
         self::assertNotNull($criteria);
-        self::assertSame(
-            ['providerId' => $provider->getId(), 'mappingType' => RoleMapping::MAPPING_TYPE_CUSTOMER_GROUP],
-            $this->equalsFilters($criteria),
-        );
+        self::assertSame(['providerId' => $provider->getId()], $this->equalsFilters($criteria));
 
         $sortings = $criteria->getSorting();
         self::assertCount(1, $sortings);
@@ -159,19 +162,27 @@ final class GroupMappingResolverTest extends TestCase
         self::assertTrue($resolver->matchesSuperadminGroup($provider, ['staff', 'ROOT-admins'], Context::createDefaultContext()));
     }
 
-    public function testMatchesSuperadminGroupOnlyQueriesSuperadminRowsOfTheProvider(): void
+    public function testMatchesSuperadminGroupOnlyConsidersSuperadminRows(): void
     {
         $provider = $this->provider();
 
-        $resolver = new GroupMappingResolver($this->repositoryReturning([]));
-        $resolver->matchesSuperadminGroup($provider, ['root-admins'], Context::createDefaultContext());
+        $resolver = new GroupMappingResolver($this->repositoryReturning([
+            $this->mapping($provider->getId(), RoleMapping::MAPPING_TYPE_ADMIN_ROLE, 'root-admins', aclRoleId: Uuid::randomHex()),
+        ]));
 
-        $criteria = $this->capturedCriteria;
-        self::assertNotNull($criteria);
-        self::assertSame(
-            ['providerId' => $provider->getId(), 'mappingType' => RoleMapping::MAPPING_TYPE_SUPERADMIN],
-            $this->equalsFilters($criteria),
-        );
+        self::assertFalse($resolver->matchesSuperadminGroup($provider, ['root-admins'], Context::createDefaultContext()));
+    }
+
+    public function testResetForgetsTheMemo(): void
+    {
+        $provider = $this->provider();
+        $resolver = new GroupMappingResolver($this->repositoryReturning([]));
+
+        $resolver->resolveAclRoleId($provider, ['any'], Context::createDefaultContext());
+        $resolver->reset();
+        $resolver->resolveAclRoleId($provider, ['any'], Context::createDefaultContext());
+
+        self::assertSame(2, $this->searches);
     }
 
     public function testMatchesSuperadminGroupReturnsFalseWithoutMatchEvenWhenDefaultRoleIsConfigured(): void
@@ -237,6 +248,7 @@ final class GroupMappingResolverTest extends TestCase
         $repository->method('search')->willReturnCallback(
             function (Criteria $criteria, Context $context) use ($entities): EntitySearchResult {
                 $this->capturedCriteria = $criteria;
+                ++$this->searches;
 
                 return new EntitySearchResult(
                     RoleMapping::ENTITY_NAME,

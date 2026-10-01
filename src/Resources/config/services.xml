@@ -11,6 +11,8 @@
         <parameter key="env(SW6OIDC_ALLOW_PASSWORD_LOGIN)">0</parameter>
         <parameter key="env(SW6OIDC_ALLOW_USER_ACCESS_KEYS)">0</parameter>
         <parameter key="env(SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS)">90</parameter>
+        <!-- 1 = store activity IPs truncated (IPv4 /24, IPv6 /64), N-L12. -->
+        <parameter key="env(SW6OIDC_SESSION_ACTIVITY_TRUNCATE_IP)">0</parameter>
     </parameters>
 
     <services>
@@ -128,8 +130,19 @@
             </argument>
         </service>
 
+        <!-- M1: binds each login flow and admin nonce to the browser that started it. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding">
+            <argument type="service" id="request_stack" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\BrowserBindingCookieSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient">
@@ -168,6 +181,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\UserInfoService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\ClaimsNormalizer" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcAccessControlEvaluator" />
         </service>
 
         <!-- Provisioning / group mapping -->
@@ -182,6 +196,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\GroupMappingResolver">
             <argument type="service" id="sw6oidc_role_mapping.repository" />
+            <tag name="kernel.reset" method="reset" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\GenderMapper" />
@@ -191,6 +206,7 @@
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\CountryResolver">
             <argument type="service" id="country.repository" />
             <argument type="service" id="country_state.repository" />
+            <tag name="kernel.reset" method="reset" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeTransformer">
@@ -338,6 +354,7 @@
             <argument type="service" id="sw6oidc_session_activity.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat" />
+            <argument>%env(bool:SW6OIDC_SESSION_ACTIVITY_TRUNCATE_IP)%</argument>
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat">
@@ -454,8 +471,7 @@
         </service>
 
         <!--
-            Administration OIDC bridge — see the plan's "bridging pattern"
-            section. AdminAuthorizationServer is the *real*
+            Administration OIDC bridge. AdminAuthorizationServer is the *real*
             League\OAuth2\Server\AuthorizationServer (already a transitive
             Shopware dependency), wired to Shopware's own OAuth repositories/
             signing key, with our AdminOidcGrant registered on it.
@@ -490,6 +506,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding" />
         </service>
 
         <!--
@@ -600,6 +617,11 @@
             </call>
         </service>
 
+        <!-- N-M8: the session-activity audit log can't be deleted through the API. -->
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\SessionActivityWriteGuardSubscriber">
+            <tag name="kernel.event_subscriber" />
+        </service>
+
         <!-- N-L6: no plaintext secrets in sw6oidc_provider.written payloads. -->
         <service id="MartinKuhl\Sw6Oidc\Subscriber\ProviderSecretPayloadScrubber">
             <tag name="kernel.event_subscriber" />
@@ -607,6 +629,10 @@
 
         <service id="MartinKuhl\Sw6Oidc\Subscriber\UserProviderCleanupSubscriber">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <tag name="kernel.event_subscriber" />
         </service>
 

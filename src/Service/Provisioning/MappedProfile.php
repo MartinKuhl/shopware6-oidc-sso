@@ -5,8 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 /**
  * Claim values already resolved against a provider's sw6oidc_attribute_mapping
  * rows, ready to be written to a Shopware customer/user (+ address) entity.
- * Every field but email is optional — full attribute parity (Phase 1 decision)
- * without forcing every claim to be configured.
+ * Every field but email is optional, so no claim has to be configured.
  */
 final readonly class MappedProfile
 {

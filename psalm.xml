@@ -65,6 +65,7 @@
                 <referencedMethod name="Shopware\Core\Framework\Context::createDefaultContext" />
                 <file name="src/Core/Content/Provider/Field/Sw6OidcEncryptedFieldSerializer.php" />
                 <file name="src/Subscriber/Sw6OidcProviderWriteGuardSubscriber.php" />
+                <file name="src/Subscriber/SessionActivityWriteGuardSubscriber.php" />
                 <file name="src/Subscriber/AdminLockoutGuardSubscriber.php" />
             </errorLevel>
         </InternalMethod>

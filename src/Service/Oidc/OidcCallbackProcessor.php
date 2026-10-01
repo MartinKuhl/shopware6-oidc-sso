@@ -15,9 +15,7 @@ use Shopware\Core\Framework\Context;
  * The shared post-redirect half of the OIDC flow: redeem state, exchange the
  * code for tokens, verify the id_token, fetch userinfo, normalize claims, and
  * map attributes. Used by both the Storefront and Administration callback
- * controllers so the two flows can never drift apart on JWT/claims handling —
- * mirrors the Magento module's ReadAuthorizationResponse +
- * OidcAuthenticationService being shared across both login types.
+ * controllers so the two flows can never drift apart on JWT/claims handling.
  */
 class OidcCallbackProcessor
 {
@@ -88,7 +86,7 @@ class OidcCallbackProcessor
                 $provider->getJwksCacheTtl(),
                 $provider->getHttpTimeout(),
             );
-        } elseif ($this->requestsOpenIdScope($provider->getScope())) {
+        } elseif (ClaimsMerger::requestsOpenIdScope($provider->getScope())) {
             // OIDC Core §3.1.3.3: an openid request always yields an id_token.
             // Its absence means the only signed statement about the user is
             // missing, so userinfo alone is not trusted.
@@ -100,7 +98,7 @@ class OidcCallbackProcessor
         }
 
         $userInfoClaims = $this->userInfoService->fetchClaims($provider, $tokens['access_token']);
-        $mergedClaims = $this->mergeClaims($idTokenClaims, $userInfoClaims);
+        $mergedClaims = ClaimsMerger::merge($idTokenClaims, $userInfoClaims);
 
         if (!\is_string($mergedClaims['sub'] ?? null) || $mergedClaims['sub'] === '') {
             throw new InvalidStateException('The identity provider did not return a subject ("sub") claim.');
@@ -135,40 +133,5 @@ class OidcCallbackProcessor
         ]);
 
         return new OidcCallbackResult($provider, $flow, $profile, $tokens, $idTokenClaims, $mergedClaims);
-    }
-
-    private function requestsOpenIdScope(string $scope): bool
-    {
-        return \in_array('openid', preg_split('/\s+/', trim($scope)) ?: [], true);
-    }
-
-    /**
-     * Userinfo usually carries more claims and wins in general, but the
-     * identity-defining claims come from the signed id_token (OIDC Core
-     * §5.3.2): userinfo must describe the same subject, and `sub`, `email`
-     * and `email_verified` are never taken from it when the id_token has them.
-     *
-     * @param array<string, mixed> $idTokenClaims
-     * @param array<string, mixed> $userInfoClaims
-     *
-     * @return array<string, mixed>
-     */
-    private function mergeClaims(array $idTokenClaims, array $userInfoClaims): array
-    {
-        $idTokenSub = $idTokenClaims['sub'] ?? null;
-
-        if ($idTokenClaims !== [] && $userInfoClaims !== [] && ($userInfoClaims['sub'] ?? null) !== $idTokenSub) {
-            throw new InvalidStateException('The userinfo response describes a different subject than the id_token.');
-        }
-
-        $merged = array_merge($idTokenClaims, $userInfoClaims);
-
-        foreach (['sub', 'email', 'email_verified'] as $claim) {
-            if (\array_key_exists($claim, $idTokenClaims)) {
-                $merged[$claim] = $idTokenClaims[$claim];
-            }
-        }
-
-        return $merged;
     }
 }

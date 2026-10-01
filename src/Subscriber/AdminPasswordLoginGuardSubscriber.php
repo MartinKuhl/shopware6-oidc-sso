@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Subscriber;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use Shopware\Core\Framework\Context;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
@@ -59,7 +60,7 @@ class AdminPasswordLoginGuardSubscriber implements EventSubscriberInterface
             return;
         }
 
-        if (!$this->passwordLoginPolicy->isPasswordLoginDisabled('admin', Context::createDefaultContext())) {
+        if (!$this->passwordLoginPolicy->isPasswordLoginDisabled(LoginType::Admin->value, Context::createDefaultContext())) {
             return;
         }
 

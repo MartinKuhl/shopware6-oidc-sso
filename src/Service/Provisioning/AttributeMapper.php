@@ -15,11 +15,11 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Maps a provider's sw6oidc_attribute_mapping rows against a flattened claims
- * response into a MappedProfile — full attribute parity (identity + DOB/gender/
- * phone/address) per the Phase 1 scope decision. Falls back to common OIDC
+ * response into a MappedProfile (identity, DOB, gender, phone, addresses).
+ * Falls back to common OIDC
  * standard-claim names for the core identity fields when no explicit mapping
  * row is configured; address/DOB/gender/phone have no default claim key and
- * are simply left unmapped until configured, matching the Magento module.
+ * are simply left unmapped until configured.
  */
 class AttributeMapper
 {

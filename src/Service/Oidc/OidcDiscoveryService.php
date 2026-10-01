@@ -7,8 +7,7 @@ use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
 /**
  * Fetches a provider's `.well-known/openid-configuration` discovery document and
  * maps it to our provider entity's endpoint field names — used by the admin
- * Provider save flow to auto-populate endpoints, mirroring the Magento module's
- * auto-discovery-on-save behavior.
+ * Provider save flow to auto-populate endpoints.
  */
 class OidcDiscoveryService
 {

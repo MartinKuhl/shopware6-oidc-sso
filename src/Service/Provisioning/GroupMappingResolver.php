@@ -10,16 +10,19 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
+use Symfony\Contracts\Service\ResetInterface;
 
 /**
  * Resolves OIDC group claims to an ACL role (admin) or customer group
  * (storefront) via sw6oidc_role_mapping, case-insensitive, first match by
- * sort_order wins, falling back to the provider's configured default — mirrors
- * the Magento module's Model/Service/GroupMappingResolver.php fallback chain
- * (normalized table -> default -> deny).
+ * sort_order wins, falling back to the provider's configured default
+ * (mapping table -> default -> deny).
  */
-class GroupMappingResolver
+class GroupMappingResolver implements ResetInterface
 {
+    /** @var array<string, list<Sw6OidcRoleMappingEntity>> */
+    private array $mappingsByProvider = [];
+
     public function __construct(private readonly EntityRepository $roleMappingRepository)
     {
     }
@@ -56,15 +59,9 @@ class GroupMappingResolver
             return false;
         }
 
-        $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('providerId', $provider->getId()));
-        $criteria->addFilter(new EqualsFilter('mappingType', Sw6OidcRoleMappingDefinition::MAPPING_TYPE_SUPERADMIN));
-
         $normalizedGroups = array_map(mb_strtolower(...), $oidcGroups);
 
-        foreach ($this->roleMappingRepository->search($criteria, $context)->getEntities() as $mapping) {
-            \assert($mapping instanceof Sw6OidcRoleMappingEntity);
-
+        foreach ($this->mappings($provider->getId(), Sw6OidcRoleMappingDefinition::MAPPING_TYPE_SUPERADMIN, $context) as $mapping) {
             if (\in_array(mb_strtolower($mapping->getOidcGroup()), $normalizedGroups, true)) {
                 return true;
             }
@@ -82,16 +79,9 @@ class GroupMappingResolver
             return null;
         }
 
-        $criteria = new Criteria();
-        $criteria->addFilter(new EqualsFilter('providerId', $providerId));
-        $criteria->addFilter(new EqualsFilter('mappingType', $mappingType));
-        $criteria->addSorting(new FieldSorting('sortOrder', FieldSorting::ASCENDING));
-
         $normalizedGroups = array_map(mb_strtolower(...), $oidcGroups);
 
-        foreach ($this->roleMappingRepository->search($criteria, $context)->getEntities() as $mapping) {
-            \assert($mapping instanceof Sw6OidcRoleMappingEntity);
-
+        foreach ($this->mappings($providerId, $mappingType, $context) as $mapping) {
             if (!\in_array(mb_strtolower($mapping->getOidcGroup()), $normalizedGroups, true)) {
                 continue;
             }
@@ -102,5 +92,36 @@ class GroupMappingResolver
         }
 
         return null;
+    }
+
+    public function reset(): void
+    {
+        $this->mappingsByProvider = [];
+    }
+
+    /**
+     * All of a provider's mapping rows in sort order, loaded once per
+     * request: role resolution and the superadmin check used to query
+     * separately on every login (L8).
+     *
+     * @return list<Sw6OidcRoleMappingEntity>
+     */
+    private function mappings(string $providerId, string $mappingType, Context $context): array
+    {
+        if (!isset($this->mappingsByProvider[$providerId])) {
+            $criteria = new Criteria();
+            $criteria->addFilter(new EqualsFilter('providerId', $providerId));
+            $criteria->addSorting(new FieldSorting('sortOrder', FieldSorting::ASCENDING));
+
+            $this->mappingsByProvider[$providerId] = array_values(array_filter(
+                $this->roleMappingRepository->search($criteria, $context)->getEntities()->getElements(),
+                static fn (mixed $mapping): bool => $mapping instanceof Sw6OidcRoleMappingEntity,
+            ));
+        }
+
+        return array_values(array_filter(
+            $this->mappingsByProvider[$providerId],
+            static fn (Sw6OidcRoleMappingEntity $mapping): bool => $mapping->getMappingType() === $mappingType,
+        ));
     }
 }

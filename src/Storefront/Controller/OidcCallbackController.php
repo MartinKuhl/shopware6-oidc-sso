@@ -31,16 +31,14 @@ use Shopware\Storefront\Controller\StorefrontController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
  * Step 2 of the Storefront customer OIDC flow: exchanges the code, verifies
- * the id_token, JIT-provisions the customer, and logs them in. Mirrors the
- * Magento module's ReadAuthorizationResponse -> CheckAttributeMappingAction ->
- * ProcessUserAction -> CustomerLoginAction -> CustomerOidcCallback chain,
- * collapsed into one controller since the Storefront callback is already a
- * clean, server-rendered HTTP context (no nonce/cookie hand-off needed).
+ * the id_token, JIT-provisions the customer, and logs them in — one
+ * controller, since the Storefront callback is already a server-rendered
+ * HTTP context (no nonce hand-off as in the Administration).
  */
 #[Route(defaults: ['_routeScope' => ['storefront']])]
 class OidcCallbackController extends StorefrontController
@@ -62,7 +60,7 @@ class OidcCallbackController extends StorefrontController
     #[Route(
         path: '/sw6oidc/callback',
         name: 'frontend.sw6oidc.callback',
-        defaults: ['XmlHttpRequest' => true, '_loginRequired' => false],
+        defaults: ['_loginRequired' => false],
         methods: ['GET'],
     )]
     public function callback(Request $request, SalesChannelContext $context): Response

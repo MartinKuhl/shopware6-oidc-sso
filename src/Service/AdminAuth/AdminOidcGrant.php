@@ -24,8 +24,8 @@ use Shopware\Core\Framework\Uuid\Uuid;
  * Controller/Api/OidcAdminAuthController::exchangeNonce() immediately after
  * redeeming a one-time OIDC/Passkey login nonce.
  *
- * This is the crux of the whole Administration bridge (see the plan's
- * "bridging pattern" section): registering this grant on an AuthorizationServer
+ * This is the crux of the whole Administration bridge: registering this
+ * grant on an AuthorizationServer
  * built from Shopware's own real ClientRepository/AccessTokenRepository/
  * ScopeRepository/FakeCryptKey (see AdminAuthorizationServerFactory) means the
  * token this grant issues is a genuine Shopware access/refresh token pair,

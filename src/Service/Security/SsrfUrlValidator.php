@@ -9,8 +9,7 @@ use Symfony\Component\HttpFoundation\IpUtils;
  * (discovery, token, userinfo, JWKS, revocation, ...): HTTPS only, and the
  * host must not resolve to a private, loopback, link-local or otherwise
  * reserved address (Symfony's IpUtils::PRIVATE_SUBNETS, plus multicast — the
- * same list NoPrivateNetworkHttpClient enforces at request time). A port of
- * the Magento sibling module's validator.
+ * same list NoPrivateNetworkHttpClient enforces at request time).
  *
  * SW6OIDC_ALLOW_INSECURE_IDP_URLS=1 ($allowInsecure) relaxes both rules for
  * development setups (a local/docker IdP over plain HTTP on a private IP):

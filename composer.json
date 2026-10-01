@@ -16,7 +16,7 @@
         "web-token/jwt-framework": "^3.4 || ^4.0",
         "symfony/psr-http-message-bridge": "^6.4 || ^7.0",
         "nyholm/psr7": "^1.8",
-        "league/oauth2-server": "*",
+        "league/oauth2-server": "^9.3",
         "web-auth/webauthn-lib": "^5.3"
     },
     "require-dev": {

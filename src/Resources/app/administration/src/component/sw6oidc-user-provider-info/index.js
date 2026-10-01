@@ -6,8 +6,7 @@ const { Component, Mixin } = Shopware;
 
 /**
  * "OIDC Provider: <name> (<bound at>)" or "none", plus an "Unlink IdP"
- * button - the Administration counterpart of the Magento reference module's
- * OidcUserInfoPlugin (admin user edit) and OidcInfoPlugin (customer view).
+ * button, shown on the admin user and customer detail pages.
  *
  * Registered as a lazy factory like sw6oidc-profile-passkey: main.js is also
  * force-loaded on the pre-auth login screen, where the "notification" mixin

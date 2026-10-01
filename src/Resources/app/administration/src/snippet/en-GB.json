@@ -60,6 +60,12 @@
                     "tokenExchangeNoAccessToken": "Token endpoint response did not include an access_token.",
                     "idTokenVerificationPass": "id_token signature and claims verified successfully.",
                     "idTokenVerificationSkipped": "Token response did not include an id_token.",
+                    "idTokenVerificationMissing": "Token response did not include an id_token, which the \"openid\" scope requires. Real logins with this provider fail.",
+                    "claimsSubjectMismatch": "The userinfo response describes a different subject (sub) than the id_token. Real logins with this provider fail.",
+                    "groupsNone": "No groups found in the claim \"{claim}\".",
+                    "groupsFound": "{count} group(s) found.",
+                    "accessControlAllowed": "The access-control rules allow this account.",
+                    "accessControlDenied": "This account would be denied by the access-control rule on \"{claim}\".",
                     "userinfoFetchPass": "Userinfo endpoint responded successfully.",
                     "userinfoFetchSkipped": "No userinfo endpoint configured.",
                     "wellKnownReachablePass": "Well-known configuration document fetched and parsed successfully.",
@@ -87,6 +93,9 @@
                         "token_exchange": "Token exchange",
                         "id_token_verification": "ID token verification",
                         "userinfo_fetch": "Userinfo fetch",
+                        "claims": "Claims",
+                        "groups": "Groups",
+                        "access_control": "Access control",
                         "callback": "Callback",
                         "authorization": "Authorization"
                     }

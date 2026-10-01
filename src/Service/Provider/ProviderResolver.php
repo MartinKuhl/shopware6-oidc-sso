@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Provider;
 
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use Shopware\Core\Framework\Context;
@@ -99,19 +100,13 @@ class ProviderResolver
     {
         return array_values(array_filter(
             $this->getActiveProviders($loginType, $context),
-            static fn (Sw6OidcProviderEntity $provider): bool => $loginType === 'admin' ? $provider->isShowAdminLink() : $provider->isShowCustomerLink(),
+            static fn (Sw6OidcProviderEntity $provider): bool => $loginType === LoginType::Admin->value ? $provider->isShowAdminLink() : $provider->isShowCustomerLink(),
         ));
-    }
-
-    public function hasVisibleProvider(string $loginType, Context $context): bool
-    {
-        return $this->getVisibleProviders($loginType, $context) !== [];
     }
 
     /**
      * SP-initiated login without an explicit ?provider_id= falls back to the
-     * first active provider for this login type — matches the Magento module's
-     * no-explicit-ID fallback in ProviderResolver::resolveActiveProvider().
+     * first active provider for this login type.
      *
      * @throws ProviderNotFoundException
      */

@@ -576,7 +576,7 @@ final class CustomerProvisioningServiceTest extends TestCase
         self::assertSame($this->salesChannelId, $customer['salesChannelId']);
         self::assertSame($this->languageId, $customer['languageId']);
         self::assertSame($groupId, $customer['groupId']);
-        self::assertSame($this->paymentMethodId, $customer['defaultPaymentMethodId']);
+        self::assertArrayNotHasKey('defaultPaymentMethodId', $customer, 'not a 6.7 customer field (M16)');
         self::assertSame($this->mrSalutationId, $customer['salutationId']);
         self::assertSame(self::CUSTOMER_NUMBER, $customer['customerNumber']);
         self::assertSame('Jane', $customer['firstName']);
@@ -598,6 +598,7 @@ final class CustomerProvisioningServiceTest extends TestCase
         self::assertSame('80331', $address['zipcode']);
         self::assertSame('Munich', $address['city']);
         self::assertSame('+49 89 1234', $address['phoneNumber']);
+        self::assertArrayNotHasKey('customFields', $address, 'a real address is not flagged');
         self::assertSame($this->germanyId, $address['countryId']);
         self::assertSame($this->bavariaId, $address['countryStateId']);
 
@@ -683,7 +684,7 @@ final class CustomerProvisioningServiceTest extends TestCase
 
         $customer = $payload->value;
         self::assertNotNull($customer);
-        self::assertSame('new@example.com', $customer['firstName']);
+        self::assertSame('new', $customer['firstName'], 'never the email address as a name (L9)');
         self::assertSame('-', $customer['lastName']);
         self::assertNull($customer['birthday']);
         self::assertSame($this->notSpecifiedSalutationId, $customer['salutationId']);
@@ -691,15 +692,62 @@ final class CustomerProvisioningServiceTest extends TestCase
         self::assertIsArray($customer['addresses']);
         self::assertCount(1, $customer['addresses']);
         $address = $customer['addresses'][0];
-        self::assertSame('new@example.com', $address['firstName']);
+        self::assertSame('new', $address['firstName']);
         self::assertSame('-', $address['lastName']);
         self::assertSame('-', $address['street']);
-        self::assertSame('-', $address['zipcode']);
+        self::assertNull($address['zipcode'], 'optional in 6.7, no placeholder');
         self::assertSame('-', $address['city']);
+        self::assertSame([CustomerProvisioningService::PLACEHOLDER_ADDRESS_FIELD => true], $address['customFields']);
         self::assertSame('+49 000', $address['phoneNumber']);
         self::assertSame($this->salesChannelCountryId, $address['countryId']);
         self::assertNull($address['countryStateId']);
         self::assertSame($address['id'], $customer['defaultShippingAddressId']);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidBirthdays(): iterable
+    {
+        yield 'not a date' => ['yesterday'];
+        yield 'partial OIDC date' => ['0000-05-17'];
+        yield 'before 1900' => ['1899-12-31'];
+        yield 'overflowing day' => ['1990-02-31'];
+        yield 'in the future' => [(new \DateTimeImmutable('+1 year'))->format('Y-m-d')];
+        yield 'with time' => ['1990-05-17T10:00:00Z'];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('invalidBirthdays')]
+    public function testInvalidBirthdaysAreSkippedNotFatal(string $birthday): void
+    {
+        $payload = $this->captureCreatePayload();
+
+        $this->createService()->findOrCreateCustomer(
+            $this->provider(),
+            new MappedProfile('new@example.com', birthday: $birthday),
+            $this->identity(), $this->salesChannelContext(),
+        );
+
+        self::assertNotNull($payload->value);
+        self::assertNull($payload->value['birthday']);
+    }
+
+    public function testAutoCreateDispatchesCoresRegisterEvent(): void
+    {
+        $this->captureCreatePayload();
+        $dispatched = [];
+        $this->eventDispatcher = new EventDispatcher();
+        $this->eventDispatcher->addListener(\Shopware\Core\Checkout\Customer\Event\CustomerRegisterEvent::class, static function (\Shopware\Core\Checkout\Customer\Event\CustomerRegisterEvent $event) use (&$dispatched): void {
+            $dispatched[] = $event->getCustomerId();
+        });
+
+        $result = $this->createService()->findOrCreateCustomer(
+            $this->provider(),
+            new MappedProfile('new@example.com'),
+            $this->identity(), $this->salesChannelContext(),
+        );
+
+        self::assertSame([$result->getId()], $dispatched);
     }
 
     public function testAutoCreateFallsBackToNotSpecifiedSalutationForUnknownKey(): void
@@ -745,7 +793,7 @@ final class CustomerProvisioningServiceTest extends TestCase
         self::assertSame('Jane', $shipping['firstName']);
         self::assertSame('-', $shipping['lastName']);
         self::assertSame('-', $shipping['street']);
-        self::assertSame('-', $shipping['zipcode']);
+        self::assertNull($shipping['zipcode']);
         self::assertSame('Paris', $shipping['city']);
         self::assertSame('+33 1', $shipping['phoneNumber']);
         self::assertSame($this->franceId, $shipping['countryId']);

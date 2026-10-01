@@ -9,9 +9,8 @@ use Psr\Log\LoggerInterface;
 /**
  * Shared RP-Initiated Logout (OIDC RP-Initiated Logout + RFC 7009 revocation),
  * session-agnostic so both the Storefront customer logout subscriber and the
- * Administration logout listener can use it — mirrors the Magento module's
- * Model/Service/RpInitiatedLogoutService.php, including its Authelia
- * forward-auth detection (in scope for Phase 1 per the plan).
+ * Administration logout listener can use it, including Authelia
+ * forward-auth detection.
  */
 class RpInitiatedLogoutService
 {
