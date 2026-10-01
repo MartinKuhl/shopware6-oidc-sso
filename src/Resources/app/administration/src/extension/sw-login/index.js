@@ -69,7 +69,8 @@ Component.override('sw-login-login', {
 
     methods: {
         sw6oidcText(key, values = {}) {
-            return this.$tc(`sw-login.sw6oidc.login.${key}`, 0, values);
+            // vue-i18n 10: named values are the second argument (a third one is read as options).
+            return this.$t(`sw-login.sw6oidc.login.${key}`, values);
         },
 
         /**

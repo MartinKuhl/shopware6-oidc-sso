@@ -60,7 +60,7 @@ Component.register('sw6oidc-rp-id-field', {
             }
 
             const translationKey = 'sw6oidc.passkeySettings.rpIdPlaceholderWithHost';
-            const translated = this.$tc(translationKey, 0, { host });
+            const translated = this.$t(translationKey, { host });
 
             // A stale snippet bundle returns the key itself: show just the host then.
             return translated && translated !== translationKey ? translated : host;
