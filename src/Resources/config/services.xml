@@ -395,8 +395,9 @@
         </service>
 
         <!--
-            Penalty-model rate limiting (only failed requests count) for the
-            unauthenticated endpoints. cache.rate_limiter is Shopware's own pool;
+            Rate limiting for the unauthenticated endpoints: a consuming budget
+            for state-creating requests and a failure-only budget for redeem
+            endpoints (see Sw6OidcRateLimiter). cache.rate_limiter is Shopware's own pool;
             cache.app is the fallback if an installation doesn't define it.
         -->
         <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter">

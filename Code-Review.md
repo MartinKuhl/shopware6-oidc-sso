@@ -22,6 +22,149 @@ Backend paths are relative to `src/`. Frontend paths are relative to `src/Resour
 
 ---
 
+## Status on branch `fix/code-review-rev2`
+
+Added after the fixes, for tracking. Line numbers in the findings below still refer to `6986e4f`. "Needs build" means the source is fixed but the committed storefront bundle (`app/storefront/dist`) must be rebuilt. Future Improvements 1–4 (TECHNICAL_DOCUMENTATION.md): 1 in `53bb4a5`, 2 in `53bb4a5`, 3 in `e2555ee`, 4 in `0d8f457`.
+
+| Finding | Status | Commit | Note |
+|---|---|---|---|
+| C1 | Fixed | `639f1e2` | Providers resolved per login type; callback checks the flow type. |
+| C2 | Fixed | `639f1e2` | Binding by (provider, iss, sub); verified email + opt-in for linking; never superadmins. |
+| F-C1 | Fixed | `f19a344` | isSso() decorator and template copy removed; step-up in core's verify modal. |
+| H1 | Fixed | `639f1e2` | Grant rejects missing/inactive users. |
+| H2 | Fixed | `f19a344` | `verify-session` removed; StepUpService. |
+| H3 | Fixed | `53bb4a5` | Role sync replaces roles; opt-in superadmin revocation. |
+| H4 | Fixed | `53bb4a5` | RelayStateValidator. |
+| H6 | Fixed | `f19a344` | UV required; ceremonies 404 when disabled. |
+| H7 | Fixed | `f19a344` | Registration needs step-up / recent login; event + audit. |
+| H8 | Fixed | `d718a39` | Residues 3–6 done. |
+| H9 | Fixed | `53bb4a5` | Level handler, rotation, masking. |
+| H10 | Fixed | `53bb4a5` | TTLs from shopware.api.*. |
+| H11 | Fixed | `c66c944` | Residual: Store API logout returns the IdP URL. |
+| N-H1 | Fixed | `d718a39` | UserRepository decorator. |
+| N-H2 | Fixed | `c66c944` | kid-based selection, per-kid cooldown. |
+| N-H3 | Fixed | `0d8f457` | DB-backed registry. |
+| F-H1 | Partial | `73d4202` | CI `assets` job added; the committed storefront `dist/` still has to be rebuilt. |
+| F-H2 | Fixed | `53bb4a5` |  |
+| F-H3 | Fixed (needs build) | `73d4202` | Source fixed; takes effect with the rebuilt storefront bundle. |
+| F-H4 | Fixed | `73d4202` | Sw6oidcApiService everywhere. |
+| F-H5 | Fixed | `73d4202` | acl/index.js. |
+| F-H6 | Fixed | `f19a344` |  |
+| M1 | Fixed | `127de8d` | BrowserBinding cookie. |
+| M2 | Fixed | `639f1e2` |  |
+| M3 | Fixed | `53bb4a5` |  |
+| M4 | Fixed | `0d8f457` |  |
+| M5 | Fixed | `ff4b695` |  |
+| M6 | Fixed | `f19a344` |  |
+| M7 | Fixed | `c66c944` | PublicError (fixed codes + correlation id). |
+| M8 | Fixed | `639f1e2` |  |
+| M9 | Fixed | `127de8d` |  |
+| M10 | Fixed | `ef23a44` | base64_claims list. |
+| M11 | Fixed | `c66c944` |  |
+| M12 | Fixed | `53bb4a5` | Residual: max_redirects 0, avatar via guarded client. |
+| M13 | Fixed | `ef23a44` |  |
+| M14 | Fixed | `c66c944` |  |
+| M15 | Fixed | `127de8d` |  |
+| M16 | Fixed | `127de8d` | 6.7 still requires default addresses: placeholders kept but flagged. |
+| M17 | Fixed | `f19a344` |  |
+| M18 | Fixed | `127de8d` | Constrained to ^9.3 (used directly by AdminOidcGrant). |
+| M19 | Fixed | `53bb4a5` |  |
+| M20 | Fixed | `0d8f457`, `127de8d` |  |
+| M21 | Fixed | `639f1e2` |  |
+| M22 | Fixed | `53bb4a5` |  |
+| N-M1 | Fixed | `f19a344` |  |
+| N-M2 | Fixed | `f19a344` |  |
+| N-M3 | Fixed | `ff4b695` |  |
+| N-M4 | Fixed | `0d8f457` |  |
+| N-M5 | Fixed | `c66c944` |  |
+| N-M6 | Fixed | `c66c944` |  |
+| N-M7 | Fixed | `c66c944` |  |
+| N-M8 | Fixed | `127de8d` |  |
+| N-M9 | Fixed | `d718a39` |  |
+| N-M10 | Fixed | `ef23a44` |  |
+| N-M11 | Fixed | `ef23a44` |  |
+| N-M12 | Fixed | `53bb4a5` |  |
+| N-M13 | Fixed | `0d8f457` |  |
+| N-M14 | Fixed | `0d8f457` |  |
+| N-M15 | Fixed | `ff4b695` |  |
+| N-M16 | Fixed | `639f1e2` |  |
+| N-M17 | Fixed | `f19a344` |  |
+| F-M1 | Fixed | `f19a344` |  |
+| F-M2 | Partial | `73d4202` | Core has no narrower block; full copy kept, with a re-sync checklist. |
+| F-M3 | Fixed | `73d4202` | Native WebAuthn JSON parsing with fallback; the two codec copies remain (separate builds). |
+| F-M4 | Fixed | `73d4202` |  |
+| F-M5 | Fixed | `73d4202` |  |
+| F-M6 | Fixed | `73d4202` |  |
+| F-M7 | Fixed | `73d4202` |  |
+| F-M8 | Fixed | `73d4202` |  |
+| F-M9 | Fixed | `73d4202` |  |
+| F-M10 | Fixed | `73d4202` |  |
+| F-M11 | Fixed (needs build) | `73d4202` |  |
+| F-M12 | Fixed (needs build) | `73d4202` |  |
+| F-M13 | Fixed | `f19a344` |  |
+| F-M14 | Partial | `73d4202` | Pinia store used; the separate pre-auth bundle is not done. |
+| F-M15 | Fixed | `53bb4a5` |  |
+| F-N1 | Fixed | `f19a344` |  |
+| F-N2 | Fixed | `73d4202` |  |
+| F-N3 | Fixed | `73d4202` |  |
+| F-N4 | Fixed | `d718a39` |  |
+| F-N5 | Fixed | `f19a344` |  |
+| F-N6 | Fixed | `73d4202` |  |
+| F-N7 | Fixed | `73d4202` |  |
+| F-N8 | Fixed | `73d4202` |  |
+| F-N9 | Fixed | `f19a344` |  |
+| F-N10 | Fixed | `f19a344` |  |
+| F-N11 | Fixed | `73d4202` |  |
+| F-N12 | Fixed | `73d4202` |  |
+| F-N13 | Fixed | `f19a344` |  |
+| F-N14 | Fixed | `73d4202` |  |
+| F-N15 | Fixed | `73d4202` |  |
+| F-N16 | Fixed | `73d4202` |  |
+| F-N17 | Fixed | `73d4202` |  |
+| N-L1 | Fixed | `c66c944` |  |
+| N-L2 | Fixed | `0d8f457`, `c66c944` |  |
+| N-L3 | Fixed | `0d8f457` |  |
+| N-L4 | Fixed | `53bb4a5` |  |
+| N-L5 | Fixed | `53bb4a5` |  |
+| N-L6 | Fixed | `53bb4a5` |  |
+| N-L7 | Fixed | `639f1e2` |  |
+| N-L8 | Fixed | `53bb4a5` |  |
+| N-L9 | Fixed | `53bb4a5` |  |
+| N-L10 | Fixed | `0d8f457` |  |
+| N-L11 | Fixed | `ef23a44` |  |
+| N-L12 | Fixed | `127de8d` |  |
+| N-L13 | Fixed | `ef23a44` |  |
+| N-L14 | Fixed | `0d8f457` |  |
+| N-L15 | Fixed | `127de8d` |  |
+| N-L16 | Fixed | `f19a344` |  |
+| N-L17 | Fixed | `639f1e2` |  |
+| N-L18 | Fixed | `d718a39` |  |
+| N-L19 | Fixed | `0d8f457` |  |
+| N-L20 | Fixed | `0d8f457` |  |
+| N-L21 | Fixed | `0d8f457` |  |
+| L1 | Fixed | `127de8d` |  |
+| L2 | Fixed | `639f1e2` |  |
+| L3 | Fixed | `f19a344`, `53bb4a5`, `127de8d` | Includes Future Improvement 2 (extractEmail). |
+| L4 | Fixed | `53bb4a5` |  |
+| L5 | Fixed | `127de8d` |  |
+| L7 | Fixed | `f19a344` | credential_id_hash + user_handle index. |
+| L8 | Fixed | `127de8d` |  |
+| L9 | Fixed | `127de8d` |  |
+| L10 | Fixed | `639f1e2` |  |
+| L11 | Fixed | `127de8d` |  |
+| L12 | Fixed | `127de8d` |  |
+| L13 | Deferred | — | Autowiring the whole services.xml needs a container compile in a real shop; not done blind. |
+| L14 | Fixed | `127de8d` |  |
+| L15 | Fixed | — | PHPCS, PHPStan, Psalm, Rector and PHPUnit run green on every phase commit. |
+| L16 | Fixed | `0d8f457` |  |
+| L17 | Fixed | `639f1e2` |  |
+| L18 | Fixed | `ef23a44` |  |
+| Rev 1 frontend Lows | Fixed (mostly) | `73d4202` | Untranslated diagnostics detail text from the backend remains English. |
+
+H5, M12 (base), L6 and H11 (base) were already fixed in revision 2 (see [Resolved since revision 1](#resolved-since-revision-1)).
+
+---
+
 ## Summary
 
 ### What changed since revision 1

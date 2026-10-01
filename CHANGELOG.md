@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+- **Accounts are bound to the IdP subject, not the email address.** Logins resolve the account by `(provider, iss, sub)`. Existing email-only bindings get their `sub` filled in on the next login with a verified email. An existing, unbound account is only linked when the new provider option **Link existing accounts by verified email** is on (default off; never for superadmins); otherwise the user connects SSO from the customer account or the admin profile (**Connect SSO**).
+- **`email_verified` is required** by default (`require_email_verified`, per provider). A missing claim counts as unverified.
+- **`openid` scope means an id_token is required.** Userinfo must describe the same `sub`; `sub`, `email` and `email_verified` always come from the id_token.
+- **Providers are scoped by login type.** A customer-only provider can no longer be used for Administration logins and vice versa.
+- **Password re-confirmation can no longer be skipped.** The `verify-session` endpoint and the decorator that switched Users & Permissions into "native SSO mode" are removed. Re-confirmation now offers **Confirm with SSO** (fresh IdP login) or **Confirm with passkey** next to the password; both mint a 5-minute, non-refreshable `user-verified` token. Login endpoints never grant `user-verified`.
+- **Passkeys require user verification** (PIN/biometrics), exact origins, and an RP ID from `APP_URL` (Administration) or the sales channel domain (Storefront). Registering a passkey needs a recent login (customers) or step-up (admins). A passkey whose signature counter goes backwards is disabled as a possible clone. The Administration passkey login is always usernameless.
+- **Security state moved from `cache.app` to the database** (`sw6oidc_session`, `sw6oidc_one_time_token`, `sw6oidc_node_heartbeat`). Clearing the cache no longer breaks logins or logouts. `SW6OIDC_REDIS_DSN` is an optional accelerator; the plugin warns when several nodes run without it.
+- **Default log level is `warning`.** The **Enable debug logging** setting now switches the `sw6oidc` channel to `debug`; `SW6OIDC_LOG_LEVEL` sets the base level. Logs rotate (14 files) and mask tokens, secrets and sensitive query parameters.
+- **New encryption envelope `sw6oidc_v2:`** (XChaCha20-Poly1305, one key per field, field bound as associated data). `v1` is still read; a migration re-encrypts stored secrets. Exports with `--keep-encrypted` from older versions still import.
+- **Access-control rule semantics are stricter.** `eq` matches any list entry; `neq` and `not_contains` deny when the claim is missing; `contains` on a single value matches a whole token, never a substring. New operators `ends_with` and `email_domain` (use the latter to restrict by domain). Unknown operators are rejected on save.
+- **`claim_encoding = base64` is replaced by a list of base64-encoded claims** (`base64_claims`). Providers that used base64 are migrated to `["*"]` (all claims); narrow the list to the claims that are actually encoded.
+- **Role sync replaces roles** instead of adding them. The new option **Revoke superadmin on SSO** lets sync also remove superadmin (never from the last active superadmin).
+- **Changing a token, revocation, userinfo or discovery URL requires re-entering the client secret** in the same save.
+- **SSO-only customer mode also blocks registration** (Storefront and Store API; guest checkout stays allowed), and **client-credentials logins with a user access key** are blocked in admin SSO-only mode unless `SW6OIDC_ALLOW_USER_ACCESS_KEYS=1`.
+- **Logins and admin login nonces are bound to the browser** that started them (HttpOnly, SameSite=Lax cookie).
+- **Force logout needs the new privilege `sw6oidc_session_activity:force_logout`**; the session activity log can't be edited or deleted through the API.
+- **`sw6oidc:config:export -o` refuses to overwrite** an existing file without `--force` and creates it with mode 0600. `--plaintext` fails instead of exporting an undecryptable envelope.
+- **`button_label` / `button_color` are dropped** in the destructive migration step (never read).
+- **Behind a reverse proxy or CDN, configure `framework.trusted_proxies`.** Rate limits are kept per client address.
+### Breaking changes (earlier in this release)
+
 - **IdP URLs must be HTTPS on a public address.** Provider URLs over plain http or resolving to a private, loopback, link-local or similar address are rejected on save and on every outbound request. Set `SW6OIDC_ALLOW_INSECURE_IDP_URLS=1` for local development IdPs.
 - **"Disable non-OIDC admin/customer login" is now enforced.** It used to be stored but ignored. It now really blocks password login (Storefront, Store API, Admin `password` grant). It can only be switched on once an account of that type has signed in through the provider. The break-glass override is `SW6OIDC_ALLOW_PASSWORD_LOGIN=1`.
 - **The client secret is write-only in the Admin API.** It is no longer returned after saving. Leave the field empty to keep the stored secret.
@@ -15,17 +36,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The per-attribute `sync_on_sso` column is removed** (in the destructive migration step). It was never read. Re-sync is controlled by the provider-level toggles.
 - **`web-auth/webauthn-lib` is now `^5.3`** instead of `^4.7`. Passkeys stored by 4.x keep working.
 
+### Added (code review revision 2)
+
+- Browser E2E suite (`tests/E2E`, Playwright, dockware + Dex, virtual WebAuthn authenticator) and non-blocking CI jobs `e2e` and `assets` (fails on a stale committed storefront bundle).
+- Health endpoint statuses `ok` / `degraded` (200) / `down` (503), 30 s cache, optional `SW6OIDC_HEALTH_TOKEN` (header `X-Sw6oidc-Health-Token`), and infrastructure warnings (`redis_dsn_unusable`, `multi_node_without_redis`), also in the diagnostics panel.
+- ACL privilege mapping for the provider, passkey and session modules, so they can be granted to ordinary roles.
+- RP-initiated logout revokes the real IdP tokens; the Store API logout response carries the IdP logout URL.
+- Account deletion removes the plugin's per-account data (binding, passkeys, sessions, activity); deactivation ends all sessions. `SW6OIDC_SESSION_ACTIVITY_TRUNCATE_IP=1` stores truncated IP addresses.
+- `CustomerRegisterEvent` is dispatched for SSO-created customers (Flow Builder).
+- The live login test runs the login's claim rules, group normalisation and an access-control preview.
+
+### Changed (code review revision 2)
+
+- Rate limiting: separate budgets per endpoint group; flow start and passkey options count every request (30/min), redeem endpoints count failures (10/min); IPv6 addresses share a budget per /64; callbacks with an unknown state don't count.
+- JWT verification selects keys by `kid`, refetches the JWKS only for an unknown `kid`, allows 60 s clock leeway, requires `iat`, checks `azp`. Back-channel logout tokens need `jti` and an `iat` at most 5 minutes old; front-channel logout ends admin sessions only with the new provider option.
+- Avatars are fetched through the SSRF-guarded client and skipped when unchanged; outbound requests follow no redirects by default.
+- Admin token lifetimes follow `shopware.api.access_token_ttl` / `refresh_token_ttl`.
+- Expired sessions show as "Expired (no logout recorded)" instead of "Active".
+
+### Removed (code review revision 2)
+
+- `ClaimsNormalizer::extractEmail()`, `TokenExchangeService::refreshAccessToken()`, `ProviderResolver::hasVisibleProvider()`, `CachePoolAtomicCache`, the `verify-session` endpoint, and the account-overview template override.
 ### Added
 
 - Setup guides for Authelia, ZITADEL and Dex (`Docs/`).
 - Integration test suite (`tests/Integration/`, `composer test-integration`): a real Shopware 6.7 kernel and database plus Dex as the IdP — Back-Channel Logout, full Storefront and Administration OIDC logins, and access-control rules against real claims — and a fifth CI job running it. Not yet run; the CI job is non-blocking until it passes.
-- Health checks and alerting: `GET /sw6oidc/health` for uptime monitors (configuration and last scheduled check, no outbound calls, counts only, 503 when degraded); a **Run diagnostics** panel per provider (`POST /api/_action/sw6oidc/provider/{id}/diagnostics`); and a scheduled reachability check (every 5 minutes) that POSTs one webhook alert per outage after a configurable number of consecutive failures, with an optional recovery message. The webhook URL is stored encrypted and SSRF-checked.
-- Session activity log (`sw6oidc_session_activity`) and a new Administration module *OIDC & Passkey sessions*: every OIDC/Passkey login with provider, IP address, user agent, logout time and reason (logout, back-/front-channel, forced), an "only active" filter and a **Force logout** action (`POST /api/_action/sw6oidc/session-activity/{id}/force-logout`, ACL `sw6oidc_session_activity:update`). A daily scheduled task deletes entries after `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` (default 90).
+- Health checks and alerting: `GET /sw6oidc/health` for uptime monitors (configuration and last scheduled check, no outbound calls, counts only); a **Run diagnostics** panel per provider (`POST /api/_action/sw6oidc/provider/{id}/diagnostics`); and a scheduled reachability check (every 5 minutes) that POSTs one webhook alert per outage after a configurable number of consecutive failures, with an optional recovery message. The webhook URL is stored encrypted and SSRF-checked.
+- Session activity log (`sw6oidc_session_activity`) and a new Administration module *OIDC & Passkey sessions*: every OIDC/Passkey login with provider, IP address, user agent, logout time and reason (logout, back-/front-channel, forced), an "only active" filter and a **Force logout** action (`POST /api/_action/sw6oidc/session-activity/{id}/force-logout`, ACL `sw6oidc_session_activity:force_logout`). A daily scheduled task deletes entries after `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` (default 90).
 - Per-provider **Post-logout redirect URI** (`post_logout_url`) for RP-initiated logout, and a shared landing page `/sw6oidc/postlogout` for IdPs that accept only one post-logout URI: it sends customers to the Storefront login and admins to the Administration, based on a signed `state`.
 - Administration RP-initiated logout now takes the provider and id_token from the session registry (the current session, else the newest), with the previous per-user store as fallback. Storefront logout removes its session from the registry.
 - OIDC Front-Channel Logout (`GET /sw6oidc/frontchannel-logout?iss=…&sid=…`): ends the shop sessions of an IdP session from the IdP's logout page iframe; always answers with a 1×1 GIF. Unknown `sid`s count toward the rate limit.
 - OIDC Back-Channel Logout (`POST /sw6oidc/backchannel-logout`): the IdP can end shop sessions server-to-server. Logout tokens are fully verified (signature, `iss`/`aud`/`exp`, `events`, no `nonce`, `jti` replay protection). Customers lose exactly the affected session; Administration users lose all their sessions (admin access tokens can't be revoked individually).
-- Rate limiting for the unauthenticated endpoints (OIDC callbacks, Back- and Front-Channel Logout): 10 failed requests per minute per client address, after which the address is refused until the window ends. Successful requests never count.
+- Rate limiting for the unauthenticated endpoints (see *Changed* above for the current budgets).
 - Session/subject registry: every OIDC login records which local session it created (Storefront context token / Administration access-token jti), indexed by the IdP subject, the IdP session id (`sid`) and the local account. Groundwork for Back-/Front-Channel Logout and forced logouts; no visible behavior on its own.
 - Claims-based access control: per-provider rules (`eq`, `neq`, `contains`, `not_contains`, `exists`, `not_exists`) that all must pass before a login is accepted, evaluated before any account lookup or JIT provisioning. List claims are matched by entry, comparisons ignore case, and each rule carries its own denial message (shown on the Storefront and, via a one-time error ticket, on the Administration login screen). New table `sw6oidc_access_control_rule`, an **Access control** card on the provider detail page, and export/import support.
 - `client_secret` is encrypted at rest (libsodium secretbox, `sw6oidc_v1:` envelope). A migration encrypts existing rows.

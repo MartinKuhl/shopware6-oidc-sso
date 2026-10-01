@@ -19,9 +19,11 @@ use Psr\Log\LoggerInterface;
  *  - regex_replace {pattern: string, replacement?: string}
  *                  input and pattern capped at 4096 bytes
  *
- * Never throws: an unknown function, invalid params or a failing regex logs a
- * warning and passes the raw value through unchanged, so a misconfigured
- * mapping degrades to "no transform" instead of breaking every login.
+ * Lenient by default: an unknown function, invalid params or a failing regex
+ * logs a warning and passes the raw value through unchanged, so a
+ * misconfigured mapping degrades to "no transform". For identity attributes
+ * (email, username) the strict mode throws AttributeTransformFailedException
+ * instead, since the raw value would be used for account linking (N-L7).
  */
 class AttributeTransformer
 {

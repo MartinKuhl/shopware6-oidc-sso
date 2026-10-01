@@ -18,8 +18,8 @@ use Psr\Cache\CacheItemPoolInterface;
  * instead of leaving that session usable under a since-revoked credential.
  *
  * Deliberate scope limit: this only covers the access token minted directly
- * by the passkey login itself (~10 minutes, see
- * AdminAuthorizationServerFactory::ACCESS_TOKEN_TTL) - once the Administration
+ * by the passkey login itself (shopware.api.access_token_ttl, 10 minutes by
+ * default) - once the Administration
  * SPA silently refreshes that token via Shopware's own native refresh_token
  * grant (a completely separate code path this plugin doesn't touch), the
  * resulting new access token gets a new jti this tracker never learns about.

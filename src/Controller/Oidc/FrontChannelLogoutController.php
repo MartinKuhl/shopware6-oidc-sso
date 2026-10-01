@@ -25,9 +25,10 @@ use Symfony\Component\Routing\Attribute\Route;
  *
  * Always answers 200 with a 1×1 transparent GIF, whatever happened — the
  * IdP page must render the same either way, and nothing about the outcome
- * leaks to the embedding page. Unknown sids and malformed requests count
- * against Sw6OidcRateLimiter (a blocked address still gets the GIF, but
- * nothing is processed), which stops sid guessing.
+ * leaks to the embedding page. Only malformed requests count against
+ * Sw6OidcRateLimiter (a blocked address still gets the GIF, but nothing is
+ * processed); a sid that ends nothing is normal (RP logout or back-channel
+ * logout got there first) and relies on sid entropy instead (N-M6).
  */
 #[Route(defaults: ['_routeScope' => ['storefront']])]
 class FrontChannelLogoutController extends AbstractController

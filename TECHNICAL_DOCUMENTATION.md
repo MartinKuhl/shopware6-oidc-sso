@@ -38,10 +38,11 @@ The architecture deliberately mirrors the sibling `magento2-oidc-sso` module, so
 
 This is early-stage software: version `0.1.0` plus a large set of unreleased changes, MIT-licensed, with support for PHP 8.2–8.5 and Shopware `>=6.7.0.0 <6.8.0.0`. Test coverage:
 
-- ~380 unit tests
+- ~700 unit tests
 - an integration suite that runs a real Shopware kernel against Dex
+- a browser E2E suite (Playwright against a dockware shop and Dex, `tests/E2E`)
 
-Several items in the `[Unreleased]` changelog section are **breaking** (HTTPS-only IdP URLs, enforced password-login flags, a write-only client secret, `APP_SECRET`-bound encryption). Read them before upgrading a running shop.
+Several items in the `[Unreleased]` changelog section are **breaking** (HTTPS-only IdP URLs, enforced password-login flags, a write-only client secret, `APP_SECRET`-bound encryption, subject-based account binding with `email_verified` required and no automatic linking by email, user verification for passkeys). Read them before upgrading a running shop.
 
 ---
 
@@ -52,34 +53,34 @@ Several items in the `[Unreleased]` changelog section are **breaking** (HTTPS-on
 ```
 src/
 ├── Sw6Oidc.php                 # Plugin bootstrap; only uninstall() is custom (drops tables unless "keep data")
-├── Migration/                  # 11 migrations: schema is migration-driven, not install()-driven
+├── Migration/                  # 19 migrations: schema is migration-driven, not install()-driven
 ├── Core/Content/               # DAL entity definitions (Provider, AttributeMapping, RoleMapping,
 │                               #   AccessControlRule, UserProvider, PasskeyCredential, SessionActivity)
 │   └── Provider/Field/         #   Sw6OidcEncryptedField: transparent at-rest encryption for secrets
 ├── Service/
 │   ├── Oidc/                   # OIDC protocol: authorize URL, callback pipeline, token exchange, JWT, logout
-│   ├── AdminAuth/              # Bridge from verified identity → real Shopware admin OAuth2 tokens
-│   ├── Passkey/                # WebAuthn ceremonies (registration + assertion)
-│   ├── Provisioning/           # Claims → Shopware customer/admin: mapping, transforms, JIT create, sync
-│   ├── Security/               # State/PKCE/nonce, encryption, SSRF guard, access rules, rate limiter, CSP
-│   ├── Session/                # Session registry, IdP-initiated logout, session destruction, activity log
-│   ├── Health/                 # Provider config inspection, reachability probe, alert state machine, webhook
+│   ├── AdminAuth/              # Bridge from verified identity → real Shopware admin OAuth2 tokens; step-up
+│   ├── Passkey/                # WebAuthn ceremonies (registration + assertion), relying-party resolution
+│   ├── Provisioning/           # Claims → Shopware customer/admin: identity resolution, mapping, transforms, JIT create, sync
+│   ├── Security/               # State/PKCE/nonce, browser binding, encryption, SSRF guard, access rules, rate limiter, CSP
+│   ├── Session/                # Session registry (DB), IdP-initiated logout, session destruction, activity log
+│   ├── Health/                 # Config inspection, reachability probe, alert state machine, webhook, infrastructure warnings
 │   ├── Config/                 # Provider export/import (used by the Console commands)
-│   ├── Cache/                  # Atomic get-and-delete cache for one-time tokens (Redis or cache.app)
+│   ├── Cache/                  # Atomic get-and-delete store for one-time tokens (Redis or a DB table)
 │   ├── Http/                   # SSRF-guarded HTTP client factory + OidcHttpClient wrapper
 │   ├── Jwt/                    # Unverified payload reader for tokens verified elsewhere
 │   ├── Provider/               # Provider lookup (by id, by issuer)
-│   └── Logging/                # Dedicated Monolog channel + sensitive-data scrubbing
+│   └── Logging/                # Dedicated Monolog channel, configurable level, sensitive-data scrubbing
 ├── Controller/
-│   ├── Api/                    # Admin-facing endpoints (/api/sw6oidc/admin/*, /api/_action/sw6oidc/*)
+│   ├── Api/                    # Admin-facing endpoints (/api/sw6oidc/admin/*, incl. step-up; /api/_action/sw6oidc/*)
 │   ├── Oidc/                   # Back-/Front-Channel Logout, shared post-logout landing
 │   └── HealthCheckController   # GET /sw6oidc/health
 ├── Storefront/
-│   ├── Controller/             # Customer login, callback, passkey, "My passkeys" account page
+│   ├── Controller/             # Customer login, "Connect SSO", re-auth, callback, passkey, "My passkeys" page
 │   ├── Service/                # Passwordless login route, logout decorator, password-login guard
 │   └── EventSubscriber/
-├── Subscriber/                 # Write guard (SSRF + lockout), admin password guard, CSP, binding cleanup
-├── ScheduledTask/              # Session activity cleanup (daily), health check alerting (5 min)
+├── Subscriber/                 # Write guards (SSRF, lockout, audit log), admin password guard, CSP, account cleanup
+├── ScheduledTask/              # State + activity cleanup (daily), health check alerting (5 min)
 ├── Console/                    # sw6oidc:config:export / sw6oidc:config:import
 ├── Event/                      # Extension points for integrators (see Section 4)
 ├── Twig/                       # Injects SSO/passkey buttons and the admin login JS
@@ -90,7 +91,8 @@ src/
     └── snippet/                # de-DE / en-GB translations
 tests/
 ├── Unit/                       # No Shopware kernel needed
-└── Integration/                # Real kernel + Dex (docker-compose.yml), see its README
+├── Integration/                # Real kernel + Dex (docker-compose.yml), see its README
+└── E2E/                        # Playwright: dockware shop + Dex, virtual WebAuthn authenticator, see its README
 ```
 
 ### The three-layer mental model
@@ -116,25 +118,31 @@ Two flows run through the layers: **Storefront/customer** and **Administration/a
 | `sw6oidc_attribute_mapping` | Per-provider claim → Shopware field, with optional value transform |
 | `sw6oidc_role_mapping` | Per-provider OIDC group → ACL role / customer group / superadmin grant |
 | `sw6oidc_access_control_rule` | Per-provider claim rules that must all pass before a login is accepted |
-| `sw6oidc_user_provider` | Permanent binding: which provider owns which account (first login wins) |
-| `sw6oidc_passkey_credential` | One row per registered WebAuthn credential |
+| `sw6oidc_user_provider` | Permanent binding: which provider and IdP subject (`issuer`, `sub`) own which account; unique per provider, user type and `sub` |
+| `sw6oidc_passkey_credential` | One row per registered WebAuthn credential (deduplicated by credential-id hash, `disabled_at` after a counter regression) |
 | `sw6oidc_session_activity` | Audit log: one row per OIDC/Passkey login, with logout time and reason |
+| `sw6oidc_session` | Session registry: which local session (context token / access-token `jti`) each OIDC login created, keyed by provider + `sub`/`sid`; session keys and IdP tokens encrypted |
+| `sw6oidc_one_time_token` | Atomic one-time tokens when Redis isn't used: flow state, nonces, ceremonies, logout contexts, replay markers (keys hashed, values encrypted) |
+| `sw6oidc_node_heartbeat` | Hostnames of app servers that recently handled SSO, for the multi-node warning |
 
-Providers are managed as **DAL entities** through the plugin's own Administration module, **not** through `config.xml`. The plugin settings screen only holds the passkey toggles, RP name/ID and one debug-logging toggle that isn't wired to anything (see Section 5).
+Providers are managed as **DAL entities** through the plugin's own Administration module, **not** through `config.xml`. The plugin settings screen only holds the passkey toggles, RP name/ID and the "Enable debug logging" toggle.
 
-The short-lived state lives in caches, not tables. This covers flow state, nonces, the session registry, logout context and JWKS.
+Security state lives in the database, not in cache pools, so `cache:clear`, deploys and evictions can't empty it. One-time tokens go to Redis when `SW6OIDC_REDIS_DSN` is set and usable, otherwise to `sw6oidc_one_time_token`. Only the JWKS cache, the rate-limiter counters and the cached health result use Shopware's cache pools.
 
 ### Configuration surface
 
 | Where | What |
 |---|---|
 | Admin → OIDC provider module | Everything per provider |
-| Plugin settings (`config.xml`) | `passkeyEnabledAdmin`, `passkeyEnabledCustomer` (per sales channel), `passkeyRpName`, `passkeyRpId` |
-| `SW6OIDC_LOG_LEVEL` | Log verbosity of the `sw6oidc` channel (default `debug`) |
-| `SW6OIDC_REDIS_DSN` | `redis://`/`rediss://` for atomic one-time tokens; **required on multi-node** |
+| Plugin settings (`config.xml`) | `passkeyEnabledAdmin`, `passkeyEnabledCustomer` (per sales channel), `passkeyRpName`, `passkeyRpId`, `debugLoggingEnabled` |
+| `SW6OIDC_LOG_LEVEL` | Base level of the `sw6oidc` channel (default `warning`); the debug toggle raises it to `debug` |
+| `SW6OIDC_REDIS_DSN` | Optional `redis://`/`rediss://` for one-time tokens; without it the database store is used |
+| `SW6OIDC_HEALTH_TOKEN` | Optional; when set, `/sw6oidc/health` requires it in `X-Sw6oidc-Health-Token` |
 | `SW6OIDC_ALLOW_INSECURE_IDP_URLS=1` | Allow http/private-network IdPs (local dev only) |
 | `SW6OIDC_ALLOW_PASSWORD_LOGIN=1` | Break-glass: ignore every "disable password login" flag |
+| `SW6OIDC_ALLOW_USER_ACCESS_KEYS=1` | Allow `client_credentials` with user access keys while admin password login is disabled |
 | `SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS` | Activity log retention (default 90, `0` = keep forever) |
+| `SW6OIDC_SESSION_ACTIVITY_TRUNCATE_IP=1` | Store activity IPs truncated (IPv4 /24, IPv6 /64) |
 
 ---
 
@@ -159,20 +167,24 @@ In the Administration, open **OIDC & Passkey SSO** and add a provider:
 - a **Well-Known Config URL** to auto-discover endpoints, or the endpoints by hand
 - **Login Type**: `customer`, `admin` or `both`
 - **Auto Create Customer/Admin** if you want JIT provisioning, plus a default customer group or ACL role
+- the **Scope** must include `openid`: the callback then requires an `id_token`
 
 IdP URLs must be HTTPS on a public address. For a local IdP, set `SW6OIDC_ALLOW_INSECURE_IDP_URLS=1`.
+
+By default the IdP must send `email_verified: true`, and an existing Shopware account with the same email is **not** taken over: its owner connects it with "Connect SSO" from their account, or you enable **Link existing accounts by verified email** on the provider.
 
 ### Step 3: Register redirect URIs at the IdP, then test
 
 Register these at the IdP:
 
 - `https://your-shop.com/sw6oidc/callback` (Storefront)
-- `https://your-shop.com/api/sw6oidc/admin/callback` (Admin)
+- `https://your-shop.com/api/sw6oidc/admin/callback` (Admin, also used by "Connect SSO" and SSO step-up in the Administration)
+- optionally, `https://your-shop.com/api/sw6oidc/provider/test-callback` for the live login test
 - optionally, `https://your-shop.com/sw6oidc/postlogout` as the post-logout URI
 
-Use the **live login test** on the provider detail page first. It runs a real login in a popup and shows the claims the IdP returned, and those claims then feed the attribute mapping picker. After that, use the SSO button on the Storefront or Administration login page.
+Use the **live login test** on the provider detail page first. It runs a real login in a popup, shows the claim keys the IdP returned and previews the access-control result; the claim keys then feed the attribute mapping picker. After that, use the SSO button on the Storefront or Administration login page.
 
-If something is off, set `SW6OIDC_LOG_LEVEL=debug` and read the `sw6oidc` log channel. Also run **Run diagnostics** on the provider.
+If something is off, switch on **Enable debug logging** in the plugin settings and read `var/log/sw6oidc-<env>.log`. Also run **Run diagnostics** on the provider.
 
 **Passkeys** need no provider setup. Enable them in the plugin settings, and users register a credential from their Storefront account page or the Administration profile.
 
@@ -182,41 +194,54 @@ If something is off, set `SW6OIDC_LOG_LEVEL=debug` and read the `sw6oidc` log ch
 
 ### OIDC login, Storefront
 
-1. `GET /sw6oidc/login` creates state, a PKCE verifier and a nonce, caches them for 600s, and redirects to the IdP. PKCE is always on (`plain` or `S256`).
+1. `GET /sw6oidc/login` creates state, a PKCE verifier and a nonce, stores them for 600s in the atomic one-time-token store, sets the browser-binding cookie, and redirects to the IdP. PKCE is always on (`plain` or `S256`). The `redirectTo` target is checked by `RelayStateValidator` (same-site route name or plain absolute path only).
 2. `GET /sw6oidc/callback` runs `OidcCallbackProcessor`:
-   - consumes the state (single use)
+   - consumes the state (single use) and checks the browser-binding cookie, the login type and the flow purpose (`login`, `link`, `step_up`)
    - exchanges the code
-   - verifies the ID token (RS256/384/512 only; JWKS cached with a circuit breaker and one forced refetch on key rotation)
-   - merges in userinfo claims
-   - normalizes groups and flattens the claims
+   - requires an `id_token` whenever the scope contains `openid`, and verifies it (RS256/384/512 only; key selected by `kid`/`alg`/`use`; 60s leeway on `exp`/`nbf`/`iat`; `iat` required; `azp` checked with several audiences)
+   - merges in userinfo claims: userinfo must describe the same `sub`, and `sub`, `email` and `email_verified` always come from the `id_token` when it has them
+   - normalizes groups (decoding listed `base64_claims`) and flattens the claims
    - evaluates access-control rules
    - maps the claims to a `MappedProfile`
-3. `CustomerProvisioningService` finds the customer by email, or creates one. `OidcCustomerLoginRoute` then logs them in.
+3. `CustomerProvisioningService` resolves the account through `IdentityResolver` (see "Account binding" below), or creates one. The customer is then logged in **by id**, respecting the customer's sales-channel binding. A JIT-created customer also triggers core's `CustomerRegisterEvent`.
 
 **Use case:** B2B storefronts where customer identity lives in a corporate directory instead of self-service registration.
 
 ### OIDC login, Administration
 
-The protocol pipeline is the same, but the bridge is different. The Admin SPA authenticates with OAuth2 tokens, not a server session, so the plugin runs a **second, plugin-owned `league/oauth2-server` instance** wired to Shopware core's *own* client, token and scope repositories. This instance mints genuine tokens via a custom grant (`AdminOidcGrant`).
+The protocol pipeline is the same, but the bridge is different. The Admin SPA authenticates with OAuth2 tokens, not a server session, so the plugin runs a **second, plugin-owned `league/oauth2-server` instance** wired to Shopware core's *own* client, token and scope repositories. This instance mints genuine tokens via a custom grant (`AdminOidcGrant`). Access- and refresh-token TTLs come from `shopware.api.access_token_ttl` / `shopware.api.refresh_token_ttl`, so SSO sessions follow the shop's normal policy. The grant refuses deleted and inactive users for every caller.
 
 The OIDC redirect is a full-page navigation, so the hand-back to the SPA works like this:
 
-1. The callback stores a 120s nonce.
+1. The callback stores a 120s nonce, bound to the same browser-binding cookie as the flow.
 2. It redirects to `/admin#/login?sw6oidc_nonce=…`.
-3. The `sw-login` override POSTs the nonce to `/api/sw6oidc/admin/token` and receives a normal token response.
+3. The `sw-login` override POSTs the nonce to `/api/sw6oidc/admin/token` and receives a normal token response, plus a login-session handle that the Administration sends back at logout so exactly that session's registry entry is ended.
 
 **Use case:** staff SSO into the backend with central MFA and offboarding. Removing someone at the IdP removes their shop access.
 
-Two admin-specific extras:
+### Step-up re-authentication (Administration)
 
-- **Password reconfirmation.** Plugin-provisioned admins have a random, unknown password, so Shopware's "confirm your password" modal could never succeed for them. `POST /api/sw6oidc/admin/verify-session` mints a `user-verified`-scoped token for accounts that are bound to a provider or own a passkey.
-- **Inactivity re-login.** The inactivity modal gets one SSO button per admin provider and returns the admin to the page they were on.
+Plugin-provisioned admins have a random, unknown password, so core's "confirm your password" dialog (`sw-verify-user-modal`) can't be answered with a password. The plugin extends that dialog with "confirm with SSO / passkey" buttons, backed by `StepUpService` and `/api/sw6oidc/admin/step-up/*`:
+
+- **OIDC:** a round trip to the admin's own bound provider with `prompt=login&max_age=0`, via the admin callback. The `id_token`'s `auth_time` must be after the round trip started, and `sub` must match the admin's binding. IdPs that don't send `auth_time` can't be used for OIDC step-up.
+- **Passkey:** an assertion with one of the admin's own passkeys, with user verification.
+
+Either way the result is a short-lived access token with the `user-verified` scope and no refresh token, the same shape core's password confirmation produces. The `user-verified` scope is stripped from every other token request. "Connect SSO" on the own profile and admin passkey registration require such a token.
+
+**Inactivity re-login.** The inactivity modal offers one SSO button per admin provider and the passkey button, returns the admin to the page they were on, and refuses or skips a login as a *different* admin.
 
 ### Passkey login
 
 A user registers a device credential once, while logged in, and then signs in with a fingerprint, face, PIN or security key. The plugin stores and verifies the credential itself.
 
-The Storefront uses usernameless (discoverable) login. The Administration uses email-scoped login when an email is typed. Admin passkey login uses the same `AdminOidcGrant` directly, because it's a same-page AJAX ceremony and needs no nonce.
+- User verification is **required** for registration and login.
+- Login is usernameless (discoverable credentials) on both the Storefront and the Administration; the Administration never lists an account's credentials to anonymous callers.
+- The relying party comes from configuration, never from the `Host` header: the Administration uses the origin of `APP_URL`, the Storefront the current sales channel's domains. The RP ID is that host unless `passkeyRpId` is set. Allowed origins are checked exactly, without subdomains.
+- A registration completes only for the account that started it. Customers must have logged in within the last 10 minutes to register (`/sw6oidc/reauth` sends them through a fresh login); admins need a `user-verified` token.
+- A signature counter that goes backwards disables the credential.
+- Every passkey endpoint answers 404 while passkeys are disabled for that user type.
+- Admin passkey login uses `AdminOidcGrant` directly, because it's a same-page AJAX ceremony and needs no nonce.
+- A new passkey dispatches `PasskeyRegisteredEvent` (audit log entry, Flow Builder trigger `sw6oidc.passkey.registered`).
 
 **Use case:** phishing-resistant, password-free login without a corporate IdP, or a second option alongside OIDC.
 
@@ -229,27 +254,50 @@ Each mapping can apply a **transform**:
 - `concat`
 - `split`
 - `prefix`
-- `regex_replace`
+- `regex_replace` (the pattern is validated on save)
+
+A failing transform passes the raw value through and logs a warning, except on `email` and `username`, where it fails the login. Birthdates are only taken in strict `Y-m-d` form between 1900 and today.
 
 **Group mapping** resolves the groups claim to an ACL role or customer group. The first match by `sort_order` wins, then the provider default applies.
 
 **Superadmin** is opt-in behind two gates: the provider flag `allow_superadmin_group_mapping` **and** an explicit `superadmin` mapping row. A stray row alone never grants it.
 
-**Sync-on-SSO** re-applies claims on every login. Five independent per-provider toggles control it (customer profile, address, group; admin profile, role). Sync is a partial update: unmapped or unresolved values are left alone and never reset.
+**Sync-on-SSO** re-applies claims on every login. Five independent per-provider toggles control it (customer profile, address, group; admin profile, role). Profile and address sync are partial updates: unmapped values are left alone and never reset. Admin role sync **replaces** the user's ACL roles with the resolved role, so a role removed at the IdP is removed in the shop; when nothing resolves, roles are left untouched. Superadmin is only revoked with the opt-in `revoke_superadmin_on_sso`, and never from the last active superadmin.
 
 **Use case:** onboarding happens entirely on the IdP side. Add someone to "Engineering" there, and their first login creates a Shopware admin with the right role.
 
-### Provider binding
+### Account binding
 
-The first provider that authenticates an account owns it permanently (`sw6oidc_user_provider`). A later login of the same email through a different provider fails with `ProviderMismatchException`.
+`IdentityResolver` decides which account an IdP identity logs into, for customers and admins alike. Accounts are bound to the provider **and the IdP subject** (`sw6oidc_user_provider.issuer`/`sub`); the email claim alone is never proof of ownership.
 
-This stops a weaker IdP from being used to take over an account governed by a stronger one. Admins can unlink a binding from the user or customer detail page.
+1. With `require_email_verified` (default on), the login is refused unless `email_verified` is `true` and the mapped email is the standard `email` claim.
+2. An account bound to this provider and subject logs in.
+3. A legacy binding (from before subjects were stored) of the email-matched account to this provider is upgraded with the subject, only with a verified email.
+4. An unbound account with the same email is linked only when the provider has `link_existing_accounts` on (default off), the email is verified and the account is not a superadmin. Otherwise the login is refused with "connect explicitly".
+5. No account: the caller may JIT-create one.
+
+A binding to another provider fails with `ProviderMismatchException`; the same provider with a different subject is refused too. Concurrent first logins don't fail on the unique keys.
+
+**"Connect SSO"** is the explicit way to bind an existing account: a logged-in customer starts it from the account profile (`POST /sw6oidc/link`), an admin from their own profile with a `user-verified` token (`/api/sw6oidc/admin/link/start`). The callback binds the IdP identity to exactly that account. It is the only way to bind a superadmin.
+
+Admins can unlink a binding from the user or customer detail page.
 
 ### Access control rules
 
-Per-provider rules on flattened claims use the operators `eq`, `neq`, `contains`, `not_contains`, `exists` and `not_exists`. All rules must pass, and they're evaluated before any account lookup or creation.
+Per-provider rules on flattened claims. All rules must pass, and they're evaluated before any account lookup or creation. A claim's values are its members when it is a list or object (list entries, or role-object keys), else its scalar value.
 
-- Matching is case-insensitive and list-aware: `contains` on a groups list tests membership.
+| Operator | Passes when |
+|---|---|
+| `eq` | any value equals the expected value |
+| `neq` | the claim is present and no value equals it |
+| `contains` | a member equals it; on a scalar, one of its whitespace- or comma-separated tokens equals it (never a substring) |
+| `not_contains` | the claim is present and `contains` is false |
+| `ends_with` | any value ends with the expected suffix |
+| `email_domain` | any value is a valid email address whose domain is exactly the expected one (leading `@` ignored) |
+| `exists` / `not_exists` | the key or any child key is present / absent |
+
+- The negative operators **deny** when the claim is missing, so an omitted claim can't skip a deny rule.
+- Matching is case-insensitive and trimmed; `true`/`1` and `false`/`0` compare as equal. The operator is a strict choice on write, and an unknown operator fails closed.
 - Each rule can carry its own denial message.
 - The Admin login screen receives the message through a one-time error ticket, so free text never goes into a URL.
 
@@ -257,44 +305,59 @@ Per-provider rules on flattened claims use the operators `eq`, `neq`, `contains`
 
 ### "SSO only": disabling password login
 
-`disable_non_oidc_{admin,customer}_login` blocks password login on the Storefront, the Store API and the Admin `password` grant. It also hides the password forms.
+`disable_non_oidc_{admin,customer}_login` turns off password login for that user type:
 
-A lockout guard refuses to enable the flag until at least one account of that type is bound to the provider. The break-glass override is `SW6OIDC_ALLOW_PASSWORD_LOGIN=1`.
+- **Admin:** a decorator of core's OAuth `UserRepository` treats every username/password pair as invalid, however the token request is encoded. The token-request listener adds a 403 in front, refuses undeterminable grant types, and also blocks `client_credentials` with user access keys unless `SW6OIDC_ALLOW_USER_ACCESS_KEYS=1`.
+- **Customer:** Storefront and Store API password login, registration and double-opt-in confirmation are refused; guest checkout stays allowed. The login and register forms are hidden.
+
+Guards on the provider write:
+
+- The flag can only be switched on once at least one account of that type is bound to this provider, and only while the login page still shows an SSO button.
+- For admins, switching it on while other active admins have no SSO binding needs an explicit confirmation in the Administration (CLI writes count as confirmed).
+- While it is on, the last admin able to log in via SSO, or the last provider they use, can't be deactivated, re-scoped or deleted.
+- Switching it on ends the sessions of accounts without any binding (they can only be password sessions).
+
+The break-glass override is `SW6OIDC_ALLOW_PASSWORD_LOGIN=1`.
 
 ### Logout, in both directions
 
-**Shop → IdP (RP-initiated).** Storefront and Admin logout redirect to the IdP's `end_session_endpoint` and revoke the token (RFC 7009, fire-and-forget).
+**Shop → IdP (RP-initiated).** Storefront and Admin logout redirect to the IdP's `end_session_endpoint` and revoke the login's IdP access and refresh tokens (RFC 7009, fire-and-forget). The Store API logout returns the IdP logout URL as `redirectUrl`. Admin logout ends exactly the logging-out session's registry entry; without an exact match nothing is removed from the registry.
 
 - Authelia's forward-auth logout is special-cased.
 - For IdPs that allow only one post-logout URI, `/sw6oidc/postlogout` routes customers and admins using an HMAC-signed `state`.
 
 **IdP → shop.**
 
-- `POST /sw6oidc/backchannel-logout` accepts a fully verified logout token (signature, `iss`/`aud`/`exp`, `events`, no `nonce`, `jti` replay protection).
-- `GET /sw6oidc/frontchannel-logout?iss=&sid=` handles iframe-based logout and always returns a 1×1 GIF.
+- `POST /sw6oidc/backchannel-logout` accepts a fully verified logout token: signature, `iss`/`aud`/`exp`, a back-channel `events` member, `sub` and/or `sid`, no `nonce`, a required `jti` (replay marker via atomic set-if-absent) and a required `iat` no older than 5 minutes (plus 60s leeway). Anonymous callers only ever see a fixed `invalid_request`; a correctly signed token is never refused by the rate limiter.
+- `GET /sw6oidc/frontchannel-logout?iss=&sid=` handles iframe-based logout and always returns a 1×1 GIF. It ends **admin** sessions only when the provider has `frontchannel_admin_logout` on, because the request is unauthenticated and admin sessions can only be ended all at once. Customer sessions are always ended.
 
-Both endpoints look sessions up in the **session registry**, which records the context token or access-token `jti` each OIDC login created, keyed by `sub` and `sid`.
+Both endpoints look sessions up in the **session registry** (`sw6oidc_session`), which records the context token or access-token `jti` each OIDC login created, keyed by provider plus `sub` and `sid`. IdP-initiated admin logout clears all of that admin's registry entries.
 
 ### Session activity log and force logout
 
-Every OIDC or Passkey login writes a row to `sw6oidc_session_activity`. The row records provider, IP, user agent, login and logout time, and logout reason (`logout`, `backchannel`, `frontchannel`, `forced`).
+Every OIDC or Passkey login writes a row to `sw6oidc_session_activity`. The row records provider, IP (optionally truncated with `SW6OIDC_SESSION_ACTIVITY_TRUNCATE_IP=1`), user agent, login and logout time, and logout reason (`logout`, `backchannel`, `frontchannel`, `forced`). The fields are write-protected and API deletes are refused; `sub`/`sid` are not exposed through the API.
 
-The **OIDC & Passkey sessions** Admin module lists these rows and offers **Force logout**. A daily task prunes old rows.
+The **OIDC & Passkey sessions** Admin module lists these rows and offers **Force logout**, behind the `sw6oidc_session_activity:force_logout` privilege. The daily cleanup task prunes old rows in batches, together with expired registry entries, one-time tokens and heartbeats.
+
+Deleting a user or customer removes its binding, passkeys, registry entries and activity rows. Deactivating one ends all of its sessions.
 
 Auditing never blocks a login or logout: every recorder method swallows and logs its own errors.
 
 ### Health checks and alerting
 
-- **`GET /sw6oidc/health`** is for uptime monitors. It is unauthenticated, reports counts only and makes no outbound calls. It returns 503 when degraded.
-- **Run diagnostics** on a provider checks config completeness and runs a live JWKS/discovery probe.
-- **Scheduled alerting** runs every 5 minutes. After N consecutive failures it POSTs one webhook alert per outage, with an optional recovery message. The webhook URL is encrypted and SSRF-checked.
+- **`GET /sw6oidc/health`** is for uptime monitors. It makes no outbound calls and reports counts and warning codes only, cached for 30 seconds. `status` is `ok`, `degraded` (some provider incomplete or its monitored probe failed), `down` (no active provider usable; HTTP 503) or `unconfigured`. Only providers with alerting configured count their probe result, and results older than 15 minutes count as `unknown`. With `SW6OIDC_HEALTH_TOKEN` set, the `X-Sw6oidc-Health-Token` header is required (401 otherwise).
+- **Infrastructure warnings** (`infrastructure.warnings` in the health response, also shown by **Run diagnostics**): `redis_dsn_unusable` (the DSN is set, but Redis isn't used) and `multi_node_without_redis` (more than one app server handled SSO in the last 15 minutes, per `NodeHeartbeat`, and Redis isn't in use). Warnings never change the status.
+- **Run diagnostics** on a provider checks config completeness, shows the one-time-token store and runs a live JWKS/discovery probe.
+- **Scheduled alerting** runs every 5 minutes. After N consecutive failures it POSTs one webhook alert per outage, with an optional recovery message. The webhook URL is encrypted and SSRF-checked; failures are logged with class and code only.
 
 ### Security hardening you get for free
 
-- **SSRF protection.** Every IdP URL is checked on save (HTTPS, public IPs only), and `NoPrivateNetworkHttpClient` re-checks every connection and redirect at runtime.
-- **Encrypted secrets.** Client secrets and webhook URLs are encrypted at rest (libsodium, key derived from `APP_SECRET`) and are write-only over the Admin API.
-- **Rate limiting.** OIDC callbacks and Back-/Front-Channel endpoints allow 10 **failed** requests per minute per client IP. Legitimate denials don't count.
-- **CSP.** IdP origins are appended to CSP directives the shop already declares. The plugin never adds a directive.
+- **SSRF protection.** Every IdP URL is checked on save (HTTPS, public IPs only), and `NoPrivateNetworkHttpClient` re-checks every connection at runtime. The plugin's HTTP client follows no redirects by default; only GET requests are retried. Avatars are fetched through the same client. Changing an endpoint URL requires entering the client secret again.
+- **Encrypted secrets.** Client secrets, webhook URLs and stored security state are encrypted at rest. Envelope v2 (`sw6oidc_v2:`) is XChaCha20-Poly1305 with a key derived per purpose from `APP_SECRET` and the purpose as associated data; v1 envelopes are still read, and a migration re-encrypts stored provider secrets. Secrets are write-only over the Admin API, blanked in written events, and never sent to the IdP as an envelope.
+- **Browser binding.** An HttpOnly, SameSite=Lax cookie (`__Host-` on HTTPS) ties every flow and admin login nonce to the browser that started it, against login CSRF.
+- **Rate limiting.** Per client IP (IPv6 per /64), per endpoint scope. Endpoints that create state on success (flow start, passkey options) have a consuming budget of 30 requests per minute; redeem endpoints (callbacks with a valid state, nonce exchange, passkey verify, error tickets, step-up, logout tokens) count only failures, 10 per minute. Callbacks with an unknown state aren't counted. Behind a proxy or CDN, `framework.trusted_proxies` must be configured, or all clients share one budget.
+- **Logging.** `SensitiveDataProcessor` masks credential keys and sensitive query parameters; the log file rotates daily (14 files).
+- **CSP.** IdP origins are appended to CSP directives the shop already declares (including Report-Only headers). The plugin never adds a directive.
 
 ### Operations: config export/import
 
@@ -303,9 +366,9 @@ bin/console sw6oidc:config:export -o providers.json
 bin/console sw6oidc:config:import -i providers.json --dry-run
 ```
 
-The export is versioned JSON covering providers, mappings and access rules. ACL roles and customer groups are resolved by id, then by unique name.
+The export is versioned JSON covering providers, mappings and access rules. ACL roles and customer groups are resolved by id, then by unique name. `-o` creates the file exclusively with mode 0600; `--force` overwrites an existing one.
 
-The secret is omitted by default. `--keep-encrypted` keeps the stored envelope, which only imports where `APP_SECRET` is identical. `--plaintext` exports the decrypted value.
+The secret is omitted by default. `--keep-encrypted` keeps the stored envelope, which only imports where `APP_SECRET` is identical. `--plaintext` exports the decrypted value. `--overwrite` on import replaces only the child collections and default references present in the file, and warns about missing ones.
 
 **Use case:** promoting a tested provider setup from staging to production.
 
@@ -316,8 +379,9 @@ The secret is omitted by default. `--keep-encrypted` keeps the stored envelope, 
 | `AttributeMappingCompletedEvent` | After mapping, every OIDC login | Replace the `MappedProfile` (email is re-validated afterwards) |
 | `CustomerBeforeCreateEvent` / `AdminBeforeCreateEvent` | Just before JIT create | Change the create payload |
 | `CustomerAfterCreateEvent` / `AdminAfterCreateEvent` | After create + binding | React (read-only); not fired for existing accounts |
+| `PasskeyRegisteredEvent` | After a passkey was registered | Flow Builder trigger, audit log entry |
 
-`AdminBeforeCreateEvent` can set `admin` and `aclRoles`. A listener can therefore bypass the two-gate superadmin rule. This is intentional power, so treat such listeners as security-sensitive code.
+`AdminBeforeCreateEvent` can set `admin` and `aclRoles`. A listener can therefore bypass the two-gate superadmin rule. This is intentional power, so treat such listeners as security-sensitive code. Such grants and role changes are logged as warnings, and a changed email is reverted to the verified claim.
 
 ### What it deliberately is not
 
@@ -329,29 +393,37 @@ It is an OIDC **client**, not an OAuth2 provider for third parties. It doesn't r
 
 ### Keep `APP_SECRET` stable
 
-The key that encrypts client secrets and webhook URLs is derived from `APP_SECRET`. If you rotate it, entities still load, but `TokenExchangeService` throws `ClientSecretUnavailableException` and every provider's secret has to be entered again.
+The key that encrypts client secrets, webhook URLs and stored security state (registry entries, one-time tokens) is derived from `APP_SECRET`. If you rotate it, entities still load, but `getUsableClientSecret()` returns nothing, `TokenExchangeService` throws `ClientSecretUnavailableException`, and every provider's secret has to be entered again.
 
 The same applies to `--keep-encrypted` exports: they only import into an installation with the identical `APP_SECRET`. A short `APP_SECRET` (e.g. from a template) also breaks admin token signing in tests.
+
+Envelopes are bound to their purpose (e.g. `sw6oidc_provider.client_secret`). Copying an encrypted value between columns or tables makes it undecryptable on purpose.
 
 ### State, PKCE and nonce are genuinely single-use
 
 The flow context is read with an atomic get-and-delete. Re-hitting a callback URL after a successful **or failed** first attempt always fails with `InvalidStateException`. When debugging, restart from `/sw6oidc/login`. Don't replay the callback.
 
-### The atomic cache is only atomic with Redis
+The flow is also bound to the browser that started it. A callback opened in another browser or profile, or after the browser-binding cookie was deleted, fails.
 
-Without `SW6OIDC_REDIS_DSN`, one-time tokens use a sequential get-then-delete on `cache.app`. That's fine on a single node, but it isn't race-safe across several nodes.
+### One-time tokens: Redis or database
 
-The backend is selected **at runtime** on purpose, not in a compiler pass, so the choice isn't frozen into the cached container and changing the variable needs no cache clear. Redis errors fall back per call. If you see intermittent "state already used" errors under load, check this variable first, then look for "Redis … failed" warnings in the log.
+Without `SW6OIDC_REDIS_DSN`, one-time tokens live in `sw6oidc_one_time_token` (`SELECT … FOR UPDATE` + delete in one transaction). That is atomic and shared by all app servers, so Redis is optional. With Redis, reads use a GET+DEL Lua script and replay markers `SET … NX EX`.
+
+The backend is selected **at runtime** on purpose, not in a compiler pass, so the choice isn't frozen into the cached container and changing the variable needs no cache clear. Redis errors fall back to the database per call, and an unreachable Redis is marked down for 30 seconds. An unusable DSN shows up as `redis_dsn_unusable` in the health endpoint and diagnostics.
+
+On several app servers without Redis, logins stay correct, but the rate limiter and the JWKS cache are per node unless Shopware's cache pools are shared. The health endpoint reports this as `multi_node_without_redis`.
 
 ### Order matters: normalize groups *before* flattening claims
 
 `OidcCallbackProcessor` normalizes the raw groups claim before it calls `ClaimsNormalizer::flatten()`. ZITADEL sends roles as nested objects (`{"Engineering": {"orgId": "…"}}`). Flattening first would turn the group names into dotted paths like `roles.Engineering.orgId` and lose them. Keep this order if you touch claim handling.
 
+`base64_claims` is applied in both places: a listed name covers the claim and everything nested under it, `*` covers all claims. Groups are decoded only when the group attribute is listed.
+
 Flattening also has limits: depth 5 and 2000 keys, beyond which it throws `ClaimsTooComplexException`.
 
 ### `AdminOidcGrant` trusts its caller completely
 
-The grant has no password or credential check. It reads a pre-verified user id from a PSR-7 request attribute and issues a token. That's safe only because every caller verifies the user first, via a JWT-verified OIDC login or a verified WebAuthn assertion. If you add a caller, you own that verification.
+The grant has no password or credential check. It reads a pre-verified user id from a PSR-7 request attribute and issues a token (only refusing deleted or inactive users). That's safe only because every caller verifies the user first, via a JWT-verified OIDC login, a verified WebAuthn assertion or a completed step-up. If you add a caller, you own that verification.
 
 ### Never alias the plugin's OAuth2 server to the League class id
 
@@ -359,33 +431,37 @@ The grant has no password or credential check. It reads a pre-verified user id f
 
 Admin passkey login must also set `client_id=administration` on the request manually. League validates the client before the grant's `validateUser()` runs.
 
-### Admin sessions can't be ended individually
+### Admin sessions can't be ended individually from outside
 
-Shopware admin access tokens are stateless JWTs, and revoking one is a no-op in core. Refresh-token ids also rotate on every refresh. So force logout and Back-/Front-Channel Logout for an **admin** end **all** of that admin's sessions. They do this by revoking all refresh tokens and bumping `user.last_updated_password_at` (the password itself is untouched). Customers, by contrast, lose exactly the one affected context.
+Shopware admin access tokens are stateless JWTs, and revoking one is a no-op in core. Refresh-token ids also rotate on every refresh. So force logout and Back-/Front-Channel Logout for an **admin** end **all** of that admin's sessions. They do this by revoking all refresh tokens and bumping `user.last_updated_password_at` (the password itself is untouched). Customers, by contrast, lose exactly the one affected context. The admin's own logout is different: core ends the local session, and the plugin removes only that session's registry entry (matched by the login-session handle or the current `jti`).
 
 ### The session registry only knows what it saw
 
-IdP-initiated logout only finds sessions created after the registry shipped. A login without a `sub` isn't registered, and passkey logins never are, because there's no IdP session. Registry entries expire after 24h. The index lists use unlocked read-modify-write and are capped at 50 entries per key. A race can make a logout *miss* a session, but it can never grant access.
+IdP-initiated logout only finds sessions of OIDC logins recorded in `sw6oidc_session`. Passkey logins are never registered, because there's no IdP session. Entries live as long as the session can be used (admins: the refresh-token TTL; customers: 30 days, an upper bound for sliding context tokens) and are pruned daily. Sessions created before the registry moved to the database aren't known.
 
-### Passkey session-kill has a 10-minute window
+### Passkey session-kill has a limited window
 
-Deleting the passkey that authenticates the current admin session can force that session out. `AdminPasskeyLoginTokenTracker` implements this by keying on the access token's `jti`. After a silent refresh, a new `jti` exists that the tracker never learns about, and the guarantee stops applying. This is an accepted scope limit, so don't advertise it as "delete a passkey to kill every session".
+Deleting the passkey that authenticates the current admin session can force that session out. `AdminPasskeyLoginTokenTracker` implements this by keying on the access token's `jti`. After a silent refresh, a new `jti` exists that the tracker never learns about, and the guarantee stops applying (the window is the access-token TTL, `shopware.api.access_token_ttl`). This is an accepted scope limit, so don't advertise it as "delete a passkey to kill every session".
 
 ### Passkeys are bound to one domain
 
-A passkey is cryptographically bound to one Relying Party ID, which is effectively the domain. Changing `passkeyRpId` or moving the shop to a new hostname invalidates every registered passkey. Users must register again.
+A passkey is cryptographically bound to one Relying Party ID, which is effectively the domain. Changing `passkeyRpId`, `APP_URL` (Administration) or the sales channel's domains (Storefront) can invalidate registered passkeys, and users must register again. Origins are pinned exactly: a domain that isn't the RP ID or below it is dropped for that ceremony.
 
 ### webauthn-lib 5.x: you own credential lookup and persistence
 
-webauthn-lib 5.x has no repository contract. `PasskeyAuthenticationService` loads the `CredentialRecord` itself and must persist what `check()` returns via `updateAfterAssertion()`. If that step is skipped, signature-counter replay detection is silently disabled.
+webauthn-lib 5.x has no repository contract. `PasskeyAuthenticationService` loads the `CredentialRecord` itself and must persist what `check()` returns via `updateAfterAssertion()`. If that step is skipped, signature-counter replay detection (which disables the credential on a regression) is silently disabled.
 
-The ceremony caches hold **raw inputs**, not serialized options. The options are rebuilt on verify. This started as a workaround for a 4.x base64 bug and was kept because it doesn't depend on symmetric (de)serialization.
+The ceremony state holds **raw inputs**, not serialized options. The options are rebuilt on verify. This started as a workaround for a 4.x base64 bug and was kept because it doesn't depend on symmetric (de)serialization.
 
 ### "Disable password login" is shop-wide
 
 `PasswordLoginPolicy` returns true if *any* active provider serving that login type has the flag set. Providers aren't sales-channel scoped, so one provider's flag disables password login for every sales channel.
 
-Superadmin sync is also one-way: `sync_admin_role_on_sso` only ever **grants** superadmin and never revokes it. Downgrading an admin is a manual step. This avoids a claims glitch locking out the only superadmin.
+Superadmin revocation is opt-in: `sync_admin_role_on_sso` grants superadmin on a matching group, but only revokes it with `revoke_superadmin_on_sso`, and never from the last active superadmin. This avoids a claims glitch locking out the only superadmin.
+
+### OIDC step-up needs `auth_time`
+
+`StepUpService` refuses an OIDC step-up when the `id_token` has no `auth_time`, or one from before the round trip started. IdPs that ignore `prompt=login`/`max_age=0` or omit `auth_time` (Dex, for example) can only use passkey step-up. The E2E suite skips the OIDC step-up test for that reason.
 
 ### `OidcCustomerLoginRoute` is not a decorator, on purpose
 
@@ -395,38 +471,37 @@ Storefront logout needs two classes, a route decorator and a response subscriber
 
 ### The admin login JS reload is load-bearing
 
-After the nonce exchange, the `sw-login` override forces a router push and sometimes a full reload. Without it, a login that didn't come from core's own component leaves the SPA's modules and menu uninitialized, and the dashboard stays blank.
+After the nonce exchange, the `sw-login` override forces a router push and sometimes a full reload. Without it, a login that didn't come from core's own component leaves the SPA's modules and menu uninitialized, and the dashboard stays blank. The E2E suite covers this regression.
 
-`AdminEntrypointsExtension` exists for a related reason. Shopware normally skips plugin JS on the pre-auth login screen, so this Twig extension loads the plugin's admin bundle there explicitly.
+`AdminEntrypointsExtension` exists for a related reason. Shopware normally skips plugin JS on the pre-auth login screen, so this Twig extension loads the plugin's admin bundle there explicitly. A missing or unparsable `entrypoints.json` degrades gracefully.
 
-### Unwired leftovers
+### Logging
 
-Check that code is actually used before you build on it:
-
-- The **"Enable debug logging"** plugin setting does nothing. Only `SW6OIDC_LOG_LEVEL` controls verbosity, and it defaults to `debug`, which is verbose in production.
-- `ClaimsNormalizer::extractEmail()` has no callers.
+The `sw6oidc` channel logs at `SW6OIDC_LOG_LEVEL` (default `warning`). The **Enable debug logging** plugin setting raises it to `debug` without a deploy; `ConfigurableLevelHandler` reads it once per request (reset between requests in long-running workers). Debug logs contain claim keys and more personal data even with masking, so switch the toggle off after troubleshooting.
 
 ### Smaller traps
 
 - **Missing nonce.** If no nonce was expected, `JwtVerifier` logs a warning and *skips* the nonce check instead of failing.
-- **No `id_token`.** If the token response has no `id_token`, the flow relies on userinfo alone, and userinfo wins on claim collisions anyway.
-- **Placeholder addresses.** Customers created without address claims get `-` placeholders in the billing address. Address sync only updates the existing default billing address and never creates one.
+- **No `openid` scope.** With `openid` in the scope, a missing `id_token` fails the login. Without it, the flow relies on userinfo alone and logs a warning; `email_verified` then has to come from userinfo.
+- **Custom email claim.** An email mapped from a claim other than `email` is never considered verified, so with `require_email_verified` on such logins fail.
+- **Placeholder addresses.** Customers created without address claims get `-` placeholders in the billing address (no zipcode placeholder), flagged with the `sw6oidc_placeholder_address` custom field. Address sync only updates the existing default billing address and never creates one.
 - **Unresolvable hosts.** The write guard blocks unresolvable hosts even in insecure mode. Test fixtures need resolvable hostnames or IP literals.
-- **Front-channel logout.** It needs both `iss` and `sid`, because SameSite cookies never reach a cross-site iframe.
-- **Live login test.** It does **not** apply access-control rules. It only reports claims.
+- **Front-channel logout.** It needs both `iss` and `sid`, because SameSite cookies never reach a cross-site iframe, and it leaves admin sessions alone unless `frontchannel_admin_logout` is on.
+- **Live login test.** It needs `sw6oidc_provider:update`, stores claim keys only, and previews the access-control result without logging anyone in.
+- **Trusted proxies.** Without `framework.trusted_proxies`, every client behind a proxy or CDN shares the proxy's IP and its rate-limit budget.
 
 ### Test coverage and its blind spots
 
 - **Unit tests** (`composer test`, no kernel) cover the OIDC core, provisioning, WebAuthn ceremonies against the real 5.x validators, and every security component.
 - **Integration tests** (`SHOPWARE_PROJECT_ROOT=/path/to/shop composer test-integration`) run a real kernel and database with Dex (`tests/Integration/docker-compose.yml`). They cover Back-Channel Logout, full Storefront and Admin OIDC logins, and access rules. They must use the **shop's** PHPUnit and autoloader, because the plugin's own `vendor/` contains a second `shopware/core`. `tests/Integration/README.md` has the setup details.
+- **E2E tests** (`tests/E2E`, Playwright) run against a dockware Shopware 6.7 shop with the plugin mounted and Dex. They cover Storefront and Admin SSO login/logout, the nonce hand-off and blank-dashboard regression, SSO-only mode, customer passkey registration and login, admin step-up (password, passkey, OIDC) and inactivity re-login, with WebAuthn via Chromium's virtual authenticator. The CI `e2e` job is non-blocking for now. `tests/E2E/README.md` has the setup details.
 
-Neither suite covers:
+None of the suites covers:
 
-- the Administration Vue code or Storefront JS
-- passkey logins end to end in a real browser
 - quirks of real IdPs other than Dex
+- browsers other than Chromium
 
-After you change controllers, `services.xml`, templates or Vue code, do a manual login round-trip: Storefront and Admin, OIDC and Passkey.
+After you change controllers, `services.xml`, templates or Vue code, run the E2E suite or do a manual login round-trip: Storefront and Admin, OIDC and Passkey. The committed storefront `dist` bundle must be rebuilt after Storefront JS changes; the CI `assets` job fails on a stale one.
 
 `composer ci` runs the same gates as CI: PHPCS, PHPStan level 5, Psalm level 4, Rector dry-run, then unit tests.
 
@@ -436,14 +511,9 @@ After you change controllers, `services.xml`, templates or Vue code, do a manual
 
 Roughly in order of risk reduction per unit of effort:
 
-1. **Wire up or remove the debug-logging toggle.** It suggests control that doesn't exist. Also consider defaulting `SW6OIDC_LOG_LEVEL` to `info` in production, since `debug` is noisy and logs claim-level detail.
-2. **Delete dead code.** Remove `ClaimsNormalizer::extractEmail()` or wire it in.
-3. **Add browser-level end-to-end tests** (Playwright or similar) for the Admin SPA overrides and passkeys, using a virtual WebAuthn authenticator. The admin login reload, inactivity re-login and password reconfirmation have no automated coverage yet.
-4. **Warn about multi-node setups without Redis.** Surface a missing `SW6OIDC_REDIS_DSN` in the health endpoint and diagnostics (e.g. when several app servers share the DB), instead of relying on documentation.
-5. **Add an `APP_SECRET` rotation command.** For example, `sw6oidc:secrets:reencrypt --old-secret=…` would re-encrypt stored secrets, instead of every provider's secret having to be re-entered.
-6. **Make admin session termination granular.** Tracking refresh-token lineage per login (or storing session ids in a custom token claim) would let force logout and Back-Channel Logout end one admin session instead of all of them. The same work would close the passkey tracker's refresh gap.
-7. **Scope providers and password-login flags per sales channel.** Today one provider's flag affects every sales channel. Multi-brand shops will eventually want per-channel control.
-8. **Make registry index updates atomic.** Redis sets, or locking, would replace the unlocked read-modify-write and remove the "a race can miss a session" caveat.
-9. **Support optional passkey attestation.** An opt-in attestation policy with an allow-list (MDS/AAGUID) would help admin accounts in regulated environments.
-10. **Add a dev environment.** A committed docker-compose Shopware setup (the integration suite already brings Dex) would give new contributors a disposable shop instead of a personal staging install.
-11. **Prepare for Shopware 6.8.** The plugin pins `<6.8`. The admin overrides (`sw-login`, `sw-inactivity-login`, `sw-profile`) and the second League server are the parts most likely to break on a major upgrade, so they're the first places to check.
+1. **Add an `APP_SECRET` rotation command.** For example, `sw6oidc:secrets:reencrypt --old-secret=…` would re-encrypt stored secrets, instead of every provider's secret having to be re-entered.
+2. **Make admin session termination granular.** Tracking refresh-token lineage per login (or storing session ids in a custom token claim) would let force logout and Back-Channel Logout end one admin session instead of all of them. The same work would close the passkey tracker's refresh gap.
+3. **Scope providers and password-login flags per sales channel.** Today one provider's flag affects every sales channel. Multi-brand shops will eventually want per-channel control.
+4. **Support optional passkey attestation.** An opt-in attestation policy with an allow-list (MDS/AAGUID) would help admin accounts in regulated environments.
+5. **Add a dev environment.** A committed docker-compose Shopware setup would give new contributors a disposable shop instead of a personal staging install. `tests/E2E/docker-compose.yml` (dockware shop + Dex) is a starting point.
+6. **Prepare for Shopware 6.8.** The plugin pins `<6.8`. The admin overrides (`sw-login`, `sw-inactivity-login`, `sw-profile`, `sw-verify-user-modal`) and the second League server are the parts most likely to break on a major upgrade, so they're the first places to check.
