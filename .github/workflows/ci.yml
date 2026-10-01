@@ -257,3 +257,44 @@ jobs:
       - name: Committed storefront bundle is up to date
         working-directory: plugin
         run: git diff --exit-code -- src/Resources/app/storefront/dist
+
+  e2e:
+    # Browser E2E (tests/E2E/README.md). Non-blocking until it has proven stable.
+    name: Browser E2E (Playwright)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: tests/E2E
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Resolve Dex like the shop does
+        run: echo "127.0.0.1 dex" | sudo tee -a /etc/hosts
+
+      - name: Install Playwright
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Start shop and Dex
+        run: docker compose up -d --wait
+
+      - name: Run the suite
+        run: npx playwright test
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/E2E/playwright-report
+          retention-days: 7
+
+      - name: Shop log on failure
+        if: failure()
+        run: docker compose logs shop | tail -n 300
