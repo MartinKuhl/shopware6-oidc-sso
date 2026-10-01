@@ -25,9 +25,11 @@
             "deleteError": "The passkey could not be deleted. Please try again.",
             "emptyState": "You haven't registered any passkeys yet.",
             "noSupport": "This browser does not support passkeys (WebAuthn).",
-            "nicknamePrompt": "Nickname for this passkey (optional)",
+            "nicknamePrompt": "Nickname for the new passkey (optional)",
             "registerError": "The passkey could not be registered. Please try again.",
-            "reauthRequired": "Please confirm it's you by logging in again."
+            "reauthRequired": "Please confirm it's you by logging in again.",
+            "loginError": "The passkey login failed. Please try again or use another login method.",
+            "cancel": "Cancel"
         },
         "account": {
             "ssoTitle": "Single sign-on",

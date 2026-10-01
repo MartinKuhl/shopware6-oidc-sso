@@ -31,6 +31,27 @@ const TECHNICAL_CLAIM_EXCLUSIONS = new Set([
     'updated_at',
 ]);
 
+/**
+ * Discovery may only fill these fields — never mass-assign the response (F-M7).
+ */
+const DISCOVERED_ENDPOINT_FIELDS = [
+    'authorizeEndpoint',
+    'accessTokenEndpoint',
+    'userInfoEndpoint',
+    'jwksEndpoint',
+    'endSessionEndpoint',
+    'revocationEndpoint',
+    'issuer',
+];
+
+/** Default params per transform function (also for rows imported without params, F-N16). */
+const TRANSFORM_DEFAULTS = {
+    concat: { claims: [], separator: ' ' },
+    split: { separator: ' ', index: 0 },
+    prefix: { value: '' },
+    regex_replace: { pattern: '', replacement: '' },
+};
+
 function isTechnicalClaim(key) {
     if (TECHNICAL_CLAIM_EXCLUSIONS.has(key)) {
         return true;
@@ -59,7 +80,7 @@ Component.register('sw6oidc-provider-detail', () => {
     return Promise.resolve({
         template,
 
-        inject: ['repositoryFactory', 'loginService'],
+        inject: ['repositoryFactory', 'acl', 'sw6oidcApiService'],
 
         mixins: [Mixin.getByName('notification')],
 
@@ -76,6 +97,14 @@ Component.register('sw6oidc-provider-detail', () => {
                 isRunningDiagnostics: false,
                 /** Server message when disabling admin password login would lock out unbound admins */
                 lockoutConfirmation: null,
+                /** Discovery URL as loaded: save re-discovers only when it changed (F-M7) */
+                loadedWellKnownConfigUrl: null,
+                /** Live test popup, to verify where results come from (F-M9) */
+                liveTestPopup: null,
+                /** GET provider/form-context */
+                formContext: { postLogoutLandingUrls: [], webhookConfigured: false },
+                /** "Remove webhook" was clicked: save sends null (F-N6) */
+                removeWebhook: false,
                 /** OidcDiagnosticsController response for this provider */
                 diagnostics: null,
                 /** @type {Record<string, unknown>} claims received on the last live login test, keyed by claim name */
@@ -174,9 +203,21 @@ Component.register('sw6oidc-provider-detail', () => {
                 return [...new Set(keys)].sort();
             },
 
-            /** The shared post-logout landing (PostLogoutController), suggested as the placeholder. */
+            /**
+             * The shared post-logout landing (PostLogoutController) on a
+             * storefront domain — the admin origin usually isn't one (F-N15).
+             */
             postLogoutLandingUrl() {
-                return `${window.location.origin}/sw6oidc/postlogout`;
+                return this.formContext.postLogoutLandingUrls[0] ?? '';
+            },
+
+            /** Viewers see the page read-only (F-N8). */
+            canEdit() {
+                return this.isNewProvider ? this.acl.can('sw6oidc_provider.creator') : this.acl.can('sw6oidc_provider.editor');
+            },
+
+            webhookConfigured() {
+                return !this.removeWebhook && (this.formContext.webhookConfigured || !!this.diagnostics?.alerting?.webhookConfigured);
             },
 
             canRunLiveTest() {
@@ -277,6 +318,15 @@ Component.register('sw6oidc-provider-detail', () => {
             },
         },
 
+        watch: {
+            // Navigating between providers (or to the saved new one) reuses this component (F-M10).
+            '$route.params.id'(newId, oldId) {
+                if (newId !== oldId) {
+                    this.createdComponent();
+                }
+            },
+        },
+
         created() {
             this.createdComponent();
         },
@@ -304,16 +354,33 @@ Component.register('sw6oidc-provider-detail', () => {
                 return entry.detail;
             },
 
+            /**
+             * Translation of a server-provided code, or the code itself when no
+             * snippet exists for it (new codes from a newer backend).
+             */
+            snippetOr(key, fallback) {
+                return this.$te(key) ? this.$tc(key) : String(fallback ?? "");
+            },
+
             testStatusVariant(status) {
                 return { pass: 'success', warning: 'warning', skipped: 'neutral' }[status] ?? 'danger';
             },
 
             createdComponent() {
+                this.diagnostics = null;
+                this.liveTestReport = null;
+                this.connectionTestResult = null;
+                this.removeWebhook = false;
+                this.loadFormContext(this.$route.params.id ?? null);
+
                 if (this.$route.params.id) {
                     this.loadEntity(this.$route.params.id);
 
                     return;
                 }
+
+                this.loadedWellKnownConfigUrl = null;
+                this.liveTestClaims = {};
 
                 this.provider = this.providerRepository.create(Shopware.Context.api);
                 this.provider.scope = 'openid profile email';
@@ -329,6 +396,20 @@ Component.register('sw6oidc-provider-detail', () => {
                 this.isLoading = false;
             },
 
+            async loadFormContext(providerId) {
+                try {
+                    const context = await this.sw6oidcApiService.get('_action/sw6oidc/provider/form-context', {
+                        params: providerId ? { providerId } : {},
+                    });
+                    this.formContext = {
+                        postLogoutLandingUrls: Array.isArray(context.postLogoutLandingUrls) ? context.postLogoutLandingUrls : [],
+                        webhookConfigured: !!context.webhookConfigured,
+                    };
+                } catch {
+                    this.formContext = { postLogoutLandingUrls: [], webhookConfigured: false };
+                }
+            },
+
             loadEntity(id) {
                 this.isLoading = true;
                 const criteria = new Criteria();
@@ -338,6 +419,12 @@ Component.register('sw6oidc-provider-detail', () => {
 
                 return this.providerRepository.get(id, Shopware.Context.api, criteria).then((entity) => {
                     this.provider = entity;
+                    this.loadedWellKnownConfigUrl = entity.wellKnownConfigUrl;
+                    entity.attributeMappings.forEach((mapping) => {
+                        if (mapping.transformFunction && !mapping.transformParams) {
+                            mapping.transformParams = { ...TRANSFORM_DEFAULTS[mapping.transformFunction] };
+                        }
+                    });
                     // Seeds the claim picker from whatever the last live login
                     // test actually observed, persisted server-side precisely so
                     // it survives a reload — this in-memory state otherwise has
@@ -346,14 +433,23 @@ Component.register('sw6oidc-provider-detail', () => {
                         ? entity.lastTestClaims
                         : {};
                     this.isLoading = false;
+                }).catch(() => {
+                    this.isLoading = false;
+                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.loadError') });
                 });
             },
 
             async onClickSave() {
+                if (!this.canEdit) {
+                    return;
+                }
+
                 this.isLoading = true;
                 this.isSaveSuccessful = false;
 
-                if (this.provider.wellKnownConfigUrl) {
+                // Only when the discovery URL changed: an unchanged one would
+                // overwrite deliberately edited endpoints on every save (F-M7).
+                if (this.provider.wellKnownConfigUrl && this.provider.wellKnownConfigUrl !== this.loadedWellKnownConfigUrl) {
                     // Best-effort re-discovery on every save: apply whatever the
                     // IdP returns, but never block the save on it — an admin who
                     // intentionally kept manually-entered endpoints shouldn't be
@@ -375,14 +471,19 @@ Component.register('sw6oidc-provider-detail', () => {
                     this.provider.clientSecret = undefined;
                 }
 
-                // Same for the write-only webhook URL (blank = keep the stored one).
-                if (!this.provider.healthAlertWebhookUrl) {
+                // Same for the write-only webhook URL (blank = keep the stored
+                // one), unless "Remove webhook" was clicked (F-N6).
+                if (this.removeWebhook) {
+                    this.provider.healthAlertWebhookUrl = null;
+                } else if (!this.provider.healthAlertWebhookUrl) {
                     this.provider.healthAlertWebhookUrl = undefined;
                 }
 
                 return this.providerRepository.save(this.provider, Shopware.Context.api).then(() => {
                     this.isSaveSuccessful = true;
                     this.isLoading = false;
+                    this.removeWebhook = false;
+                    this.loadFormContext(this.provider.id);
 
                     if (this.$route.params.id === undefined) {
                         this.$router.push({ name: 'sw6oidc.provider.detail', params: { id: this.provider.id } });
@@ -421,15 +522,20 @@ Component.register('sw6oidc-provider-detail', () => {
             async onConfirmLockout() {
                 this.lockoutConfirmation = null;
 
-                const response = await this.sw6oidcApiFetch(`/api/_action/sw6oidc/provider/${this.provider.id}/confirm-lockout`, {});
-
-                if (!response.ok) {
+                try {
+                    await this.sw6oidcApiService.post(`_action/sw6oidc/provider/${this.provider.id}/confirm-lockout`);
+                } catch {
                     this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.saveError') });
 
                     return;
                 }
 
                 await this.onClickSave();
+            },
+
+            onRemoveWebhook() {
+                this.removeWebhook = true;
+                this.provider.healthAlertWebhookUrl = null;
             },
 
             async onClickLoadConfiguration() {
@@ -465,25 +571,26 @@ Component.register('sw6oidc-provider-detail', () => {
                     throw new Error(this.$tc('sw6oidc.provider.detail.wellKnownConfigUrlRequired'));
                 }
 
-                const response = await this.sw6oidcApiFetch('/api/_action/sw6oidc/provider/discover', {
-                    wellKnownConfigUrl,
-                    httpTimeout: this.provider.httpTimeout,
-                });
-                const result = await response.json();
+                let result;
 
-                if (!response.ok) {
-                    throw new Error(result.message || this.$tc('sw6oidc.provider.detail.discoveryError'));
+                try {
+                    result = await this.sw6oidcApiService.post('_action/sw6oidc/provider/discover', {
+                        wellKnownConfigUrl,
+                        httpTimeout: this.provider.httpTimeout,
+                    });
+                } catch (error) {
+                    throw new Error(error?.response?.data?.message || this.$tc('sw6oidc.provider.detail.discoveryError'));
                 }
 
-                const { warnings = [], ...endpoints } = result;
-
-                Object.entries(endpoints).forEach(([key, value]) => {
-                    if (value) {
-                        this.provider[key] = value;
+                DISCOVERED_ENDPOINT_FIELDS.forEach((key) => {
+                    if (typeof result[key] === 'string' && result[key] !== '') {
+                        this.provider[key] = result[key];
                     }
                 });
 
-                return warnings;
+                this.loadedWellKnownConfigUrl = wellKnownConfigUrl;
+
+                return Array.isArray(result.warnings) ? result.warnings.filter((warning) => typeof warning === 'string') : [];
             },
 
             async onClickTestConnection() {
@@ -491,7 +598,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 this.connectionTestResult = null;
 
                 try {
-                    const response = await this.sw6oidcApiFetch('/api/_action/sw6oidc/provider/test-connection', {
+                    this.connectionTestResult = await this.sw6oidcApiService.post('_action/sw6oidc/provider/test-connection', {
                         wellKnownConfigUrl: this.provider.wellKnownConfigUrl,
                         authorizeEndpoint: this.provider.authorizeEndpoint,
                         accessTokenEndpoint: this.provider.accessTokenEndpoint,
@@ -506,8 +613,6 @@ Component.register('sw6oidc-provider-detail', () => {
                         publicClient: this.provider.publicClient,
                         httpTimeout: this.provider.httpTimeout,
                     });
-
-                    this.connectionTestResult = await response.json();
                 } catch (exception) {
                     // eslint-disable-next-line no-console
                     console.error('sw6oidc: connection test failed', exception);
@@ -521,21 +626,26 @@ Component.register('sw6oidc-provider-detail', () => {
                 this.isRunningLiveTest = true;
                 this.liveTestReport = null;
 
+                // Opened synchronously in the click handler: a window.open()
+                // after an await counts as a popup and gets blocked (F-M8).
+                const popup = window.open('about:blank', 'sw6oidcTest', 'scrollbars=1,width=800,height=600');
+                this.liveTestPopup = popup;
+
                 try {
                     // The popup is rendered server-side, so it needs the UI locale passed along.
-                    const response = await this.sw6oidcApiFetch(`/api/_action/sw6oidc/provider/${this.provider.id}/test`, {
+                    const result = await this.sw6oidcApiService.post(`_action/sw6oidc/provider/${this.provider.id}/test`, {
                         locale: Shopware.Store.get('session').currentLocale,
                     });
-                    const result = await response.json();
 
-                    if (!response.ok) {
-                        throw new Error(result.message || this.$tc('sw6oidc.provider.detail.liveTestError'));
+                    if (!popup || popup.closed) {
+                        throw new Error(this.$tc('sw6oidc.provider.detail.liveTestPopupBlocked'));
                     }
 
-                    window.open(result.authorizeUrl, 'sw6oidcTest', 'scrollbars=1,width=800,height=600');
+                    popup.location.href = result.authorizeUrl;
                 } catch (exception) {
+                    popup?.close();
                     this.createNotificationError({
-                        message: exception.message || this.$tc('sw6oidc.provider.detail.liveTestError'),
+                        message: exception?.response?.data?.message || exception.message || this.$tc('sw6oidc.provider.detail.liveTestError'),
                     });
                 } finally {
                     this.isRunningLiveTest = false;
@@ -551,29 +661,39 @@ Component.register('sw6oidc-provider-detail', () => {
              * lastTestAt server-side.
              */
             onTestResultMessage(event) {
-                if (event.origin !== window.location.origin || !event.data || event.data.type !== 'sw6oidc-test-result') {
+                // Only from the popup this page opened (F-M9).
+                if (
+                    event.origin !== window.location.origin
+                    || !this.liveTestPopup
+                    || event.source !== this.liveTestPopup
+                    || !event.data
+                    || event.data.type !== 'sw6oidc-test-result'
+                ) {
                     return;
                 }
 
                 this.liveTestReport = event.data;
                 this.liveTestClaims = event.data.claims && typeof event.data.claims === 'object' ? event.data.claims : {};
-
-                if (this.provider && this.provider.id) {
-                    this.loadEntity(this.provider.id);
-                }
+                this.liveTestPopup = null;
+                this.refreshTestStatus();
             },
 
-            sw6oidcApiFetch(path, bodyFields) {
-                return fetch(path, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        Authorization: `Bearer ${this.loginService.getToken()}`,
-                    },
-                    body: new URLSearchParams(
-                        Object.fromEntries(Object.entries(bodyFields).filter(([, value]) => value !== null && value !== undefined)),
-                    ),
-                });
+            /**
+             * Picks up lastTestStatus/lastTestAt the popup persisted, without
+             * reloading the form and discarding unsaved edits (F-M9).
+             */
+            async refreshTestStatus() {
+                if (!this.provider?.id) {
+                    return;
+                }
+
+                try {
+                    const stored = await this.providerRepository.get(this.provider.id, Shopware.Context.api);
+                    this.provider.lastTestStatus = stored?.lastTestStatus ?? this.provider.lastTestStatus;
+                    this.provider.lastTestAt = stored?.lastTestAt ?? this.provider.lastTestAt;
+                } catch {
+                    // Status display only.
+                }
             },
 
             formatDate(value) {
@@ -584,13 +704,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 this.isRunningDiagnostics = true;
 
                 try {
-                    const response = await this.sw6oidcApiFetch(`/api/_action/sw6oidc/provider/${this.provider.id}/diagnostics`, {});
-
-                    if (!response.ok) {
-                        throw new Error(`Diagnostics failed with status ${response.status}`);
-                    }
-
-                    this.diagnostics = await response.json();
+                    this.diagnostics = await this.sw6oidcApiService.post(`_action/sw6oidc/provider/${this.provider.id}/diagnostics`);
                 } catch (exception) {
                     // eslint-disable-next-line no-console
                     console.error('sw6oidc: diagnostics failed', exception);
@@ -613,15 +727,8 @@ Component.register('sw6oidc-provider-detail', () => {
              * that function's defaults instead of carrying stale keys over.
              */
             onTransformFunctionChange(item, transformFunction) {
-                const defaults = {
-                    concat: { claims: [], separator: ' ' },
-                    split: { separator: ' ', index: 0 },
-                    prefix: { value: '' },
-                    regex_replace: { pattern: '', replacement: '' },
-                };
-
                 item.transformFunction = transformFunction || null;
-                item.transformParams = transformFunction ? { ...defaults[transformFunction] } : null;
+                item.transformParams = transformFunction ? { ...TRANSFORM_DEFAULTS[transformFunction] } : null;
             },
 
             onRemoveAttributeMapping(item) {

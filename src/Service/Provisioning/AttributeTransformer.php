@@ -32,7 +32,7 @@ class AttributeTransformer
 
     public const FUNCTIONS = [self::CONCAT, self::SPLIT, self::PREFIX, self::REGEX_REPLACE];
 
-    private const MAX_REGEX_BYTES = 4096;
+    public const MAX_REGEX_BYTES = 4096;
 
     public function __construct(private readonly LoggerInterface $logger)
     {

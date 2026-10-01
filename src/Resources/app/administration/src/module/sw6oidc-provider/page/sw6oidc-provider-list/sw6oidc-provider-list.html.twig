@@ -2,13 +2,13 @@
 <sw-page class="sw6oidc-provider-list">
     {% block sw6oidc_provider_list_smart_bar_actions %}
     <template #smart-bar-actions>
-        <sw-button
-            variant="primary"
-            :router-link="{ name: 'sw6oidc.provider.create' }"
+        <mt-button
             v-if="acl.can('sw6oidc_provider.creator')"
+            variant="primary"
+            @click="$router.push({ name: 'sw6oidc.provider.create' })"
         >
             {{ $tc('sw6oidc.provider.list.buttonAdd') }}
-        </sw-button>
+        </mt-button>
     </template>
     {% endblock %}
 
@@ -20,9 +20,35 @@
             :repository="providerRepository"
             :columns="columns"
             :is-loading="isLoading"
+            :sort-by="sortBy"
+            :sort-direction="sortDirection"
             :disable-data-fetching="true"
+            :show-selection="acl.can('sw6oidc_provider.deleter') || undefined"
+            :allow-edit="acl.can('sw6oidc_provider.editor') || undefined"
+            :allow-view="acl.can('sw6oidc_provider.viewer') || undefined"
+            :allow-delete="acl.can('sw6oidc_provider.deleter') || undefined"
             detail-route="sw6oidc.provider.detail"
+            @column-sort="onSortColumn"
+            @page-change="onPageChange"
+            @delete-item-finish="getList"
         >
+            <template #column-loginType="{ item }">
+                {{ $tc(`sw6oidc.provider.detail.loginType.${item.loginType}`) }}
+            </template>
+            <template #column-isActive="{ item }">
+                <mt-icon
+                    v-if="item.isActive"
+                    name="regular-checkmark-xs"
+                    size="16px"
+                    :aria-label="$tc('sw6oidc.provider.list.active')"
+                />
+                <mt-icon
+                    v-else
+                    name="regular-times-s"
+                    size="16px"
+                    :aria-label="$tc('sw6oidc.provider.list.inactive')"
+                />
+            </template>
             {% block sw6oidc_provider_list_column_last_test_status %}
             <template #column-lastTestStatus="{ item }">
                 <sw-label

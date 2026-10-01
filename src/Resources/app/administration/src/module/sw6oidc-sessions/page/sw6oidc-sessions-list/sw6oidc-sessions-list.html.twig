@@ -2,17 +2,18 @@
 <sw-page class="sw6oidc-sessions-list">
     {% block sw6oidc_sessions_list_smart_bar_actions %}
     <template #smart-bar-actions>
-        <sw-switch-field
-            v-model:value="onlyActive"
+        <mt-switch
+            v-model="onlyActive"
+            class="sw6oidc-sessions-list__only-active"
             :label="$tc('sw6oidc.sessions.onlyActive')"
-            style="margin: 0;"
         />
-        <sw-button
+        <mt-button
+            variant="secondary"
             :is-loading="isLoading"
             @click="getList"
         >
             {{ $tc('sw6oidc.sessions.refresh') }}
-        </sw-button>
+        </mt-button>
     </template>
     {% endblock %}
 
@@ -20,7 +21,7 @@
     <template #content>
         <mt-banner
             variant="info"
-            style="margin: 16px;"
+            class="sw6oidc-sessions-list__hint"
         >
             {{ $tc('sw6oidc.sessions.hint') }}
         </mt-banner>
@@ -54,10 +55,16 @@
             </template>
             <template #column-loggedOutAt="{ item }">
                 <mt-badge
-                    v-if="!item.loggedOutAt"
+                    v-if="sessionState(item) === 'active'"
                     variant="success"
                 >
                     {{ $tc('sw6oidc.sessions.active') }}
+                </mt-badge>
+                <mt-badge
+                    v-else-if="sessionState(item) === 'expired'"
+                    variant="neutral"
+                >
+                    {{ $tc('sw6oidc.sessions.expired') }}
                 </mt-badge>
                 <template v-else>
                     {{ formatDate(item.loggedOutAt) }}
@@ -76,6 +83,16 @@
                 </sw-context-menu-item>
             </template>
         </sw-entity-listing>
+
+        <sw-confirm-modal
+            v-if="confirmItem"
+            type="yesno"
+            :title="$tc('sw6oidc.sessions.forceLogout')"
+            :text="confirmText"
+            @confirm="onConfirmForceLogout"
+            @cancel="onCancelForceLogout"
+            @close="onCancelForceLogout"
+        />
     </template>
     {% endblock %}
 </sw-page>

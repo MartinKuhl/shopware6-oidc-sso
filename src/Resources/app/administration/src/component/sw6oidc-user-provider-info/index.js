@@ -40,12 +40,17 @@ Component.register('sw6oidc-user-provider-info', () => Promise.resolve({
             binding: null,
             isLoading: true,
             isUnlinking: false,
+            showUnlinkConfirm: false,
         };
     },
 
     computed: {
         canUnlink() {
             return this.allowUnlink && this.acl.can(this.userType === 'admin' ? 'users_and_permissions.editor' : 'customer.editor');
+        },
+
+        unlinkConfirmText() {
+            return this.$tc(`sw6oidc.userProvider.${this.userType === 'admin' ? 'unlinkConfirmAdmin' : 'unlinkConfirmCustomer'}`);
         },
 
         formattedCreatedAt() {
@@ -64,28 +69,40 @@ Component.register('sw6oidc-user-provider-info', () => Promise.resolve({
 
     methods: {
         async loadBinding() {
+            const userId = this.userId;
             this.isLoading = true;
 
             try {
-                const bindings = await fetchUserProviderBindings(this.userType, [this.userId]);
-                this.binding = bindings[this.userId] ?? null;
+                const bindings = await fetchUserProviderBindings(this.userType, [userId]);
+
+                // A response for a previous userId must not overwrite the current one (F-N17).
+                if (userId === this.userId) {
+                    this.binding = bindings[userId] ?? null;
+                }
             } catch (exception) {
                 // eslint-disable-next-line no-console
                 console.error('sw6oidc: failed to load OIDC provider binding', exception);
-                this.binding = null;
+
+                if (userId === this.userId) {
+                    this.binding = null;
+                }
             } finally {
-                this.isLoading = false;
+                if (userId === this.userId) {
+                    this.isLoading = false;
+                }
             }
         },
 
-        async onUnlink() {
-            const confirmKey = this.userType === 'admin' ? 'unlinkConfirmAdmin' : 'unlinkConfirmCustomer';
+        onUnlink() {
+            this.showUnlinkConfirm = true;
+        },
 
-            // eslint-disable-next-line no-alert
-            if (!window.confirm(this.$tc(`sw6oidc.userProvider.${confirmKey}`))) {
-                return;
-            }
+        onCancelUnlink() {
+            this.showUnlinkConfirm = false;
+        },
 
+        async onConfirmUnlink() {
+            this.showUnlinkConfirm = false;
             this.isUnlinking = true;
 
             try {

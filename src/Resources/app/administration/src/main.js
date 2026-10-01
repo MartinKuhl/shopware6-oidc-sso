@@ -15,6 +15,7 @@
  * render before their dynamic imports had resolved.)
  */
 import './service/sw6oidc-api.service';
+import './acl';
 import './component/sw6oidc-rp-id-field';
 import './component/sw6oidc-user-provider-info';
 import './component/sw6oidc-connect-sso';

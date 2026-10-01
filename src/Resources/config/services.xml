@@ -373,6 +373,8 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument>%shopware.api.refresh_token_ttl%</argument>
+            <argument>%shopware.api.store.context_lifetime%</argument>
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -617,6 +619,11 @@
             </call>
         </service>
 
+        <!-- F-N16: invalid regex_replace patterns are rejected when saved. -->
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\AttributeMappingWriteGuardSubscriber">
+            <tag name="kernel.event_subscriber" />
+        </service>
+
         <!-- N-M8: the session-activity audit log can't be deleted through the API. -->
         <service id="MartinKuhl\Sw6Oidc\Subscriber\SessionActivityWriteGuardSubscriber">
             <tag name="kernel.event_subscriber" />
@@ -733,6 +740,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>

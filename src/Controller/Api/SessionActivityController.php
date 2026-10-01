@@ -29,7 +29,41 @@ class SessionActivityController extends AbstractController
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
         private readonly Sw6OidcSessionDestructionService $destructionService,
         private readonly LoggerInterface $logger,
+        private readonly string $adminSessionLifetime = 'P1W',
+        private readonly string $customerSessionLifetime = 'P1D',
     ) {
+    }
+
+    /**
+     * How long a session can live without a recorded logout, per account
+     * type: the list labels older open rows as expired instead of active
+     * (F-N3). Admin: refresh-token TTL; customer: Store API context lifetime.
+     */
+    #[Route(
+        path: '/api/_action/sw6oidc/session-activity/settings',
+        name: 'api.action.sw6oidc.session-activity.settings',
+        defaults: ['_acl' => ['sw6oidc_session_activity:read']],
+        methods: ['GET'],
+    )]
+    public function settings(): JsonResponse
+    {
+        return new JsonResponse([
+            'sessionLifetimeSeconds' => [
+                Sw6OidcSession::USER_TYPE_ADMIN => $this->seconds($this->adminSessionLifetime, 604800),
+                Sw6OidcSession::USER_TYPE_CUSTOMER => $this->seconds($this->customerSessionLifetime, 86400),
+            ],
+        ]);
+    }
+
+    private function seconds(string $interval, int $fallback): int
+    {
+        try {
+            $now = new \DateTimeImmutable('@0');
+
+            return $now->add(new \DateInterval($interval))->getTimestamp();
+        } catch (\Throwable) {
+            return $fallback;
+        }
     }
 
     #[Route(

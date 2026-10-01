@@ -27,7 +27,10 @@
                     "pass": "Passed",
                     "fail": "Failed",
                     "untested": "Not tested yet"
-                }
+                },
+                "loadError": "The providers could not be loaded.",
+                "active": "Active",
+                "inactive": "Inactive"
             },
             "detail": {
                 "buttonSave": "Save",
@@ -320,7 +323,12 @@
                 "frontchannelAdminLogout": "Front-channel logout ends admin sessions",
                 "frontchannelAdminLogoutHelp": "Front-channel logout requests are unauthenticated (only iss and sid). Administration sessions can only be ended all at once, so they are left alone by default; back-channel logout (signed) always ends them. Enable only if your IdP supports nothing but front-channel logout.",
                 "revokeSuperadminOnSso": "Role sync may revoke superadmin",
-                "revokeSuperadminOnSsoHelp": "With admin role sync on: when a login's groups no longer grant superadmin, the superadmin flag is removed (the mapped ACL role remains). Never applied to the last active superadmin."
+                "revokeSuperadminOnSsoHelp": "With admin role sync on: when a login's groups no longer grant superadmin, the superadmin flag is removed (the mapped ACL role remains). Never applied to the last active superadmin.",
+                "readOnlyHint": "You can view this provider but not change it (missing editor permission).",
+                "removeWebhook": "Remove webhook",
+                "webhookRemovedOnSave": "The stored webhook URL will be removed when you save.",
+                "loadError": "The provider could not be loaded.",
+                "liveTestPopupBlocked": "The browser blocked the test window. Allow pop-ups for the Administration and try again."
             }
         },
         "userProvider": {
@@ -360,17 +368,24 @@
                 "columnCreatedAt": "Registered at"
             },
             "disabledBadge": "Disabled (possible clone)",
-            "loadError": "The passkeys could not be loaded."
+            "loadError": "The passkeys could not be loaded.",
+            "manageOwnButton": "Manage my own passkeys",
+            "userType": {
+                "admin": "Administration user",
+                "customer": "Customer"
+            }
         },
         "sessions": {
             "moduleTitle": "OIDC & Passkey sessions",
             "hint": "Every login through OIDC or a passkey, with its logout time and reason. Force logout ends a customer's OIDC session exactly; for passkey logins and for Administration users it ends all sessions of that account. Entries are deleted after the retention period (SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS, default 90 days).",
-            "onlyActive": "Only active sessions",
+            "onlyActive": "Only sessions without a logout",
             "refresh": "Refresh",
             "active": "Active",
             "forceLogout": "Force logout",
             "forceLogoutConfirm": "End this session? The customer will have to log in again.",
-            "forceLogoutConfirmAdmin": "End all Administration sessions of this user? They will have to log in again.",
+            "forceLogoutConfirmAll": "End all sessions of this account? Passkey logins and Administration users can only be logged out everywhere at once; they will have to log in again.",
+            "expired": "Expired (no logout recorded)",
+            "loadError": "The session activity could not be loaded.",
             "forceLogoutSuccess": "The session was ended.",
             "forceLogoutSuccessAll": "All sessions of this account were ended.",
             "forceLogoutError": "The session could not be ended. Please try again.",

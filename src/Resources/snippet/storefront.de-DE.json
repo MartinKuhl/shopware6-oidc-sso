@@ -27,7 +27,9 @@
             "noSupport": "Dieser Browser unterstützt keine Passkeys (WebAuthn).",
             "nicknamePrompt": "Bezeichnung für diesen Passkey (optional)",
             "registerError": "Der Passkey konnte nicht registriert werden. Bitte versuchen Sie es erneut.",
-            "reauthRequired": "Bitte bestätigen Sie Ihre Identität durch eine erneute Anmeldung."
+            "reauthRequired": "Bitte bestätigen Sie Ihre Identität durch eine erneute Anmeldung.",
+            "loginError": "Die Anmeldung mit Passkey ist fehlgeschlagen. Bitte versuchen Sie es erneut oder nutzen Sie eine andere Anmeldemethode.",
+            "cancel": "Abbrechen"
         },
         "account": {
             "ssoTitle": "Single Sign-on",

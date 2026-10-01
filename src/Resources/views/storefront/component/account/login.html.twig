@@ -71,10 +71,19 @@
             {% if sw6oidcPasskeyAvailable %}
                 <button type="button"
                         class="btn btn-secondary"
-                        data-sw6oidc-passkey-login="true">
+                        data-sw6oidc-passkey-login="true"
+                        data-sw6oidc-options-url="{{ path('frontend.sw6oidc.passkey.login-options') }}"
+                        data-sw6oidc-verify-url="{{ path('frontend.sw6oidc.passkey.login-verify') }}"
+                        data-sw6oidc-error-target="sw6oidc-passkey-login-error"
+                        data-sw6oidc-error-text="{{ 'sw6oidc.passkey.loginError'|trans|striptags }}"
+                        data-sw6oidc-no-support-text="{{ 'sw6oidc.passkey.noSupport'|trans|striptags }}">
                     {{ 'sw6oidc.passkey.button'|trans|sw_sanitize }}
                 </button>
             {% endif %}
         </div>
+
+        {% if sw6oidcPasskeyAvailable %}
+            <div id="sw6oidc-passkey-login-error" class="alert alert-danger mt-2" role="alert" hidden></div>
+        {% endif %}
     {% endif %}
 {% endblock %}

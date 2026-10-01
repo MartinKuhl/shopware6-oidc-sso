@@ -12,7 +12,8 @@
  */
 export function registerModuleWhenReady(name, config, attemptsLeft = 100) {
     try {
-        Shopware.State.get('settingsItems');
+        // Shopware.Store (Pinia) replaces the deprecated Shopware.State (F-M14).
+        Shopware.Store.get('settingsItems');
     } catch (exception) {
         if (attemptsLeft <= 0) {
             // eslint-disable-next-line no-console

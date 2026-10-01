@@ -67,3 +67,28 @@
 article.mt-card.sw6oidc-live-test-result {
     margin-bottom: 0;
 }
+
+// Read-only wrapper for viewers (F-N8): a plain fieldset, no visual chrome.
+.sw6oidc-provider-detail__fieldset {
+    border: 0;
+    margin: 0;
+    min-width: 0;
+    padding: 0;
+}
+
+.sw6oidc-provider-detail__read-only,
+.sw6oidc-provider-detail__spaced {
+    margin-bottom: 16px;
+}
+
+.sw6oidc-provider-detail__spaced-top {
+    margin-top: 16px;
+}
+
+.sw6oidc-provider-detail__spaced-top-small {
+    margin-top: 8px;
+}
+
+.sw6oidc-live-test-actions {
+    align-items: center;
+}

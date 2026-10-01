@@ -113,4 +113,14 @@ final class SessionActivityControllerTest extends TestCase
     {
         return array_values(array_map(static fn (array $row): ?string => $row['logoutReason'] ?? null, $this->store->rows));
     }
+
+    public function testSettingsReportSessionLifetimesInSeconds(): void
+    {
+        $controller = new SessionActivityController($this->recorder, $this->registry, $this->destruction, new NullLogger(), 'PT10M', 'P1D');
+
+        self::assertSame(
+            ['sessionLifetimeSeconds' => ['admin' => 600, 'customer' => 86400]],
+            json_decode((string) $controller->settings()->getContent(), true),
+        );
+    }
 }

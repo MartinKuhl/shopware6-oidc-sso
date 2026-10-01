@@ -27,7 +27,10 @@
                     "pass": "Erfolgreich",
                     "fail": "Fehlgeschlagen",
                     "untested": "Noch nicht getestet"
-                }
+                },
+                "loadError": "Die Anbieter konnten nicht geladen werden.",
+                "active": "Aktiv",
+                "inactive": "Inaktiv"
             },
             "detail": {
                 "buttonSave": "Speichern",
@@ -320,7 +323,12 @@
                 "frontchannelAdminLogout": "Front-Channel-Logout beendet Admin-Sitzungen",
                 "frontchannelAdminLogoutHelp": "Front-Channel-Logout-Anfragen sind nicht authentifiziert (nur iss und sid). Administrationssitzungen können nur alle gemeinsam beendet werden und bleiben daher standardmäßig bestehen; Back-Channel-Logout (signiert) beendet sie immer. Nur aktivieren, wenn Ihr IdP ausschließlich Front-Channel-Logout unterstützt.",
                 "revokeSuperadminOnSso": "Rollen-Sync darf Superadmin entziehen",
-                "revokeSuperadminOnSsoHelp": "Bei aktivem Admin-Rollen-Sync: Gewähren die Gruppen eines Logins keinen Superadmin mehr, wird das Superadmin-Flag entfernt (die zugeordnete ACL-Rolle bleibt). Wird nie beim letzten aktiven Superadmin angewendet."
+                "revokeSuperadminOnSsoHelp": "Bei aktivem Admin-Rollen-Sync: Gewähren die Gruppen eines Logins keinen Superadmin mehr, wird das Superadmin-Flag entfernt (die zugeordnete ACL-Rolle bleibt). Wird nie beim letzten aktiven Superadmin angewendet.",
+                "readOnlyHint": "Sie können diesen Anbieter ansehen, aber nicht ändern (Bearbeitungsrecht fehlt).",
+                "removeWebhook": "Webhook entfernen",
+                "webhookRemovedOnSave": "Die gespeicherte Webhook-URL wird beim Speichern entfernt.",
+                "loadError": "Der Anbieter konnte nicht geladen werden.",
+                "liveTestPopupBlocked": "Der Browser hat das Testfenster blockiert. Erlauben Sie Pop-ups für die Administration und versuchen Sie es erneut."
             }
         },
         "userProvider": {
@@ -360,17 +368,24 @@
                 "columnCreatedAt": "Registriert am"
             },
             "disabledBadge": "Deaktiviert (möglicher Klon)",
-            "loadError": "Die Passkeys konnten nicht geladen werden."
+            "loadError": "Die Passkeys konnten nicht geladen werden.",
+            "manageOwnButton": "Eigene Passkeys verwalten",
+            "userType": {
+                "admin": "Administrationsbenutzer",
+                "customer": "Kunde"
+            }
         },
         "sessions": {
             "moduleTitle": "OIDC- & Passkey-Sitzungen",
             "hint": "Jede Anmeldung über OIDC oder einen Passkey, mit Zeitpunkt und Grund der Abmeldung. „Abmelden erzwingen“ beendet die OIDC-Sitzung eines Kunden genau; bei Passkey-Anmeldungen und bei Administration-Benutzern werden alle Sitzungen dieses Kontos beendet. Einträge werden nach der Aufbewahrungsdauer gelöscht (SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS, Standard 90 Tage).",
-            "onlyActive": "Nur aktive Sitzungen",
+            "onlyActive": "Nur Sitzungen ohne Abmeldung",
             "refresh": "Aktualisieren",
             "active": "Aktiv",
             "forceLogout": "Abmelden erzwingen",
             "forceLogoutConfirm": "Diese Sitzung beenden? Der Kunde muss sich erneut anmelden.",
-            "forceLogoutConfirmAdmin": "Alle Administration-Sitzungen dieses Benutzers beenden? Er muss sich erneut anmelden.",
+            "forceLogoutConfirmAll": "Alle Sitzungen dieses Kontos beenden? Passkey-Anmeldungen und Administration-Benutzer können nur überall gleichzeitig abgemeldet werden; die Person muss sich erneut anmelden.",
+            "expired": "Abgelaufen (keine Abmeldung erfasst)",
+            "loadError": "Die Sitzungsaktivität konnte nicht geladen werden.",
             "forceLogoutSuccess": "Die Sitzung wurde beendet.",
             "forceLogoutSuccessAll": "Alle Sitzungen dieses Kontos wurden beendet.",
             "forceLogoutError": "Die Sitzung konnte nicht beendet werden. Bitte versuchen Sie es erneut.",

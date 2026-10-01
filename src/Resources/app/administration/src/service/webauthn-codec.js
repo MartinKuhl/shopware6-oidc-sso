@@ -32,7 +32,31 @@ export function bufferToBase64Url(buffer) {
     return window.btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/**
+ * Browsers with the WebAuthn Level 3 JSON helpers parse the server's options
+ * natively (F-M3); the manual conversion below is the fallback.
+ */
+function nativeParse(method, options) {
+    const parse = window.PublicKeyCredential?.[method];
+
+    if (typeof parse !== 'function') {
+        return null;
+    }
+
+    try {
+        return parse.call(window.PublicKeyCredential, options);
+    } catch {
+        return null;
+    }
+}
+
 export function preparePublicKeyCreationOptions(options) {
+    const parsed = nativeParse('parseCreationOptionsFromJSON', options);
+
+    if (parsed) {
+        return parsed;
+    }
+
     return {
         ...options,
         challenge: base64UrlToBuffer(options.challenge),
@@ -48,6 +72,12 @@ export function preparePublicKeyCreationOptions(options) {
 }
 
 export function preparePublicKeyRequestOptions(options) {
+    const parsed = nativeParse('parseRequestOptionsFromJSON', options);
+
+    if (parsed) {
+        return parsed;
+    }
+
     return {
         ...options,
         challenge: base64UrlToBuffer(options.challenge),

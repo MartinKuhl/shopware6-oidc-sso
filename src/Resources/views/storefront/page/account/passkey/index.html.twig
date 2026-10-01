@@ -10,14 +10,32 @@
         <div class="card account-passkey-list mb-3">
             <div class="card-body">
                 {% if sw6oidcPasskeyEnabled %}
-                    <button type="button"
-                            class="btn btn-secondary mb-3"
-                            data-sw6oidc-passkey-register="true"
-                            data-sw6oidc-no-support-text="{{ 'sw6oidc.passkey.noSupport'|trans|striptags }}"
-                            data-sw6oidc-nickname-prompt-text="{{ 'sw6oidc.passkey.nicknamePrompt'|trans|striptags }}"
-                            data-sw6oidc-error-text="{{ 'sw6oidc.passkey.registerError'|trans|striptags }}">
-                        {{ 'sw6oidc.passkey.registerButton'|trans|sw_sanitize }}
-                    </button>
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-sm-6">
+                            <label class="form-label" for="sw6oidc-passkey-nickname">
+                                {{ 'sw6oidc.passkey.nicknamePrompt'|trans|sw_sanitize }}
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="sw6oidc-passkey-nickname"
+                                   maxlength="255"
+                                   autocomplete="off">
+                        </div>
+                        <div class="col-sm-auto">
+                            <button type="button"
+                                    class="btn btn-secondary"
+                                    data-sw6oidc-passkey-register="true"
+                                    data-sw6oidc-options-url="{{ path('frontend.sw6oidc.passkey.registration-options') }}"
+                                    data-sw6oidc-verify-url="{{ path('frontend.sw6oidc.passkey.registration-verify') }}"
+                                    data-sw6oidc-nickname-input="sw6oidc-passkey-nickname"
+                                    data-sw6oidc-error-target="sw6oidc-passkey-register-error"
+                                    data-sw6oidc-no-support-text="{{ 'sw6oidc.passkey.noSupport'|trans|striptags }}"
+                                    data-sw6oidc-error-text="{{ 'sw6oidc.passkey.registerError'|trans|striptags }}">
+                                {{ 'sw6oidc.passkey.registerButton'|trans|sw_sanitize }}
+                            </button>
+                        </div>
+                    </div>
+                    <div id="sw6oidc-passkey-register-error" class="alert alert-danger" role="alert" hidden></div>
                 {% endif %}
 
                 {% if sw6oidcCredentials|length %}
@@ -38,7 +56,7 @@
                                         <form action="{{ path('frontend.account.passkey.delete', {credentialId: credential.id}) }}"
                                               method="post"
                                               data-sw6oidc-passkey-delete-form="true"
-                                              data-sw6oidc-confirm-text="{{ 'sw6oidc.passkey.deleteConfirm'|trans|striptags }}">
+                                              data-sw6oidc-confirm-dialog="sw6oidc-passkey-delete-dialog">
                                             <button type="submit" class="btn btn-sm btn-link p-0">
                                                 {% sw_icon 'trash' style {'size': 'xs'} %}
                                                 {{ 'sw6oidc.passkey.deleteButton'|trans|sw_sanitize }}
@@ -49,6 +67,19 @@
                             {% endfor %}
                         </tbody>
                     </table>
+                    <dialog id="sw6oidc-passkey-delete-dialog" class="sw6oidc-passkey-delete-dialog border-0 rounded p-4">
+                        <form method="dialog">
+                            <p>{{ 'sw6oidc.passkey.deleteConfirm'|trans|sw_sanitize }}</p>
+                            <div class="d-flex justify-content-end gap-2">
+                                <button type="submit" value="cancel" class="btn btn-light">
+                                    {{ 'sw6oidc.passkey.cancel'|trans|sw_sanitize }}
+                                </button>
+                                <button type="submit" value="confirm" class="btn btn-danger">
+                                    {{ 'sw6oidc.passkey.deleteButton'|trans|sw_sanitize }}
+                                </button>
+                            </div>
+                        </form>
+                    </dialog>
                 {% else %}
                     <p>{{ 'sw6oidc.passkey.emptyState'|trans|sw_sanitize }}</p>
                 {% endif %}

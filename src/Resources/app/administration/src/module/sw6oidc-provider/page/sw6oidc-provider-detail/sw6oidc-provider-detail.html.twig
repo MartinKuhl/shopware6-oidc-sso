@@ -9,6 +9,7 @@
             variant="primary"
             :is-loading="isLoading"
             :process-success="isSaveSuccessful"
+            :disabled="!canEdit"
             @click="onClickSave"
         >
             {{ $tc('sw6oidc.provider.detail.buttonSave') }}
@@ -19,6 +20,18 @@
     {% block sw6oidc_provider_detail_content %}
     <template #content>
         <sw-card-view v-if="provider">
+            <mt-banner
+                v-if="!canEdit"
+                variant="info"
+                class="sw6oidc-provider-detail__read-only"
+            >
+                {{ $tc('sw6oidc.provider.detail.readOnlyHint') }}
+            </mt-banner>
+            {# Native inputs are disabled for viewers; saving is too (F-N8). #}
+            <fieldset
+                class="sw6oidc-provider-detail__fieldset"
+                :disabled="!canEdit"
+            >
             <sw-card class="sw6oidc-bold-field-labels" :title="$tc('sw6oidc.provider.detail.cardGeneral')">
                 <sw-container columns="1fr 1fr" gap="0 30px">
                     <sw-text-field v-model="provider.appName" :label="$tc('sw6oidc.provider.detail.appName')" required />
@@ -63,7 +76,7 @@
                 />
 
                 {% block sw6oidc_provider_detail_discovery_actions %}
-                <sw-container columns="max-content max-content" gap="0 16px" style="margin-bottom: 16px;">
+                <sw-container columns="max-content max-content" gap="0 16px" class="sw6oidc-provider-detail__spaced">
                     <sw-button
                         size="small"
                         :is-loading="isLoadingConfiguration"
@@ -83,20 +96,20 @@
                 {% endblock %}
 
                 {% block sw6oidc_provider_detail_connection_test_result %}
-                <sw-card v-if="connectionTestResult" :title="$tc('sw6oidc.provider.detail.testConnectionResultTitle')" style="margin-bottom: 16px;">
+                <sw-card v-if="connectionTestResult" :title="$tc('sw6oidc.provider.detail.testConnectionResultTitle')" class="sw6oidc-provider-detail__spaced">
                     <ul class="sw6oidc-test-result-list">
                         <li
                             v-for="check in connectionTestResult.checks"
                             :key="check.id"
                             class="sw6oidc-test-result-list__item"
                         >
-                            <strong>{{ $tc(`sw6oidc.provider.detail.testConnection.check.${check.id}`) }}:</strong>
+                            <strong>{{ snippetOr(`sw6oidc.provider.detail.testConnection.check.${check.id}`, check.id) }}:</strong>
                             <span>{{ testResultMessage(check) }}</span>
                             <sw-label
                                 size="medium"
                                 appearance="pill"
                                 :variant="testStatusVariant(check.status)"
-                            >{{ $tc(`sw6oidc.provider.detail.testStatus.${check.status}`) }}</sw-label>
+                            >{{ snippetOr(`sw6oidc.provider.detail.testStatus.${check.status}`, check.status) }}</sw-label>
                         </li>
                     </ul>
                 </sw-card>
@@ -212,13 +225,12 @@
                     class="sw6oidc-live-test-actions"
                     columns="max-content 1fr"
                     gap="0 16px"
-                    style="align-items: center;"
                 >
                     <sw-button
                         size="small"
                         :is-loading="isRunningLiveTest"
-                        :disabled="!canRunLiveTest"
-                        :tooltip="canRunLiveTest ? null : { message: $tc('sw6oidc.provider.detail.liveTestRequiresSaveHint') }"
+                    :disabled="!canRunLiveTest || !canEdit"
+                    :tooltip="canRunLiveTest ? null : { message: $tc('sw6oidc.provider.detail.liveTestRequiresSaveHint') }"
                         @click="onClickRunLiveTest"
                     >
                         {{ $tc('sw6oidc.provider.detail.buttonRunLiveTest') }}
@@ -233,7 +245,7 @@
                             size="medium"
                             appearance="pill"
                             :variant="testStatusVariant(provider.lastTestStatus)"
-                        >{{ $tc(`sw6oidc.provider.detail.testStatus.${provider.lastTestStatus}`) }}</sw-label>
+                        >{{ snippetOr(`sw6oidc.provider.detail.testStatus.${provider.lastTestStatus}`, provider.lastTestStatus) }}</sw-label>
                     </span>
                 </sw-container>
 
@@ -248,13 +260,13 @@
                             :key="step.id"
                             class="sw6oidc-test-result-list__item"
                         >
-                            <strong>{{ $tc(`sw6oidc.provider.detail.liveTest.step.${step.id}`) }}:</strong>
+                            <strong>{{ snippetOr(`sw6oidc.provider.detail.liveTest.step.${step.id}`, step.id) }}:</strong>
                             <span>{{ testResultMessage(step) }}</span>
                             <sw-label
                                 size="medium"
                                 appearance="pill"
                                 :variant="testStatusVariant(step.status)"
-                            >{{ $tc(`sw6oidc.provider.detail.testStatus.${step.status}`) }}</sw-label>
+                            >{{ snippetOr(`sw6oidc.provider.detail.testStatus.${step.status}`, step.status) }}</sw-label>
                         </li>
                     </ul>
                 </sw-card>
@@ -375,7 +387,7 @@
                 <mt-banner
                     v-if="!discoveredClaimKeys.length"
                     variant="info"
-                    style="margin-bottom: 16px;"
+                    class="sw6oidc-provider-detail__spaced"
                 >
                     {{ $tc('sw6oidc.provider.detail.attributeMappingRequiresLiveTestHint') }}
                 </mt-banner>
@@ -479,7 +491,7 @@
                 </sw-data-grid>
                 <sw-button
                     size="small"
-                    style="margin-top: 16px;"
+                    class="sw6oidc-provider-detail__spaced-top"
                     @click="onAddAttributeMapping"
                 >
                     {{ $tc('sw6oidc.provider.detail.addAttributeMapping') }}
@@ -556,7 +568,7 @@
                 </sw-data-grid>
                 <sw-button
                     size="small"
-                    style="margin-top: 16px;"
+                    class="sw6oidc-provider-detail__spaced-top"
                     @click="onAddRoleMapping"
                 >
                     {{ $tc('sw6oidc.provider.detail.addRoleMapping') }}
@@ -571,7 +583,7 @@
             >
                 <mt-banner
                     variant="info"
-                    style="margin-bottom: 16px;"
+                    class="sw6oidc-provider-detail__spaced"
                 >
                     {{ $tc('sw6oidc.provider.detail.accessControlHint') }}
                     <template v-if="accessControlClaimKeys.length">
@@ -632,7 +644,7 @@
                 </sw-data-grid>
                 <sw-button
                     size="small"
-                    style="margin-top: 16px;"
+                    class="sw6oidc-provider-detail__spaced-top"
                     @click="onAddAccessControlRule"
                 >
                     {{ $tc('sw6oidc.provider.detail.addAccessControlRule') }}
@@ -705,15 +717,29 @@
                     :error="providerHealthAlertWebhookUrlError"
                     :label="$tc('sw6oidc.provider.detail.healthAlertWebhookUrl')"
                     :help-text="$tc('sw6oidc.provider.detail.healthAlertWebhookUrlHelp')"
-                    :placeholder="diagnostics && diagnostics.alerting.webhookConfigured ? $tc('sw6oidc.provider.detail.clientSecretStoredPlaceholder') : 'https://hooks.example.com/…'"
+                    :placeholder="webhookConfigured ? $tc('sw6oidc.provider.detail.clientSecretStoredPlaceholder') : 'https://hooks.example.com/…'"
                 />
+                <mt-button
+                    v-if="webhookConfigured && canEdit"
+                    size="small"
+                    variant="secondary"
+                    @click="onRemoveWebhook"
+                >
+                    {{ $tc('sw6oidc.provider.detail.removeWebhook') }}
+                </mt-button>
+                <p
+                    v-if="removeWebhook"
+                    class="sw6oidc-health-state"
+                >
+                    {{ $tc('sw6oidc.provider.detail.webhookRemovedOnSave') }}
+                </p>
                 <p
                     v-if="provider.healthAlertLastCheckedAt"
                     class="sw6oidc-health-state"
                 >
                     {{ $t('sw6oidc.provider.detail.healthLastCheck', {
                         date: formatDate(provider.healthAlertLastCheckedAt),
-                        status: $tc(`sw6oidc.provider.detail.healthStatus.${provider.healthAlertLastStatus || 'unknown'}`),
+                        status: snippetOr(`sw6oidc.provider.detail.healthStatus.${provider.healthAlertLastStatus || 'unknown'}`, provider.healthAlertLastStatus || 'unknown'),
                         failures: provider.healthAlertConsecutiveFailures,
                     }) }}
                 </p>
@@ -722,7 +748,7 @@
                     size="small"
                     :is-loading="isRunningDiagnostics"
                     :disabled="!canRunLiveTest"
-                    style="margin-top: 8px;"
+                    class="sw6oidc-provider-detail__spaced-top-small"
                     @click="onClickRunDiagnostics"
                 >
                     {{ $tc('sw6oidc.provider.detail.buttonRunDiagnostics') }}
@@ -731,7 +757,7 @@
                 <ul
                     v-if="diagnostics"
                     class="sw6oidc-test-result-list"
-                    style="margin-top: 16px;"
+                    class="sw6oidc-provider-detail__spaced-top"
                 >
                     <li class="sw6oidc-test-result-list__item">
                         <strong>{{ $tc('sw6oidc.provider.detail.diagnosticsReachability') }}:</strong>
@@ -740,17 +766,17 @@
                             size="medium"
                             appearance="pill"
                             :variant="diagnostics.reachability.ok ? 'success' : 'danger'"
-                        >{{ $tc(`sw6oidc.provider.detail.testStatus.${diagnostics.reachability.ok ? 'pass' : 'fail'}`) }}</sw-label>
+                        >{{ snippetOr(`sw6oidc.provider.detail.testStatus.${diagnostics.reachability.ok ? 'pass' : 'fail'}`, diagnostics.reachability.ok ? 'pass' : 'fail') }}</sw-label>
                     </li>
                     <li class="sw6oidc-test-result-list__item">
                         <strong>{{ $tc('sw6oidc.provider.detail.diagnosticsConfig') }}:</strong>
                         <span v-if="!diagnostics.configProblems.length">{{ $tc('sw6oidc.provider.detail.diagnosticsConfigComplete') }}</span>
-                        <span v-else>{{ diagnostics.configProblems.map((code) => $tc(`sw6oidc.provider.detail.configProblem.${code}`)).join(', ') }}</span>
+                        <span v-else>{{ diagnostics.configProblems.map((code) => snippetOr(`sw6oidc.provider.detail.configProblem.${code}`, code)).join(', ') }}</span>
                         <sw-label
                             size="medium"
                             appearance="pill"
                             :variant="diagnostics.configProblems.length ? 'danger' : 'success'"
-                        >{{ $tc(`sw6oidc.provider.detail.testStatus.${diagnostics.configProblems.length ? 'fail' : 'pass'}`) }}</sw-label>
+                        >{{ snippetOr(`sw6oidc.provider.detail.testStatus.${diagnostics.configProblems.length ? 'fail' : 'pass'}`, diagnostics.configProblems.length ? 'fail' : 'pass') }}</sw-label>
                     </li>
                     <li class="sw6oidc-test-result-list__item">
                         <strong>{{ $tc('sw6oidc.provider.detail.diagnosticsAlerting') }}:</strong>
@@ -799,6 +825,7 @@
                     </mt-button>
                 </template>
             </sw-modal>
+            </fieldset>
         </sw-card-view>
     </template>
     {% endblock %}

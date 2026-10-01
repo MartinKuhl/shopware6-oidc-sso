@@ -42,6 +42,7 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
         return [
             new TwigFunction('sw6oidc_storefront_sso_providers', $this->getSsoProviders(...)),
             new TwigFunction('sw6oidc_storefront_passkey_available', $this->isPasskeyAvailable(...)),
+            new TwigFunction('sw6oidc_storefront_passkey_enabled', $this->isPasskeyEnabled(...)),
             new TwigFunction('sw6oidc_storefront_password_login_disabled', $this->isPasswordLoginDisabled(...)),
             new TwigFunction('sw6oidc_storefront_account_sso', $this->getAccountSso(...)),
         ];
@@ -67,6 +68,14 @@ class StorefrontLoginOptionsExtension extends AbstractExtension
             ],
             $this->providerResolver->getVisibleProviders(LoginType::Customer->value, $context->getContext()),
         );
+    }
+
+    /**
+     * Passkeys switched on for this sales channel (account sidebar link).
+     */
+    public function isPasskeyEnabled(SalesChannelContext $context): bool
+    {
+        return $this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId());
     }
 
     public function isPasskeyAvailable(SalesChannelContext $context): bool

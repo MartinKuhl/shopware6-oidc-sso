@@ -12,7 +12,9 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
+use Doctrine\DBAL\Connection;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -57,7 +59,54 @@ class OidcProviderAdminController extends AbstractController
         private readonly OidcLiveLoginTestService $liveLoginTestService,
         private readonly LoggerInterface $logger,
         private readonly TestResultTranslator $translator,
+        private readonly ?Connection $connection = null,
     ) {
+    }
+
+    /**
+     * What the provider form needs from the server: the storefront
+     * post-logout landing URLs (one per storefront domain — the admin's own
+     * origin is usually not one, F-N15) and whether a webhook URL is stored
+     * for this provider (it's write-only, F-N6).
+     */
+    #[Route(
+        path: '/api/_action/sw6oidc/provider/form-context',
+        name: 'api.action.sw6oidc.provider.form-context',
+        defaults: ['_acl' => ['sw6oidc_provider:read']],
+        methods: ['GET'],
+    )]
+    public function formContext(Request $request, Context $context): JsonResponse
+    {
+        $providerId = (string) $request->query->get('providerId', '');
+        $provider = Uuid::isValid($providerId) ? $this->loadProvider($providerId, $context) : null;
+
+        return new JsonResponse([
+            'postLogoutLandingUrls' => $this->postLogoutLandingUrls(),
+            'webhookConfigured' => $provider instanceof Sw6OidcProviderEntity && (string) $provider->getHealthAlertWebhookUrl() !== '',
+        ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function postLogoutLandingUrls(): array
+    {
+        if (!$this->connection instanceof Connection) {
+            return [];
+        }
+
+        $urls = $this->connection->fetchFirstColumn(
+            'SELECT DISTINCT domain.`url` FROM `sales_channel_domain` domain
+             INNER JOIN `sales_channel` channel ON channel.`id` = domain.`sales_channel_id`
+             WHERE channel.`type_id` = :storefront AND channel.`active` = 1
+             ORDER BY domain.`url`',
+            ['storefront' => Uuid::fromHexToBytes(Defaults::SALES_CHANNEL_TYPE_STOREFRONT)],
+        );
+
+        return array_values(array_map(
+            static fn (mixed $url): string => rtrim((string) $url, '/') . '/sw6oidc/postlogout',
+            array_filter($urls, static fn (mixed $url): bool => \is_string($url) && $url !== ''),
+        ));
     }
 
     #[Route(

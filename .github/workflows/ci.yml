@@ -189,3 +189,71 @@ jobs:
       - name: Integration suite
         working-directory: plugin
         run: composer test-integration
+
+  assets:
+    # F-H1: the storefront bundle is committed (dist/), so it must match the
+    # sources; the Administration build must at least succeed. Non-blocking
+    # until it has proven stable.
+    name: Asset build (Administration + Storefront)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      APP_URL: http://localhost:8000
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/shopware
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Shopware with the plugin
+        run: |
+          composer create-project shopware/production:~6.7.0 shop --no-interaction --no-progress --no-scripts
+          cd shop
+          composer config repositories.sw6oidc '{"type": "path", "url": "../plugin", "options": {"symlink": true}}'
+          composer require 'martinkuhl/shopware6-oidc-sso:*' --no-interaction --no-progress --no-scripts
+          {
+            echo "APP_ENV=prod"
+            echo "APP_URL=${APP_URL}"
+            echo "DATABASE_URL=${DATABASE_URL}"
+            echo "APP_SECRET=$(openssl rand -hex 32)"
+          } > .env.local
+          bin/console system:install --basic-setup --create-database --force --no-interaction
+          bin/console plugin:refresh
+          bin/console plugin:install --activate Sw6Oidc
+
+      - name: Build Administration
+        working-directory: shop
+        run: ./bin/build-administration.sh
+
+      - name: Build Storefront
+        working-directory: shop
+        env:
+          SHOPWARE_SKIP_THEME_COMPILE: 'true'
+        run: ./bin/build-storefront.sh
+
+      - name: Committed storefront bundle is up to date
+        working-directory: plugin
+        run: git diff --exit-code -- src/Resources/app/storefront/dist
