@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Oidc;
 
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
 use Psr\Log\LoggerInterface;
@@ -37,7 +38,7 @@ class RpInitiatedLogoutService
         $postLogoutRedirectUri = $override !== null && $override !== '' ? $override : $defaultPostLogoutRedirectUri;
         $state = $this->postLogoutState->create($target);
 
-        if ($this->isAutheliaForwardAuthLogout($endSessionEndpoint)) {
+        if ($provider->getLogoutStyle() === Sw6OidcProviderDefinition::LOGOUT_STYLE_AUTHELIA_FORWARD_AUTH) {
             // `rd` is followed verbatim, so the shared landing gets its state as a query parameter.
             if (str_ends_with((string) parse_url($postLogoutRedirectUri, PHP_URL_PATH), '/sw6oidc/postlogout')) {
                 $postLogoutRedirectUri .= $this->querySeparator($postLogoutRedirectUri) . http_build_query(['state' => $state]);
@@ -48,7 +49,10 @@ class RpInitiatedLogoutService
             ]);
         }
 
+        // client_id always: without an id_token (the admin fallback path)
+        // Keycloak and others need it to accept post_logout_redirect_uri (R3-M3).
         $params = [
+            'client_id' => $provider->getClientId(),
             'post_logout_redirect_uri' => $postLogoutRedirectUri,
             'state' => $state,
         ];
@@ -122,17 +126,6 @@ class RpInitiatedLogoutService
         }
     }
 
-    /**
-     * Authelia's forward-auth logout endpoint path ends in `/logout` (not
-     * `/oauth2/...` or `/oidc/...`) and takes `?rd=<returnUrl>` instead of the
-     * standard OIDC RP-Initiated Logout parameters.
-     */
-    private function isAutheliaForwardAuthLogout(string $endSessionEndpoint): bool
-    {
-        $path = parse_url($endSessionEndpoint, PHP_URL_PATH) ?? '';
-
-        return str_ends_with($path, '/logout') && !str_contains($path, '/oauth2/') && !str_contains($path, '/oidc/');
-    }
 
     private function querySeparator(string $url): string
     {

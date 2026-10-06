@@ -263,6 +263,13 @@ Component.register('sw6oidc-provider-detail', () => {
                 }));
             },
 
+            logoutStyleOptions() {
+                return ['standard', 'authelia_forward_auth'].map((value) => ({
+                    value,
+                    label: this.$t(`sw6oidc.provider.detail.logoutStyle.${value}`),
+                }));
+            },
+
             pkceFlowOptions() {
                 return ['S256', 'plain'].map((value) => ({ value, label: value }));
             },

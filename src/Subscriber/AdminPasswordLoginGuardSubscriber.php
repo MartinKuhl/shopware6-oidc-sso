@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Subscriber;
 
+use MartinKuhl\Sw6Oidc\Service\AdminAuth\PasswordLoginGuardClientRepository;
 use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use Shopware\Core\Framework\Context;
@@ -30,8 +31,6 @@ use Symfony\Component\HttpKernel\KernelEvents;
 class AdminPasswordLoginGuardSubscriber implements EventSubscriberInterface
 {
     public const ERROR_CODE = 'SW6OIDC_PASSWORD_LOGIN_DISABLED';
-
-    private const USER_ACCESS_KEY_PREFIX = 'SWUA';
 
     public function __construct(
         private readonly PasswordLoginPolicy $passwordLoginPolicy,
@@ -92,9 +91,14 @@ class AdminPasswordLoginGuardSubscriber implements EventSubscriberInterface
             return false;
         }
 
-        $clientId = $body['client_id'] ?? $request->getUser();
+        // Like League: trimmed, and an empty client_id falls back to Basic auth (R3-M20).
+        $clientId = \is_string($body['client_id'] ?? null) ? trim($body['client_id']) : '';
 
-        return \is_string($clientId) && str_starts_with(strtoupper($clientId), self::USER_ACCESS_KEY_PREFIX);
+        if ($clientId === '') {
+            $clientId = (string) $request->getUser();
+        }
+
+        return PasswordLoginGuardClientRepository::isUserAccessKey($clientId);
     }
 
     /**

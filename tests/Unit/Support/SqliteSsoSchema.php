@@ -33,10 +33,21 @@ final class SqliteSsoSchema
                 `access_token_endpoint` VARCHAR(1024) NULL,
                 `revocation_endpoint` VARCHAR(1024) NULL,
                 `user_info_endpoint` VARCHAR(1024) NULL,
-                `well_known_config_url` VARCHAR(1024) NULL
+                `well_known_config_url` VARCHAR(1024) NULL,
+                `require_email_verified` INTEGER NOT NULL DEFAULT 1
             )
         SQL);
         $this->connection->executeStatement('CREATE TABLE `user` (`id` BLOB NOT NULL PRIMARY KEY, `active` INTEGER NOT NULL DEFAULT 1)');
+        $this->connection->executeStatement(<<<'SQL'
+            CREATE TABLE `sw6oidc_attribute_mapping` (
+                `id` BLOB NOT NULL PRIMARY KEY,
+                `provider_id` BLOB NOT NULL,
+                `attribute_type` VARCHAR(64) NOT NULL,
+                `attribute_name` VARCHAR(255) NOT NULL,
+                `transform_function` VARCHAR(32) NULL,
+                `transform_params` TEXT NULL
+            )
+        SQL);
         $this->connection->executeStatement(<<<'SQL'
             CREATE TABLE `sw6oidc_user_provider` (
                 `id` BLOB NOT NULL PRIMARY KEY,
@@ -54,6 +65,21 @@ final class SqliteSsoSchema
     {
         $id = Uuid::randomHex();
         $this->connection->insert('sw6oidc_provider', ['id' => Uuid::fromHexToBytes($id), 'client_secret' => 'sw6oidc_v2:stored', ...$columns], ['id' => ParameterType::BINARY]);
+
+        return $id;
+    }
+
+    /**
+     * @param array<string, mixed> $columns
+     */
+    public function attributeMapping(string $providerId, array $columns): string
+    {
+        $id = Uuid::randomHex();
+        $this->connection->insert(
+            'sw6oidc_attribute_mapping',
+            ['id' => Uuid::fromHexToBytes($id), 'provider_id' => Uuid::fromHexToBytes($providerId), ...$columns],
+            ['id' => ParameterType::BINARY, 'provider_id' => ParameterType::BINARY],
+        );
 
         return $id;
     }

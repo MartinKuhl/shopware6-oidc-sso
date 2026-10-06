@@ -157,6 +157,12 @@
                         :label="$tc('sw6oidc.provider.detail.endSessionEndpoint')"
                         :help-text="$tc('sw6oidc.provider.detail.endSessionEndpointHelp')"
                     />
+                    <sw-single-select
+                        v-model:value="provider.logoutStyle"
+                        :label="$t('sw6oidc.provider.detail.logoutStyle.label')"
+                        :help-text="$t('sw6oidc.provider.detail.logoutStyle.help')"
+                        :options="logoutStyleOptions"
+                    />
                     <sw-text-field
                         v-model="provider.postLogoutUrl"
                         :error="providerPostLogoutUrlError"

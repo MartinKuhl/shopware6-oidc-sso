@@ -645,8 +645,9 @@
             </call>
         </service>
 
-        <!-- F-N16: invalid regex_replace patterns are rejected when saved. -->
+        <!-- F-N16/R3-M24/R3-M15: mappings that can't work are rejected when saved. -->
         <service id="MartinKuhl\Sw6Oidc\Subscriber\AttributeMappingWriteGuardSubscriber">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
             <tag name="kernel.event_subscriber" />
         </service>
 
@@ -709,6 +710,15 @@
             <argument type="service" id="router" />
             <argument type="service" id="translator" />
             <tag name="kernel.event_subscriber" />
+        </service>
+
+        <!-- R3-M20: user access keys (SWUA…) are refused at the client repository while password login is off. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\PasswordLoginGuardClientRepository"
+                 decorates="Shopware\Core\Framework\Api\OAuth\ClientRepository">
+            <argument type="service" id=".inner" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument>%env(bool:SW6OIDC_ALLOW_USER_ACCESS_KEYS)%</argument>
         </service>
 
         <!-- The actual admin password-login enforcement: League's password grant asks this repository. -->

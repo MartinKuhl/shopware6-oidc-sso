@@ -158,15 +158,21 @@ class RedisAtomicCache implements AtomicCacheInterface
         }
 
         try {
-            // phpredis returns ['maxmemory-policy' => value] (its stubs say string).
-            /** @var mixed $config */
-            $config = $redis->config('GET', 'maxmemory-policy');
+            $policy = $this->policyFrom($redis->config('GET', 'maxmemory-policy'));
         } catch (\Throwable) {
             return null;
         }
 
         $this->takeLastError($redis);
 
+        return $policy;
+    }
+
+    /**
+     * phpredis returns ['maxmemory-policy' => value] (its stubs say string).
+     */
+    private function policyFrom(mixed $config): ?string
+    {
         return \is_array($config) && \is_string($config['maxmemory-policy'] ?? null) ? $config['maxmemory-policy'] : null;
     }
 

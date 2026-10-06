@@ -17,13 +17,18 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
  * and a redirect is more often an attack or a misconfiguration than a need.
  * A caller that must follow one (avatar CDNs) passes max_redirects per
  * request; every hop is still IP-checked.
+ *
+ * The option is set on the *outer* client: NoPrivateNetworkHttpClient
+ * follows redirects itself with its own default (20) and ignores the inner
+ * client's setting (R3-M2), so a 307 from the token endpoint would re-POST
+ * the code and PKCE verifier to another host.
  */
 final class Sw6OidcHttpClientFactory
 {
     public static function create(HttpClientInterface $inner, bool $allowInsecure): HttpClientInterface
     {
-        $client = $inner->withOptions(['max_redirects' => 0]);
+        $client = $allowInsecure ? $inner : new NoPrivateNetworkHttpClient($inner);
 
-        return $allowInsecure ? $client : new NoPrivateNetworkHttpClient($client);
+        return $client->withOptions(['max_redirects' => 0]);
     }
 }

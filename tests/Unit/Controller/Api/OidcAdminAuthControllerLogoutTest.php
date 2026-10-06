@@ -2,18 +2,19 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Controller\Api;
 
-use MartinKuhl\Sw6Oidc\Tests\Unit\Support\SqliteSessionRegistry;
 use MartinKuhl\Sw6Oidc\Controller\Api\OidcAdminAuthController;
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\BuildsOidcAdminAuthController;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
+use MartinKuhl\Sw6Oidc\Tests\Unit\Support\SqliteSessionRegistry;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
-use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\PlatformRequest;
 use Symfony\Component\HttpFoundation\Request;
@@ -54,6 +55,7 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
         $request->attributes->set(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID, 'jti-current');
         $provider = $this->provider();
         $provider->setEndSessionEndpoint('https://idp.example/oidc/end-session');
+        $provider->setLogoutStyle(Sw6OidcProviderDefinition::LOGOUT_STYLE_STANDARD);
 
         $body = $this->logout($provider, $registry, $request);
 
@@ -73,6 +75,7 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
         $request->attributes->set(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID, 'jti-after-refresh');
         $provider = $this->provider();
         $provider->setEndSessionEndpoint('https://idp.example/oidc/end-session');
+        $provider->setLogoutStyle(Sw6OidcProviderDefinition::LOGOUT_STYLE_STANDARD);
 
         $body = $this->logout($provider, $registry, $request);
 
@@ -90,6 +93,7 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
         $this->store->rememberForAdmin(self::USER_ID, 'a1000000000000000000000000000001');
         $provider = $this->provider();
         $provider->setEndSessionEndpoint('https://idp.example/oidc/end-session');
+        $provider->setLogoutStyle(Sw6OidcProviderDefinition::LOGOUT_STYLE_STANDARD);
 
         $body = $this->logout($provider, $registry, new Request());
 
@@ -150,7 +154,9 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
     {
         $provider = new Sw6OidcProviderEntity();
         $provider->setId('a1000000000000000000000000000001');
+        $provider->setClientId('shop-client');
         $provider->setEndSessionEndpoint('https://auth.example/logout');
+        $provider->setLogoutStyle(Sw6OidcProviderDefinition::LOGOUT_STYLE_AUTHELIA_FORWARD_AUTH);
 
         return $provider;
     }

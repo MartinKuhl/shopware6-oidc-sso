@@ -63,6 +63,7 @@ class Sw6OidcProviderEntity extends Entity
     /** @var list<string>|null */
     protected ?array $base64Claims = null;
     protected bool $revokeSuperadminOnSso = false;
+    protected string $logoutStyle = Sw6OidcProviderDefinition::LOGOUT_STYLE_STANDARD;
     protected int $httpTimeout = 30;
     protected int $jwksCacheTtl = 86400;
     /** 'pass'|'fail'|'warning'|null (never tested) — set only by the live login test */
@@ -660,6 +661,16 @@ class Sw6OidcProviderEntity extends Entity
     public function setRevokeSuperadminOnSso(bool $revokeSuperadminOnSso): void
     {
         $this->revokeSuperadminOnSso = $revokeSuperadminOnSso;
+    }
+
+    public function getLogoutStyle(): string
+    {
+        return $this->logoutStyle;
+    }
+
+    public function setLogoutStyle(string $logoutStyle): void
+    {
+        $this->logoutStyle = $logoutStyle;
     }
 
     /**

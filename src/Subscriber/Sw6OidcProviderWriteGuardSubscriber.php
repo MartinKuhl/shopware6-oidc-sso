@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Subscriber;
 
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
+use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore;
@@ -208,6 +209,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
             $this->validateRedirectUrls($command, $violations[$id]);
             $this->validateClientSecret($command, $current, $violations[$id]);
             $this->validateCustomerLockout($command, $idBytes, $current, $violations[$id]);
+            $this->validateEmailVerification($command, $idBytes, $current, $violations[$id]);
 
             $changes[$id] = $this->policyColumnsAfter($command, $current);
         }
@@ -361,6 +363,41 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
                 true,
                 self::CODE_LOCKOUT_GUARD,
             ));
+        }
+    }
+
+    /**
+     * Requiring a verified email while the email is mapped from another
+     * claim or transformed would refuse every login (R3-M15; the other
+     * direction is checked by AttributeMappingWriteGuardSubscriber).
+     *
+     * @param array<string, mixed>|null $current
+     */
+    private function validateEmailVerification(WriteCommand $command, string $providerIdBytes, ?array $current, ConstraintViolationList $violations): void
+    {
+        $payload = $command->getPayload();
+
+        if ($current === null || !(bool) ($payload['require_email_verified'] ?? false) || (bool) ($current['require_email_verified'] ?? false)) {
+            return;
+        }
+
+        $mappings = $this->connection->fetchAllAssociative(
+            'SELECT `attribute_name`, `transform_function` FROM `sw6oidc_attribute_mapping` WHERE `provider_id` = :id AND `attribute_type` = :type',
+            ['id' => $providerIdBytes, 'type' => Sw6OidcAttributeMappingDefinition::TYPE_EMAIL],
+            ['id' => ParameterType::BINARY],
+        );
+
+        foreach ($mappings as $mapping) {
+            if (!AttributeMappingWriteGuardSubscriber::isVerifiableEmailMapping($mapping['attribute_name'], $mapping['transform_function'])) {
+                $violations->add($this->violation(
+                    'A verified email can only be required while the email is mapped from the "email" claim without a transform.',
+                    'requireEmailVerified',
+                    true,
+                    AttributeMappingWriteGuardSubscriber::CODE_EMAIL_UNVERIFIABLE,
+                ));
+
+                return;
+            }
         }
     }
 
@@ -526,7 +563,8 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     {
         $row = $this->connection->fetchAssociative(
             'SELECT `is_active`, `login_type`, `disable_non_oidc_admin_login`, `disable_non_oidc_customer_login`, `show_admin_link`, `show_customer_link`,
-                    `public_client`, `client_secret`, `access_token_endpoint`, `revocation_endpoint`, `user_info_endpoint`, `well_known_config_url`
+                    `public_client`, `client_secret`, `access_token_endpoint`, `revocation_endpoint`, `user_info_endpoint`, `well_known_config_url`,
+                    `require_email_verified`
              FROM `sw6oidc_provider` WHERE `id` = :id',
             ['id' => $providerIdBytes],
             ['id' => ParameterType::BINARY],

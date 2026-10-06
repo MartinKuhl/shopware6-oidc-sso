@@ -262,6 +262,22 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
         $this->assertNoViolations($this->validate([$this->delete($flagged)]));
     }
 
+    /**
+     * R3-M15: requiring a verified email while the email is transformed
+     * would refuse every login.
+     */
+    public function testVerifiedEmailCanOnlyBeRequiredForAnUntransformedEmailClaim(): void
+    {
+        $id = $this->db->provider(['require_email_verified' => 0]);
+        $this->db->attributeMapping($id, ['attribute_type' => 'email', 'attribute_name' => 'email', 'transform_function' => 'regex_replace', 'transform_params' => '{"pattern":"/x/"}']);
+
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['require_email_verified' => 1])]));
+        self::assertSame('/requireEmailVerified', $violation->getPropertyPath());
+
+        $this->db->connection->executeStatement('UPDATE `sw6oidc_attribute_mapping` SET `transform_function` = NULL');
+        $this->assertNoViolations($this->validate([$this->update($id, ['require_email_verified' => 1])]));
+    }
+
     public function testBreakGlassSkipsTheLockoutChecks(): void
     {
         $this->assertNoViolations($this->validate([$this->update($this->db->provider(), ['disable_non_oidc_admin_login' => 1])], breakGlass: true));

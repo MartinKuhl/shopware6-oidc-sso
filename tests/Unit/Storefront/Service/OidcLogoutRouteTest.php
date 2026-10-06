@@ -2,7 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Storefront\Service;
 
-use MartinKuhl\Sw6Oidc\Tests\Unit\Support\SqliteSessionRegistry;
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
 use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
@@ -13,6 +13,7 @@ use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcLogoutRoute;
 use MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect;
+use MartinKuhl\Sw6Oidc\Tests\Unit\Support\SqliteSessionRegistry;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -165,7 +166,9 @@ final class OidcLogoutRouteTest extends TestCase
     {
         $provider = new Sw6OidcProviderEntity();
         $provider->setId('a1000000000000000000000000000001');
+        $provider->setClientId('shop-client');
         $provider->setEndSessionEndpoint($endSessionEndpoint);
+        $provider->setLogoutStyle(str_ends_with($endSessionEndpoint, '/logout') ? Sw6OidcProviderDefinition::LOGOUT_STYLE_AUTHELIA_FORWARD_AUTH : Sw6OidcProviderDefinition::LOGOUT_STYLE_STANDARD);
 
         return $provider;
     }

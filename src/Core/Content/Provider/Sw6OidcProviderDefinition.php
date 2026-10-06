@@ -40,6 +40,14 @@ class Sw6OidcProviderDefinition extends EntityDefinition
         return self::ENTITY_NAME;
     }
 
+    /** OIDC RP-Initiated Logout: id_token_hint, client_id, post_logout_redirect_uri, state. */
+    public const LOGOUT_STYLE_STANDARD = 'standard';
+
+    /** Authelia's forward-auth portal logout: `?rd=<return URL>` (R3-M3). */
+    public const LOGOUT_STYLE_AUTHELIA_FORWARD_AUTH = 'authelia_forward_auth';
+
+    public const LOGOUT_STYLES = [self::LOGOUT_STYLE_STANDARD, self::LOGOUT_STYLE_AUTHELIA_FORWARD_AUTH];
+
     public function getEntityClass(): string
     {
         return Sw6OidcProviderEntity::class;
@@ -63,6 +71,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             'linkExistingAccounts' => false,
             'frontchannelAdminLogout' => false,
             'revokeSuperadminOnSso' => false,
+            'logoutStyle' => self::LOGOUT_STYLE_STANDARD,
         ];
     }
 
@@ -83,6 +92,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new StringField('access_token_endpoint', 'accessTokenEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('user_info_endpoint', 'userInfoEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('end_session_endpoint', 'endSessionEndpoint', 1024))->addFlags(new ApiAware()),
+            (new StringField('logout_style', 'logoutStyle', 32))->addFlags(new ApiAware(), new Choice(self::LOGOUT_STYLES, true)),
             (new StringField('post_logout_url', 'postLogoutUrl', 1024))->addFlags(new ApiAware()),
             (new StringField('revocation_endpoint', 'revocationEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('jwks_endpoint', 'jwksEndpoint', 1024))->addFlags(new ApiAware()),
