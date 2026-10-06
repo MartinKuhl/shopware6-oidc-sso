@@ -23,9 +23,7 @@ use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
-use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Log\NullLogger;
-use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\DependencyInjection\Container;
 
@@ -41,8 +39,6 @@ trait BuildsOidcAdminAuthController
      */
     private function buildAdminAuthController(array $overrides = []): OidcAdminAuthController
     {
-        $psr17 = new Psr17Factory();
-
         // Convenience: tests hand in the League server, the controller takes the issuer around it.
         $server = $overrides['adminAuthorizationServer'] ?? $this->createMock(AuthorizationServer::class);
         unset($overrides['adminAuthorizationServer']);
@@ -54,7 +50,7 @@ trait BuildsOidcAdminAuthController
             'callbackProcessor' => $this->createMock(OidcCallbackProcessor::class),
             'adminProvisioningService' => $this->createMock(AdminProvisioningService::class),
             'loginNonceService' => new AdminLoginNonceService(new InMemoryAtomicCache()),
-            'tokenIssuer' => new AdminTokenIssuer($server, new PsrHttpFactory($psr17, $psr17, $psr17, $psr17)),
+            'tokenIssuer' => new AdminTokenIssuer($server),
             'administrationBaseUrl' => 'https://shop.example/admin',
             'logger' => new NullLogger(),
             'passkeyConfig' => $this->createMock(PasskeyConfig::class),

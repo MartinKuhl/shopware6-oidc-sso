@@ -4,9 +4,8 @@ namespace MartinKuhl\Sw6Oidc\Service\AdminAuth;
 
 use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Exception\OAuthServerException;
+use Nyholm\Psr7\Factory\Psr17Factory;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
-use Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -15,13 +14,23 @@ use Symfony\Component\HttpFoundation\Response;
  * the plugin's AuthorizationServer and AdminOidcGrant. The one place that
  * builds the grant request, so the client, grant type and scope handling
  * can't drift between callers.
+ *
+ * The grant request is built from scratch, never converted from the client's
+ * HTTP request: the bridge builds a JSON request's parsed body from the raw
+ * content and ignores anything set on the parameter bag (R3-H1), and the
+ * server must not trust a client-sent grant type, client id or scope.
  */
 class AdminTokenIssuer
 {
+    private const CLIENT_ID = 'administration';
+    private const SCOPE = 'write';
+
+    private readonly Psr17Factory $psr17Factory;
+
     public function __construct(
         private readonly AuthorizationServer $adminAuthorizationServer,
-        private readonly PsrHttpFactory $psrHttpFactory,
     ) {
+        $this->psr17Factory = new Psr17Factory();
     }
 
     /**
@@ -29,20 +38,19 @@ class AdminTokenIssuer
      *
      * @throws OAuthServerException
      */
-    public function issue(Request $request, string $userId, bool $stepUp = false): Response
+    public function issue(string $userId, bool $stepUp = false): Response
     {
-        $request->attributes->set(AdminOidcGrant::REQUEST_ATTRIBUTE_USER_ID, $userId);
-        $request->attributes->set(AdminOidcGrant::REQUEST_ATTRIBUTE_STEP_UP, $stepUp);
-        $request->request->set('grant_type', AdminOidcGrant::GRANT_IDENTIFIER);
-        // League validates the client before the grant runs.
-        $request->request->set('client_id', 'administration');
-
-        $psrRequest = $this->psrHttpFactory->createRequest($request)
+        $psrRequest = $this->psr17Factory->createServerRequest('POST', '/api/oauth/token')
+            ->withParsedBody([
+                'grant_type' => AdminOidcGrant::GRANT_IDENTIFIER,
+                'client_id' => self::CLIENT_ID,
+                // The grant replaces the scope of a step-up token itself.
+                'scope' => self::SCOPE,
+            ])
             ->withAttribute(AdminOidcGrant::REQUEST_ATTRIBUTE_USER_ID, $userId)
             ->withAttribute(AdminOidcGrant::REQUEST_ATTRIBUTE_STEP_UP, $stepUp);
-        $psrResponse = $this->psrHttpFactory->createResponse(new Response());
 
-        $tokenResponse = $this->adminAuthorizationServer->respondToAccessTokenRequest($psrRequest, $psrResponse);
+        $tokenResponse = $this->adminAuthorizationServer->respondToAccessTokenRequest($psrRequest, $this->psr17Factory->createResponse());
 
         return (new HttpFoundationFactory())->createResponse($tokenResponse);
     }

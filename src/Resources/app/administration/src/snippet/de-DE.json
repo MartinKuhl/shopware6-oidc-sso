@@ -431,6 +431,7 @@
                 "errorAutoCreateDisabled": "Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.",
                 "passkeyButton": "Login mit Passkey",
                 "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
+                "passkeyDifferentUser": "Dieser Passkey gehört zu einem anderen Konto. Verwenden Sie einen Passkey des Kontos, das angemeldet war.",
                 "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.",
                 "errorAccessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung an der Administration.",
                 "errorLinkRequired": "Es gibt bereits ein Konto mit dieser E-Mail-Adresse. Bitte melden Sie sich mit Ihrem Passwort an und verbinden Sie Single Sign-on in Ihrem Profil.",

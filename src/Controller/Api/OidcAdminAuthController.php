@@ -351,7 +351,7 @@ class OidcAdminAuthController extends AbstractController
         $source = $context->getSource();
 
         if (!$source instanceof AdminApiSource || $source->getUserId() === null) {
-            return $this->json(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED);
+            return $this->json(['error' => 'unauthorized'], Response::HTTP_FORBIDDEN);
         }
 
         if (!UserVerifiedScope::isPresent($request)) {
@@ -419,7 +419,7 @@ class OidcAdminAuthController extends AbstractController
         ]);
 
         try {
-            $response = $this->tokenIssuer->issue($request, $userId);
+            $response = $this->tokenIssuer->issue($userId);
         } catch (\Throwable $exception) {
             return PublicError::response($this->logger, 'sw6oidc: admin token exchange failed.', $exception, 'invalid_grant', Response::HTTP_BAD_REQUEST, ['userId' => $userId]);
         }

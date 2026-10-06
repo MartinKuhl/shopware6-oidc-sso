@@ -512,16 +512,6 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding" />
         </service>
 
-        <!--
-            PSR-7 bridge for the in-process token-request round trip.
-            Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory is NOT defined
-            here — Symfony's FrameworkBundle auto-registers it (and
-            HttpFoundationFactory) once nyholm/psr7 + symfony/psr-http-message-bridge
-            are installed, exactly as the reference plugin relies on without
-            defining it itself. Redefining the bare class id ourselves would
-            risk the same collision called out above for AuthorizationServer.
-        -->
-
         <!-- Passkey (WebAuthn) -->
         <service id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository">
             <argument type="service" id="sw6oidc_passkey_credential.repository" />
@@ -575,7 +565,6 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminAuthorizationServer" />
-            <argument type="service" id="Symfony\Bridge\PsrHttpMessage\Factory\PsrHttpFactory" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\StepUpService">

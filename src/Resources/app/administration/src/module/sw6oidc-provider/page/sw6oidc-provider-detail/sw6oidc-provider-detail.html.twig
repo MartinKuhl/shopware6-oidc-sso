@@ -789,7 +789,7 @@
                         <span>{{ $tc(`sw6oidc.provider.detail.atomicStore.${diagnostics.infrastructure.atomicStore}`) }}</span>
                     </li>
                 </ul>
-                <template v-if="diagnostics.infrastructure">
+                <template v-if="diagnostics?.infrastructure">
                     <mt-banner
                         v-for="warning in diagnostics.infrastructure.warnings"
                         :key="warning"

@@ -66,14 +66,16 @@
             :is-loading="sw6oidcPasskeyPending"
             @click="sw6oidcStartPasskeyLogin"
         >
-            {{ $t('sw6oidc.login.passkeyButton') }}
+            {{ $t('sw-login.sw6oidc.login.passkeyButton') }}
         </mt-button>
 
         <div
             v-if="sw6oidcPasskeyError"
             class="sw6oidc-inactivity-login__error"
         >
-            {{ $t('sw6oidc.login.passkeyError') }}
+            {{ sw6oidcPasskeyError === 'different_user'
+                ? $t('sw-login.sw6oidc.login.passkeyDifferentUser')
+                : $t('sw-login.sw6oidc.login.passkeyError') }}
         </div>
 
         <template #modal-footer>

@@ -5,7 +5,9 @@
  * Paths are relative to the API base, e.g. 'sw6oidc/admin/step-up/methods'.
  *
  * `anonymous: true` omits the Authorization header — for the pre-auth login
- * screen, where there is no token yet.
+ * screen, where there is no token yet — and keeps the request away from
+ * core's token-refresh interceptor: a 401 on an anonymous call would
+ * otherwise wait for a refresh that never comes, and never settle (R3-F5).
  */
 const { ApiService } = Shopware.Classes;
 
@@ -17,14 +19,25 @@ export default class Sw6oidcApiService extends ApiService {
 
     get(path, { anonymous = false, params = {} } = {}) {
         return this.httpClient
-            .get(path, { params, headers: this.sw6oidcHeaders(anonymous) })
+            .get(path, { params, ...this.sw6oidcConfig(anonymous) })
             .then(ApiService.handleResponse);
     }
 
     post(path, data = {}, { anonymous = false } = {}) {
         return this.httpClient
-            .post(path, data, { headers: this.sw6oidcHeaders(anonymous) })
+            .post(path, data, this.sw6oidcConfig(anonymous))
             .then(ApiService.handleResponse);
+    }
+
+    sw6oidcConfig(anonymous) {
+        const config = { headers: this.sw6oidcHeaders(anonymous) };
+
+        if (anonymous) {
+            // core's refreshTokenInterceptor never refreshes a request marked as already retried
+            config._tokenRefreshRetry = true;
+        }
+
+        return config;
     }
 
     sw6oidcHeaders(anonymous) {

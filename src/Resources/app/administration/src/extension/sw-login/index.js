@@ -114,8 +114,10 @@ Component.override('sw-login-login', {
 
             try {
                 const me = await this.sw6oidcApiService.get('_info/me');
+                // `Accept: application/json` gives `{data: {username}}`; JSON:API nests it in `attributes` (R3-F4).
+                const username = me?.data?.username ?? me?.data?.attributes?.username;
 
-                return me?.data?.attributes?.username === expectedUsername || me?.username === expectedUsername;
+                return username === expectedUsername;
             } catch {
                 return false;
             }
@@ -217,9 +219,8 @@ Component.override('sw-login-login', {
             const rememberMe = consumeRememberMe();
 
             try {
+                // Grant type, client and scope are fixed on the server (R3-H1).
                 const tokenData = await this.sw6oidcApiService.post('sw6oidc/admin/token', {
-                    grant_type: 'sw6oidc_admin',
-                    client_id: 'administration',
                     sw6oidc_nonce: nonce,
                 }, { anonymous: true });
 

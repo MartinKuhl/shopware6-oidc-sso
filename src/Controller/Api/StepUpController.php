@@ -84,7 +84,7 @@ class StepUpController extends AbstractController
             return new JsonResponse(['error' => 'invalid_grant'], Response::HTTP_BAD_REQUEST);
         }
 
-        return $this->issue($request, $userId);
+        return $this->issue($userId);
     }
 
     #[Route(path: '/api/sw6oidc/admin/step-up/passkey/options', name: 'api.action.sw6oidc.admin.step-up.passkey-options', methods: ['POST'])]
@@ -123,10 +123,10 @@ class StepUpController extends AbstractController
         } catch (\Throwable $exception) {
             $this->rateLimiter->recordFailure($this->failureScope($userId), $request->getClientIp());
 
-            return PublicError::response($this->logger, 'sw6oidc: passkey step-up failed.', $exception, 'step_up_failed', Response::HTTP_UNAUTHORIZED, ['userId' => $userId]);
+            return PublicError::response($this->logger, 'sw6oidc: passkey step-up failed.', $exception, 'step_up_failed', Response::HTTP_FORBIDDEN, ['userId' => $userId]);
         }
 
-        return $this->issue($request, $userId);
+        return $this->issue($userId);
     }
 
     /**
@@ -137,10 +137,10 @@ class StepUpController extends AbstractController
         return Sw6OidcRateLimiter::SCOPE_REDEEM . ':step_up:' . $userId;
     }
 
-    private function issue(Request $request, string $userId): Response
+    private function issue(string $userId): Response
     {
         try {
-            $response = $this->tokenIssuer->issue($request, $userId, true);
+            $response = $this->tokenIssuer->issue($userId, true);
         } catch (\Throwable $exception) {
             return PublicError::response(
                 $this->logger,

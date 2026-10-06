@@ -221,13 +221,20 @@ class PasskeyAdminController extends AbstractController
                 throw new \RuntimeException('This passkey is not registered to an Administration user.');
             }
 
-            $this->assertExpectedUser($request, $resolved['userId']);
+            if (!$this->isExpectedUser($request, $resolved['userId'])) {
+                $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp());
+                $this->logger->warning('sw6oidc: admin passkey login refused - the passkey belongs to a different account than the session being resumed.');
 
-            $httpResponse = $this->tokenIssuer->issue($request, $resolved['userId']);
+                // 403, never 401: a 401 on an anonymous call would reach the
+                // Administration's token-refresh interceptor and never settle (R3-F5).
+                return new JsonResponse(['error' => 'different_user'], Response::HTTP_FORBIDDEN);
+            }
+
+            $httpResponse = $this->tokenIssuer->issue($resolved['userId']);
         } catch (\Throwable $exception) {
             $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp());
 
-            return PublicError::response($this->logger, 'sw6oidc: admin passkey login failed.', $exception, 'passkey_login_failed', Response::HTTP_UNAUTHORIZED);
+            return PublicError::response($this->logger, 'sw6oidc: admin passkey login failed.', $exception, 'passkey_login_failed', Response::HTTP_BAD_REQUEST);
         }
 
         $jti = $this->accessTokenJti($httpResponse);
@@ -245,19 +252,17 @@ class PasskeyAdminController extends AbstractController
      * session: when the modal names the expected user, an assertion by any
      * other account is refused.
      */
-    private function assertExpectedUser(Request $request, string $userId): void
+    private function isExpectedUser(Request $request, string $userId): bool
     {
         $expected = $request->request->get('expectedUsername');
 
         if (!\is_string($expected) || $expected === '') {
-            return;
+            return true;
         }
 
         $user = $this->userRepository->search(new Criteria([$userId]), Context::createDefaultContext())->first();
 
-        if (!$user instanceof UserEntity || $user->getUsername() !== $expected) {
-            throw new \RuntimeException('The passkey belongs to a different account than the session being resumed.');
-        }
+        return $user instanceof UserEntity && $user->getUsername() === $expected;
     }
 
     private function accessTokenJti(Response $response): ?string

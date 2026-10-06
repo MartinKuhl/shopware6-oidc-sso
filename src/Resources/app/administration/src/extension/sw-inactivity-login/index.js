@@ -65,8 +65,8 @@ Component.override('sw-inactivity-login', {
 
         sw6oidcSsoButtonLabel(provider) {
             return provider.label
-                ? this.$t('sw6oidc.login.ssoButtonWithProvider', { name: provider.label })
-                : this.$t('sw6oidc.login.ssoButton');
+                ? this.$t('sw-login.sw6oidc.login.ssoButtonWithProvider', { name: provider.label })
+                : this.$t('sw-login.sw6oidc.login.ssoButton');
         },
 
         sw6oidcStartSsoLogin(providerId) {
@@ -115,8 +115,10 @@ Component.override('sw-inactivity-login', {
 
                 // Core's own success path: route back, reload, wake other tabs.
                 this.handleLoginSuccess();
-            } catch {
-                this.sw6oidcPasskeyError = 'login_failed';
+            } catch (error) {
+                this.sw6oidcPasskeyError = Sw6oidcApiService.errorCode(error) === 'different_user'
+                    ? 'different_user'
+                    : 'login_failed';
             } finally {
                 this.sw6oidcPasskeyPending = false;
             }
