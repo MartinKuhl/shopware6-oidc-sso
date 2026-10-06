@@ -118,9 +118,10 @@ Two flows run through the layers: **Storefront/customer** and **Administration/a
 | `sw6oidc_attribute_mapping` | Per-provider claim → Shopware field, with optional value transform |
 | `sw6oidc_role_mapping` | Per-provider OIDC group → ACL role / customer group / superadmin grant |
 | `sw6oidc_access_control_rule` | Per-provider claim rules that must all pass before a login is accepted |
-| `sw6oidc_user_provider` | Permanent binding: which provider and IdP subject (`issuer`, `sub`) own which account; unique per provider, user type and `sub` |
+| `sw6oidc_user_provider` | Permanent binding: which provider and IdP identity (`issuer`, `sub`, compared byte-exactly) own which account, scoped to a sales channel for channel-bound customers; unique per provider, user type, issuer, `sub` and scope. Written only by the plugin |
 | `sw6oidc_passkey_credential` | One row per registered WebAuthn credential (deduplicated by credential-id hash, `disabled_at` after a counter regression) |
 | `sw6oidc_session_activity` | Audit log: one row per OIDC/Passkey login, with logout time and reason |
+| `sw6oidc_managed_acl_role` | The Administration roles role sync granted (and may take away again) |
 | `sw6oidc_session` | Session registry: which local session (context token / access-token `jti`) each OIDC login created, keyed by provider + `sub`/`sid`; session keys and IdP tokens encrypted |
 | `sw6oidc_one_time_token` | Atomic one-time tokens when Redis isn't used: flow state, nonces, ceremonies, logout contexts, replay markers (keys hashed, values encrypted) |
 | `sw6oidc_node_heartbeat` | Hostnames of app servers that recently handled SSO, for the multi-node warning |
@@ -236,8 +237,11 @@ A user registers a device credential once, while logged in, and then signs in wi
 
 - User verification is **required** for registration and login.
 - Login is usernameless (discoverable credentials) on both the Storefront and the Administration; the Administration never lists an account's credentials to anonymous callers.
-- The relying party comes from configuration, never from the `Host` header: the Administration uses the origin of `APP_URL`, the Storefront the current sales channel's domains. The RP ID is that host unless `passkeyRpId` is set. Allowed origins are checked exactly, without subdomains.
-- A registration completes only for the account that started it. Customers must have logged in within the last 10 minutes to register (`/sw6oidc/reauth` sends them through a fresh login); admins need a `user-verified` token.
+- The relying party comes from configuration, never from the `Host` header: the Administration uses the origin of `APP_URL`, the Storefront the current sales channel's domains. The RP ID is that host unless `passkeyRpIdAdmin` (Administration) or `passkeyRpId` (per sales channel) is set; both must be the host or a parent domain and are checked on save. Allowed origins are checked exactly, without subdomains.
+- A login ceremony only completes for the purpose it was started for (Storefront channel, Administration login, one admin's step-up).
+- A registration completes only for the account that started it. Customers need a freshly authenticated *browser session* (a login of any kind, or a verified re-authentication, within 10 minutes; `/sw6oidc/reauth` sends them through one); admins need a `user-verified` token.
+- Deleting a passkey ends the sessions it logged in: exactly those Store API contexts for a customer, all sessions for an admin.
+- Credential rows are written by the plugin only; the Admin API can rename or delete them, nothing else.
 - A signature counter that goes backwards disables the credential.
 - Every passkey endpoint answers 404 while passkeys are disabled for that user type.
 - Admin passkey login uses `AdminOidcGrant` directly, because it's a same-page AJAX ceremony and needs no nonce.
@@ -258,11 +262,13 @@ Each mapping can apply a **transform**:
 
 A failing transform passes the raw value through and logs a warning, except on `email` and `username`, where it fails the login. Birthdates are only taken in strict `Y-m-d` form between 1900 and today.
 
-**Group mapping** resolves the groups claim to an ACL role or customer group. The first match by `sort_order` wins, then the provider default applies.
+**Group mapping** resolves the groups claim to ACL roles (every matching row) or a customer group (the first match by `sort_order`). The provider defaults apply only when an account is created.
 
 **Superadmin** is opt-in behind two gates: the provider flag `allow_superadmin_group_mapping` **and** an explicit `superadmin` mapping row. A stray row alone never grants it.
 
-**Sync-on-SSO** re-applies claims on every login. Five independent per-provider toggles control it (customer profile, address, group; admin profile, role). Profile and address sync are partial updates: unmapped values are left alone and never reset. Admin role sync **replaces** the user's ACL roles with the resolved role, so a role removed at the IdP is removed in the shop; when nothing resolves, roles are left untouched. Superadmin is only revoked with the opt-in `revoke_superadmin_on_sso`, and never from the last active superadmin.
+**Sync-on-SSO** re-applies claims on every login. Five independent per-provider toggles control it (customer profile, address, group; admin profile, role). Profile and address sync are partial updates: unmapped values are left alone and never reset. Admin role sync adds every mapped role and removes the roles it granted earlier that no group grants any more; roles granted by hand in Shopware are never touched. Customer group sync only changes the group when a mapping matches. Superadmin is only revoked with the opt-in `revoke_superadmin_on_sso` (also when no group resolves), and never from the last active superadmin.
+
+First logins create and bind the account in one transaction; two concurrent first logins end up in the same account. JIT customers follow Shopware's "bind customers to sales channel" rule, and a customer created with placeholder addresses is sent to the address form before checkout.
 
 **Use case:** onboarding happens entirely on the IdP side. Add someone to "Engineering" there, and their first login creates a Shopware admin with the right role.
 
@@ -270,17 +276,19 @@ A failing transform passes the raw value through and logs a warning, except on `
 
 `IdentityResolver` decides which account an IdP identity logs into, for customers and admins alike. Accounts are bound to the provider **and the IdP subject** (`sw6oidc_user_provider.issuer`/`sub`); the email claim alone is never proof of ownership.
 
-1. With `require_email_verified` (default on), the login is refused unless `email_verified` is `true` and the mapped email is the standard `email` claim.
-2. An account bound to this provider and subject logs in.
-3. A legacy binding (from before subjects were stored) of the email-matched account to this provider is upgraded with the subject, only with a verified email.
-4. An unbound account with the same email is linked only when the provider has `link_existing_accounts` on (default off), the email is verified and the account is not a superadmin. Otherwise the login is refused with "connect explicitly".
+1. With `require_email_verified` (default on), the login is refused unless `email_verified` is `true` and the mapped email is the standard `email` claim. A transformed or custom-claim email mapping is refused at save time while verification is required.
+2. An account bound to this provider, issuer and subject logs in (in the sales channel's scope first for channel-bound customers, then globally).
+3. A legacy binding (from before subjects were stored) of the email-matched account to this provider is upgraded with the subject, only with a verified email and never for an Administration user.
+4. An unbound account with the same email is linked only when the provider has `link_existing_accounts` on (default off), the email is verified and the account is not an Administration user. Otherwise the login is refused with "connect explicitly".
 5. No account: the caller may JIT-create one.
 
 A binding to another provider fails with `ProviderMismatchException`; the same provider with a different subject is refused too. Concurrent first logins don't fail on the unique keys.
 
-**"Connect SSO"** is the explicit way to bind an existing account: a logged-in customer starts it from the account profile (`POST /sw6oidc/link`), an admin from their own profile with a `user-verified` token (`/api/sw6oidc/admin/link/start`). The callback binds the IdP identity to exactly that account. It is the only way to bind a superadmin.
+**"Connect SSO"** is the explicit way to bind an existing account: a logged-in customer starts it from the account profile (`POST /sw6oidc/link`, needs a freshly authenticated browser session), an admin from their own profile with a `user-verified` token (`/api/sw6oidc/admin/link/start`). The callback binds the IdP identity to exactly that account and dispatches `AccountSsoLinkedEvent` (Flow Builder trigger `sw6oidc.account.sso_linked`, mail-aware). It is the only way to bind an Administration user that already exists.
 
-Admins can unlink a binding from the user or customer detail page.
+Admins can unlink a binding from the user or customer detail page; unlinking an admin needs a `user-verified` token and can't remove the last way into an SSO-only Administration.
+
+**Changing a provider's issuer** with bound accounts needs a superadmin's decision: keep them connected (same IdP under a new URL) or disconnect them (another tenant; its users never log into these accounts).
 
 ### Access control rules
 
@@ -307,15 +315,15 @@ Per-provider rules on flattened claims. All rules must pass, and they're evaluat
 
 `disable_non_oidc_{admin,customer}_login` turns off password login for that user type:
 
-- **Admin:** a decorator of core's OAuth `UserRepository` treats every username/password pair as invalid, however the token request is encoded. The token-request listener adds a 403 in front, refuses undeterminable grant types, and also blocks `client_credentials` with user access keys unless `SW6OIDC_ALLOW_USER_ACCESS_KEYS=1`.
+- **Admin:** a decorator of core's OAuth `UserRepository` treats every username/password pair as invalid, and a decorator of core's `ClientRepository` refuses user access keys (unless `SW6OIDC_ALLOW_USER_ACCESS_KEYS=1`), however the token request is encoded. The token-request listener adds a 403 in front and refuses undeterminable grant types.
 - **Customer:** Storefront and Store API password login, registration and double-opt-in confirmation are refused; guest checkout stays allowed. The login and register forms are hidden.
 
-Guards on the provider write:
+Guards, checked on the *result* of every write that can change it (provider save or delete, user deactivation or deletion, admin unlink, issuer change):
 
-- The flag can only be switched on once at least one account of that type is bound to this provider, and only while the login page still shows an SSO button.
-- For admins, switching it on while other active admins have no SSO binding needs an explicit confirmation in the Administration (CLI writes count as confirmed).
-- While it is on, the last admin able to log in via SSO, or the last provider they use, can't be deactivated, re-scoped or deleted.
-- Switching it on ends the sessions of accounts without any binding (they can only be password sessions).
+- While Administration password login is off, at least one active admin stays bound to an active provider that serves admin logins — whichever field changes, re-activation and re-scoping included.
+- The login page must keep showing an SSO button; customer password login needs at least one bound customer of the provider.
+- Turning admin password login off while other active admins have no SSO binding needs the acting admin's confirmation with a fresh re-authentication (CLI writes count as confirmed).
+- Turning it off ends the sessions of accounts without any binding (they can only be password sessions), from the message queue; guest checkouts are kept.
 
 The break-glass override is `SW6OIDC_ALLOW_PASSWORD_LOGIN=1`.
 
@@ -323,7 +331,7 @@ The break-glass override is `SW6OIDC_ALLOW_PASSWORD_LOGIN=1`.
 
 **Shop → IdP (RP-initiated).** Storefront and Admin logout redirect to the IdP's `end_session_endpoint` and revoke the login's IdP access and refresh tokens (RFC 7009, fire-and-forget). The Store API logout returns the IdP logout URL as `redirectUrl`. Admin logout ends exactly the logging-out session's registry entry; without an exact match nothing is removed from the registry.
 
-- Authelia's forward-auth logout is special-cased.
+- The provider's **logout style** decides the format: standard OIDC RP-Initiated Logout (`client_id`, `id_token_hint`, `post_logout_redirect_uri`, `state`) or Authelia's portal logout (`?rd=`).
 - For IdPs that allow only one post-logout URI, `/sw6oidc/postlogout` routes customers and admins using an HMAC-signed `state`.
 
 **IdP → shop.**
@@ -437,15 +445,11 @@ Shopware admin access tokens are stateless JWTs, and revoking one is a no-op in 
 
 ### The session registry only knows what it saw
 
-IdP-initiated logout only finds sessions of OIDC logins recorded in `sw6oidc_session`. Passkey logins are never registered, because there's no IdP session. Entries live as long as the session can be used (admins: the refresh-token TTL; customers: 30 days, an upper bound for sliding context tokens) and are pruned daily. Sessions created before the registry moved to the database aren't known.
-
-### Passkey session-kill has a limited window
-
-Deleting the passkey that authenticates the current admin session can force that session out. `AdminPasskeyLoginTokenTracker` implements this by keying on the access token's `jti`. After a silent refresh, a new `jti` exists that the tracker never learns about, and the guarantee stops applying (the window is the access-token TTL, `shopware.api.access_token_ttl`). This is an accepted scope limit, so don't advertise it as "delete a passkey to kill every session".
+IdP-initiated logout only finds sessions of OIDC logins recorded in `sw6oidc_session`. Passkey logins are never registered, because there's no IdP session. Entries live as long as core still has the session (admins: an unexpired refresh token; customers: a context used within `shopware.api.store.context_lifetime`), at most 90 days, and are pruned daily. Sessions created before the registry moved to the database aren't known.
 
 ### Passkeys are bound to one domain
 
-A passkey is cryptographically bound to one Relying Party ID, which is effectively the domain. Changing `passkeyRpId`, `APP_URL` (Administration) or the sales channel's domains (Storefront) can invalidate registered passkeys, and users must register again. Origins are pinned exactly: a domain that isn't the RP ID or below it is dropped for that ceremony.
+A passkey is cryptographically bound to one Relying Party ID, which is effectively the domain. Changing `passkeyRpId`/`passkeyRpIdAdmin`, `APP_URL` (Administration) or the sales channel's domains (Storefront) can invalidate registered passkeys, and users must register again. Origins are pinned exactly: a domain that isn't the RP ID or below it is dropped for that ceremony.
 
 ### webauthn-lib 5.x: you own credential lookup and persistence
 

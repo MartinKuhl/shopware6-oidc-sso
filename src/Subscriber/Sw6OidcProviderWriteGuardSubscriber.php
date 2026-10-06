@@ -110,6 +110,8 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         'disable_non_oidc_customer_login' => 0,
         'show_admin_link' => 1,
         'show_customer_link' => 1,
+        // Bindings only count for the provider's current issuer (R3-M9).
+        'issuer' => null,
     ];
 
     /** login type => [flag column, flag property] */
@@ -194,8 +196,8 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         $commandsById = [];
         /** @var array<string, ConstraintViolationList> $violations */
         $violations = [];
-        /** @var list<string> $disconnected providers whose bindings stop matching (issuer change) */
-        $disconnected = [];
+        /** @var list<string> $rebinding providers whose bindings move to the new issuer with this write */
+        $rebinding = [];
 
         foreach ($commands as $command) {
             $idBytes = $command->getPrimaryKey()['id'] ?? null;
@@ -226,14 +228,14 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
             $this->validateCustomerLockout($command, $idBytes, $current, $violations[$id]);
             $this->validateEmailVerification($command, $idBytes, $current, $violations[$id]);
 
-            if ($this->validateIssuerChange($command, $id, $current, $violations[$id], $event->getContext()) === IssuerChangeConfirmationStore::DECISION_DISCONNECT) {
-                $disconnected[] = $id;
+            if ($this->validateIssuerChange($command, $id, $current, $violations[$id], $event->getContext()) === IssuerChangeConfirmationStore::DECISION_REBIND) {
+                $rebinding[] = $id;
             }
 
             $changes[$id] = $this->policyColumnsAfter($command, $current);
         }
 
-        $this->validateSsoOnlyMode($changes, $commandsById, $violations, $event->getContext(), $disconnected);
+        $this->validateSsoOnlyMode($changes, $commandsById, $violations, $event->getContext(), $rebinding);
 
         foreach ($violations as $id => $list) {
             if ($list->count() > 0) {
@@ -530,9 +532,9 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
      * @param array<string, array<string, mixed>|null> $changes
      * @param array<string, WriteCommand>              $commandsById
      * @param array<string, ConstraintViolationList>   $violations
-     * @param list<string>                             $disconnected providers whose bindings stop counting
+     * @param list<string>                             $rebinding providers whose bindings move to the new issuer
      */
-    private function validateSsoOnlyMode(array $changes, array $commandsById, array $violations, Context $context, array $disconnected = []): void
+    private function validateSsoOnlyMode(array $changes, array $commandsById, array $violations, Context $context, array $rebinding = []): void
     {
         if ($changes === []) {
             return;
@@ -558,7 +560,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
             }
 
             if ($userType === LoginType::Admin->value) {
-                if (!$this->invariant->adminAccessPossible($changes, disconnectedProviderIds: $disconnected) && $this->invariant->holds()) {
+                if (!$this->invariant->adminAccessPossible($changes, rebindProviderIds: $rebinding) && $this->invariant->holds()) {
                     $this->addToAll($violations, $affected, $this->violation(
                         'Administration password login is disabled and no active admin could log in through an active provider after this change.',
                         $property,

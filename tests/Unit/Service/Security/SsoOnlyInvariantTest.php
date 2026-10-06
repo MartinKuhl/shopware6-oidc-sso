@@ -112,6 +112,23 @@ final class SsoOnlyInvariantTest extends TestCase
         self::assertSame([], $this->invariant->unboundActiveAdminIds([$inactive => ['is_active' => 1]]));
     }
 
+    /**
+     * R3-M9: bindings left on a previous issuer can't log in, so they don't
+     * keep SSO-only mode "safe" — also on later writes.
+     */
+    public function testOnlyBindingsOfTheCurrentIssuerCount(): void
+    {
+        $provider = $this->db->provider(['disable_non_oidc_admin_login' => 1, 'issuer' => 'https://new-tenant.example']);
+        $this->db->bind($provider, $this->db->admin(), issuer: 'https://old-tenant.example');
+
+        self::assertFalse($this->invariant->adminAccessPossible());
+        self::assertTrue($this->invariant->adminAccessPossible(rebindProviderIds: [$provider]));
+
+        $this->db->bind($provider, $this->db->admin(), issuer: 'https://new-tenant.example');
+
+        self::assertTrue($this->invariant->adminAccessPossible());
+    }
+
     public function testLoginButtonVisibility(): void
     {
         $provider = $this->db->provider(['show_admin_link' => 0]);

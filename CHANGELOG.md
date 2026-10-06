@@ -6,7 +6,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Breaking changes
+### Breaking changes (code review, revision 4)
+
+- **Passkey credentials and account bindings are written by the plugin only.** The Admin and Sync API can no longer create them, re-point them at another account, or delete bindings (passkeys can still be renamed and deleted).
+- **Trust-relevant provider settings need a superadmin**: endpoints, issuer, client ID, scope, public client, login type, claim handling, account linking, admin auto-creation, the default and superadmin role mappings, and the email/username mappings and access rules of providers serving the Administration. Every change is audit-logged. Creating a provider needs a superadmin too.
+- **One SSO-only rule for every write.** Re-activating or re-scoping a provider, deactivating or deleting admins, unlinking an admin and changing an issuer are all checked against "an active admin can still log in through SSO". Unlinking an admin, confirming a lockout and confirming an issuer change need a fresh re-authentication.
+- **Bindings include the issuer and compare `sub` byte-exactly.** Changing a provider's issuer with bound accounts asks whether to keep them connected or disconnect them. Customers bound to a sales channel get one binding per channel.
+- **Role sync is multi-valued and only touches roles it granted** (`sw6oidc_managed_acl_role`, seeded on update). Provider defaults apply to new accounts only. Admins are never linked to an existing account by email, nor upgraded from a legacy binding.
+- **Storefront "Connect SSO" and passkey registration need a freshly authenticated browser session** (any login, or a verified re-authentication, within 10 minutes).
+- **Logout style is an explicit provider setting** (`standard` or Authelia's `?rd=` portal logout) instead of a guess from the URL. Existing Authelia-shaped endpoints keep the portal logout; Keycloak, Auth0, Okta and Entra ID endpoints switch to the standard logout. The standard logout always sends `client_id`.
+- **`passkeyRpId` is per sales channel; the Administration has its own `passkeyRpIdAdmin`.** Both are validated on save.
+- **Public clients need no client secret** (the column is nullable); confidential clients must have one, and a cloned provider never inherits it.
+- **While a verified email is required, the email mapping must be the untransformed `email` claim** (refused at save time).
+- Admin token, passkey and step-up endpoints build the OAuth request on the server; the client sends only the nonce or assertion. Anonymous endpoints never answer 401.
+
+### Fixed (code review, revision 4)
+
+- Admin passkey login, the inactivity passkey and both step-up methods failed with `unsupported_grant_type`.
+- The provider detail page crashed on every open; role privileges never registered in the role editor.
+- Deleting one Storefront passkey could delete a different one; deleting a passkey now ends the sessions it logged in.
+- IdP back-channel logout missed admins active for longer than the refresh-token TTL, treated Redis error replies as replays, and could not be retried after a failure.
+- Anonymous logout tokens with random `kid`s forced unlimited JWKS fetches; redirects were followed despite `max_redirects: 0`.
+- First-login races left duplicate accounts; JIT customers ignored the sales-channel binding; placeholder addresses could reach orders.
+- One-time tokens are pruned hourly in batches; password-session revocation skips guests and runs from the message queue.
+### Breaking changes (code review, revisions 1-3)
 
 - **Accounts are bound to the IdP subject, not the email address.** Logins resolve the account by `(provider, iss, sub)`. Existing email-only bindings get their `sub` filled in on the next login with a verified email. An existing, unbound account is only linked when the new provider option **Link existing accounts by verified email** is on (default off; never for superadmins); otherwise the user connects SSO from the customer account or the admin profile (**Connect SSO**).
 - **`email_verified` is required** by default (`require_email_verified`, per provider). A missing claim counts as unverified.

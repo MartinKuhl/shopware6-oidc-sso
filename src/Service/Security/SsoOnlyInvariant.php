@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Security;
 
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
 use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
@@ -13,6 +14,10 @@ use Shopware\Core\Framework\Uuid\Uuid;
  * asks this class about its result, not about its payload: provider inserts,
  * updates and deletes (whatever field they touch: the flag, `is_active` or
  * `login_type`), user deactivation and deletion, and unlinking a binding.
+ *
+ * A binding only counts while it belongs to the provider's current issuer
+ * (R3-M9): after an issuer change without re-binding, those accounts can't
+ * log in through SSO any more.
  *
  * Queries run on raw tables because the callers run inside the DAL write
  * (PreWriteValidationEvent). All ids are hex.
@@ -81,33 +86,37 @@ class SsoOnlyInvariant
      * @param array<string, array<string, mixed>|null> $providerChanges
      * @param list<string>                             $removedUserIds    admins about to be deleted or deactivated
      * @param list<string>                             $unboundUserIds    admins about to lose their binding
-     * @param list<string>                             $disconnectedProviderIds providers whose bindings stop counting
-     *                                                                          (issuer change without re-binding, R3-M9)
+     * @param list<string>                             $rebindProviderIds providers whose bindings move to the new
+     *                                                                    issuer with this write (count whatever their issuer)
      */
-    public function adminAccessPossible(array $providerChanges = [], array $removedUserIds = [], array $unboundUserIds = [], array $disconnectedProviderIds = []): bool
+    public function adminAccessPossible(array $providerChanges = [], array $removedUserIds = [], array $unboundUserIds = [], array $rebindProviderIds = []): bool
     {
-        $providerIds = array_values(array_diff(array_keys($this->servingProviders('admin', $providerChanges)), $disconnectedProviderIds));
+        $excludedUserIds = $this->bytes(array_values(array_unique([...$removedUserIds, ...$unboundUserIds])));
 
-        if ($providerIds === []) {
-            return false;
+        foreach ($this->servingProviders('admin', $providerChanges) as $id => $provider) {
+            $issuer = trim((string) ($provider['issuer'] ?? ''));
+            // Legacy providers without an issuer, and a re-bind in progress, match any binding.
+            $issuerFilter = $issuer !== '' && !\in_array($id, $rebindProviderIds, true) ? ' AND binding.`issuer_hash` = :issuerHash' : '';
+
+            $found = $this->connection->fetchOne(
+                'SELECT 1
+                 FROM `sw6oidc_user_provider` binding
+                 INNER JOIN `user` u ON u.`id` = binding.`user_id`
+                 WHERE binding.`user_type` = \'admin\'
+                   AND u.`active` = 1
+                   AND binding.`provider_id` = :provider
+                   AND u.`id` NOT IN (:excluded)' . $issuerFilter . '
+                 LIMIT 1',
+                ['provider' => Uuid::fromHexToBytes($id), 'excluded' => $excludedUserIds, 'issuerHash' => hash('sha256', $issuer)],
+                ['provider' => ParameterType::BINARY, 'excluded' => ArrayParameterType::BINARY],
+            );
+
+            if ($found !== false) {
+                return true;
+            }
         }
 
-        $excludedUserIds = array_values(array_unique([...$removedUserIds, ...$unboundUserIds]));
-
-        return $this->connection->fetchOne(
-            <<<'SQL'
-                SELECT 1
-                FROM `sw6oidc_user_provider` binding
-                INNER JOIN `user` u ON u.`id` = binding.`user_id`
-                WHERE binding.`user_type` = 'admin'
-                  AND u.`active` = 1
-                  AND binding.`provider_id` IN (:providers)
-                  AND u.`id` NOT IN (:excluded)
-                LIMIT 1
-            SQL,
-            ['providers' => $this->bytes($providerIds), 'excluded' => $this->bytes($excludedUserIds)],
-            ['providers' => ArrayParameterType::BINARY, 'excluded' => ArrayParameterType::BINARY],
-        ) !== false;
+        return false;
     }
 
     /**
@@ -117,12 +126,11 @@ class SsoOnlyInvariant
      * @param array<string, array<string, mixed>|null> $providerChanges
      * @param list<string>                             $removedUserIds
      * @param list<string>                             $unboundUserIds
-     * @param list<string>                             $disconnectedProviderIds
      */
-    public function holds(array $providerChanges = [], array $removedUserIds = [], array $unboundUserIds = [], array $disconnectedProviderIds = []): bool
+    public function holds(array $providerChanges = [], array $removedUserIds = [], array $unboundUserIds = []): bool
     {
         return !$this->passwordLoginDisabled('admin', $providerChanges)
-            || $this->adminAccessPossible($providerChanges, $removedUserIds, $unboundUserIds, $disconnectedProviderIds);
+            || $this->adminAccessPossible($providerChanges, $removedUserIds, $unboundUserIds);
     }
 
     /**
@@ -168,7 +176,8 @@ class SsoOnlyInvariant
     {
         /** @var list<array<string, mixed>> $rows */
         $rows = $this->connection->fetchAllAssociative(
-            'SELECT LOWER(HEX(`id`)) AS `id`, `is_active`, `login_type`, `disable_non_oidc_admin_login`, `disable_non_oidc_customer_login`, `show_admin_link`, `show_customer_link`
+            'SELECT LOWER(HEX(`id`)) AS `id`, `is_active`, `login_type`, `disable_non_oidc_admin_login`, `disable_non_oidc_customer_login`, `show_admin_link`,
+                    `show_customer_link`, `issuer`
              FROM `sw6oidc_provider`',
         );
 

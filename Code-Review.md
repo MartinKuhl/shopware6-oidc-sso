@@ -12,11 +12,39 @@
 Backend paths are relative to `src/`. Frontend paths are relative to `src/Resources/`. Admin JS paths start at `app/administration/src/`. Line numbers point to `58b232a`, which equals `88a19fc` for all code.
 
 **How to read this revision**
+- [Revision 5 status](#revision-5-status-2026-10-06) lists what the fix round of 2026-10-06 closed.
 - [Revision 4: status](#revision-4-status) gives the per-finding result for revision 3. In short, **nothing has been fixed, because no code has changed.**
 - [Revision 4: new findings](#revision-4-new-findings) lists the defects found in this pass. They are numbered `R4-*`.
 - Two revision 3 findings are corrected in place: R3-M15 (narrower trigger than stated) and R3-L10 (wider than stated).
 - Everything from [High](#high) down is the revision 3 text. It is still accurate and is kept as the description of the open work.
 
+---
+
+## Revision 5 status (2026-10-06)
+
+Fix round on `fix/code-review-rev2` for every Critical (there were none), High and Medium finding of revision 4. The finding texts below are unchanged. What is still open is listed in `Code-Review_implementation_plan.md`.
+
+| Commit | Fixed |
+|---|---|
+| `b020e3e` | **R3-H1**, **R3-F1**, **R3-F4**, **R3-F5**; R3-F6; Unused: `AdminTokenIssuer` request mutation; R4-L7 partly (`AdminTokenIssuerTest` with a real League server) |
+| `f3487b0` | **R3-H2**, **R3-H3**, **R3-H4**, **R3-H7**, **R3-M4**, **R3-M21**, **R3-M22**, **R3-M23**, **R3-F2**; R3-L43 partly (`user_type`/`mapping_type` Choice, binding `UpdatedAtField`); Hygiene 3 (`emits`) |
+| `116e22b` | **R3-H6**, **R3-M5**, **R3-M6**, **R3-M7**, **R3-M8**, **R3-F3**; R3-F17 partly (storefront dialog `aria-labelledby`); `AdminPasskeyLoginTokenTracker` removed |
+| `ece912e` | **R3-H5**, **R3-M1**, **R3-M17**, **R3-M18**, **R3-M19** |
+| `8021261` | **R3-M2**, **R3-M3**, **R3-M15**, **R3-M20**, **R3-M24** |
+| `08352cb` | **R3-M9**, **R3-M10**, **R3-M11**, **R3-M12**, **R3-M13**, **R3-M14**, **R3-M16**; R3-L23; R3-L24 partly (no email in the admin denial message); Unused: `PLACEHOLDER_ADDRESS_FIELD` and `UserProvider.issuer` are now read |
+| `e80de78` | Rebuilt Administration and Storefront bundles |
+
+| | Critical | High | Medium |
+|---|---|---|---|
+| Backend, open after revision 5 | 0 | 0 | 0 |
+| Frontend, open after revision 5 | 0 | 0 | 0 |
+
+How the fixes were checked:
+- Unit suite: 794 tests (699 at revision 4); PHPCS, PHPStan (level 5), Psalm and Rector clean.
+- Against the dev shop's MySQL (scripts in rolled-back transactions): real token issuance, the R3-H2/H3/H4 write attempts, migrations 13–18, the registry prune, the binding key and scopes, `AdminRoleStore`, the passkey session terminator and the placeholder flag.
+- **Not run:** the integration and E2E suites (they need a dedicated shop plus Dex). E2E spec `04` gained the R3-F3 case.
+
+Decisions taken with the plan's defaults (Q1–Q5, Q7 were unanswered): trust fields are superadmin-only (Q1); role sync is multi-valued and managed-only, with a seed (Q2); registry liveness comes from core's tables (Q3); an issuer change suspends bindings until a superadmin re-binds or disconnects them (Q4); `AccountSsoLinkedEvent` ships as a Flow Builder trigger without a default flow or mail template (Q5).
 ---
 
 ## Summary
