@@ -58,17 +58,15 @@ Component.register('sw6oidc-passkey-list', () => Promise.resolve({
 
         columns() {
             return [
-                { property: 'userType', label: this.$tc('sw6oidc.passkeySettings.list.columnUserType'), sortable: true },
-                { property: 'owner', label: this.$tc('sw6oidc.passkeySettings.list.columnOwner'), sortable: false },
-                { property: 'nickname', label: this.$tc('sw6oidc.passkeySettings.list.columnNickname'), sortable: true },
-                { property: 'createdAt', label: this.$tc('sw6oidc.passkeySettings.list.columnCreatedAt'), sortable: true },
+                { property: 'userType', label: this.$t('sw6oidc.passkeySettings.list.columnUserType'), sortable: true },
+                { property: 'owner', label: this.$t('sw6oidc.passkeySettings.list.columnOwner'), sortable: false },
+                { property: 'nickname', label: this.$t('sw6oidc.passkeySettings.list.columnNickname'), sortable: true },
+                { property: 'createdAt', label: this.$t('sw6oidc.passkeySettings.list.columnCreatedAt'), sortable: true },
             ];
         },
     },
 
-    created() {
-        this.getList();
-    },
+    // No own created(): the listing mixin's created() already loads the list (R3-F11).
 
     methods: {
         async getList() {
@@ -77,18 +75,24 @@ Component.register('sw6oidc-passkey-list', () => Promise.resolve({
 
             const criteria = new Criteria(this.page, this.limit);
             criteria.addSorting(Criteria.sort(this.sortBy, this.sortDirection));
+            // Only what the grid shows; never the public key JSON (R3-L19).
+            criteria.addIncludes({
+                sw6oidc_passkey_credential: ['id', 'userType', 'userId', 'nickname', 'createdAt', 'disabledAt'],
+            });
 
             try {
                 const result = await this.credentialRepository.search(criteria, Shopware.Context.api);
-                await this.loadOwnerNames(result);
+                const ownerNames = await this.loadOwnerNames(result);
 
+                // Only the newest request may update the list and the owner names (R3-F11).
                 if (requestId === this.requestId) {
+                    this.ownerNames = ownerNames;
                     this.total = result.total;
                     this.credentials = result;
                 }
             } catch {
                 if (requestId === this.requestId) {
-                    this.createNotificationError({ message: this.$tc('sw6oidc.passkeySettings.loadError') });
+                    this.createNotificationError({ message: this.$t('sw6oidc.passkeySettings.loadError') });
                 }
             } finally {
                 if (requestId === this.requestId) {
@@ -119,7 +123,7 @@ Component.register('sw6oidc-passkey-list', () => Promise.resolve({
                 names[`customer:${customer.id}`] = `${customer.firstName} ${customer.lastName}`.trim() || customer.email;
             });
 
-            this.ownerNames = names;
+            return names;
         },
 
         ownerName(item) {
@@ -127,7 +131,7 @@ Component.register('sw6oidc-passkey-list', () => Promise.resolve({
         },
 
         userTypeLabel(item) {
-            return this.$tc(`sw6oidc.passkeySettings.userType.${item.userType}`);
+            return this.$t(`sw6oidc.passkeySettings.userType.${item.userType}`);
         },
 
         formatDate(value) {

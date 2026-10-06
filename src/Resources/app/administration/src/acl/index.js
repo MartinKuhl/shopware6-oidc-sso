@@ -1,3 +1,5 @@
+import { whenReady } from '../service/defer-module-register';
+
 /**
  * Role privileges for the plugin's modules (F-H5, F-N7): without these
  * mappings the entities' privileges can't be granted to a normal role, so
@@ -106,23 +108,9 @@ function registerPrivileges(privileges) {
     });
 }
 
-function registerWhenReady(attemptsLeft = 100) {
-    const privileges = Shopware.Service('privileges');
-
-    if (privileges) {
-        registerPrivileges(privileges);
-
-        return;
-    }
-
-    if (attemptsLeft <= 0) {
-        // eslint-disable-next-line no-console
-        console.error('sw6oidc: the privileges service never became ready, role privileges not registered');
-
-        return;
-    }
-
-    setTimeout(() => registerWhenReady(attemptsLeft - 1), 50);
-}
-
-registerWhenReady();
+// No time limit: giving up on a slow connection dropped the privileges from the role editor (R6-L2).
+whenReady(
+    'the role privileges',
+    () => Shopware.Service('privileges'),
+    () => registerPrivileges(Shopware.Service('privileges')),
+);

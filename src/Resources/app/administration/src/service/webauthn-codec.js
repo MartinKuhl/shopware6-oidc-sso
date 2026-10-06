@@ -88,6 +88,52 @@ export function preparePublicKeyRequestOptions(options) {
     };
 }
 
+/**
+ * Extension outputs in the WebAuthn JSON format: binary values (e.g. PRF
+ * results) as base64url, everything else as is.
+ */
+function encodeExtensionValue(value) {
+    if (value instanceof ArrayBuffer) {
+        return bufferToBase64Url(value);
+    }
+
+    if (ArrayBuffer.isView(value)) {
+        return bufferToBase64Url(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+    }
+
+    if (Array.isArray(value)) {
+        return value.map(encodeExtensionValue);
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, encodeExtensionValue(entry)]));
+    }
+
+    return value;
+}
+
+function clientExtensionResults(credential) {
+    try {
+        return encodeExtensionValue(credential.getClientExtensionResults?.() ?? {});
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Transport hints of a new credential (R3-L17): stored with the key and sent
+ * back in `allowCredentials`, so browsers can offer the right authenticator.
+ */
+function transportsOf(response) {
+    try {
+        const transports = response.getTransports?.();
+
+        return Array.isArray(transports) ? transports.filter((transport) => typeof transport === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
 export function serializeAttestationCredential(credential) {
     // `id` is derived from `rawId` with our own encoder rather than trusting
     // credential.id verbatim - webauthn-lib decodes `id` via a stricter path
@@ -104,7 +150,9 @@ export function serializeAttestationCredential(credential) {
         response: {
             attestationObject: bufferToBase64Url(credential.response.attestationObject),
             clientDataJSON: bufferToBase64Url(credential.response.clientDataJSON),
+            transports: transportsOf(credential.response),
         },
+        clientExtensionResults: clientExtensionResults(credential),
     };
 }
 
@@ -123,5 +171,6 @@ export function serializeAssertionCredential(credential) {
             signature: bufferToBase64Url(credential.response.signature),
             userHandle: credential.response.userHandle ? bufferToBase64Url(credential.response.userHandle) : null,
         },
+        clientExtensionResults: clientExtensionResults(credential),
     };
 }

@@ -72,6 +72,7 @@
         <div
             v-if="sw6oidcPasskeyError"
             class="sw6oidc-inactivity-login__error"
+            role="alert"
         >
             {{ sw6oidcPasskeyError === 'different_user'
                 ? $t('sw-login.sw6oidc.login.passkeyDifferentUser')

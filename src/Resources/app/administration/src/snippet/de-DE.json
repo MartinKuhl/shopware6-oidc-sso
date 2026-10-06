@@ -3,16 +3,8 @@
         "login": {
             "ssoButton": "Mit SSO anmelden",
             "ssoButtonWithProvider": "Login mit {name}",
-            "error": "Die Single-Sign-on-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
-            "errorRoleMissing": "Ihr Konto konnte nicht automatisch angelegt werden, da keine Administratorrolle zugewiesen werden konnte. Bitte wenden Sie sich an Ihren Administrator.",
-            "errorAutoCreateDisabled": "Die automatische Kontoerstellung ist für diese Anmeldemethode deaktiviert. Bitte wenden Sie sich an Ihren Administrator.",
             "passkeyButton": "Login mit Passkey",
-            "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an.",
-            "passwordLoginDisabled": "Die Anmeldung mit Passwort ist deaktiviert. Bitte melden Sie sich mit Single Sign-on oder einem Passkey an.",
-            "errorAccessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung an der Administration.",
-            "errorLinkRequired": "Es gibt bereits ein Konto mit dieser E-Mail-Adresse. Bitte melden Sie sich mit Ihrem Passwort an und verbinden Sie Single Sign-on in Ihrem Profil.",
-            "errorEmailNotVerified": "Ihr Identitätsanbieter hat Ihre E-Mail-Adresse nicht bestätigt.",
-            "errorProviderMismatch": "Dieses Konto ist mit einer anderen Single-Sign-on-Identität verbunden."
+            "passkeyError": "Die Passkey-Anmeldung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder melden Sie sich mit Benutzername und Passwort an."
         },
         "provider": {
             "moduleTitle": "OIDC-Anbieter",
@@ -332,13 +324,13 @@
                 "revokeSuperadminOnSso": "Rollen-Sync darf Superadmin entziehen",
                 "revokeSuperadminOnSsoHelp": "Bei aktivem Admin-Rollen-Sync: Gewähren die Gruppen eines Logins keinen Superadmin mehr, wird das Superadmin-Flag entfernt (die zugeordnete ACL-Rolle bleibt). Wird nie beim letzten aktiven Superadmin angewendet.",
                 "issuerChange": {
-                "title": "Issuer geändert",
-                "explanation": "Verknüpft lassen, wenn es derselbe Identity Provider unter einer neuen URL ist (zum Beispiel ein umbenannter Realm oder eine neue Domain). Trennen, wenn der Anbieter jetzt auf einen anderen Identity Provider oder Mandanten zeigt: dessen Benutzer dürfen sich nie an diesen Konten anmelden; sie können sich in ihrem Profil neu verknüpfen.",
-                "rebind": "Verknüpft lassen",
-                "disconnect": "Trennen"
-            },
-            "superadminRequiredHint": "Nur Superadmins können Anbieter anlegen oder ihre sicherheitsrelevanten Einstellungen ändern: Endpunkte, Issuer, Client-ID, Scope, Public Client, Anmeldetyp, Claim-Verarbeitung, Kontoverknüpfung, automatische Admin-Anlage, die Standard- und Superadmin-Rollenzuordnungen sowie die E-Mail-/Benutzernamen-Zuordnungen und Zugriffsregeln von Anbietern für die Administration. Alles andere können Sie ändern.",
-            "readOnlyHint": "Sie können diesen Anbieter ansehen, aber nicht ändern (Bearbeitungsrecht fehlt).",
+                    "title": "Issuer geändert",
+                    "explanation": "Verknüpft lassen, wenn es derselbe Identity Provider unter einer neuen URL ist (zum Beispiel ein umbenannter Realm oder eine neue Domain). Trennen, wenn der Anbieter jetzt auf einen anderen Identity Provider oder Mandanten zeigt: dessen Benutzer dürfen sich nie an diesen Konten anmelden; sie können sich in ihrem Profil neu verknüpfen.",
+                    "rebind": "Verknüpft lassen",
+                    "disconnect": "Trennen"
+                },
+                "superadminRequiredHint": "Nur Superadmins können Anbieter anlegen oder ihre sicherheitsrelevanten Einstellungen ändern: Endpunkte, Issuer, Client-ID, Scope, Public Client, Anmeldetyp, Claim-Verarbeitung, Kontoverknüpfung, automatische Admin-Anlage, die Standard- und Superadmin-Rollenzuordnungen sowie die E-Mail-/Benutzernamen-Zuordnungen und Zugriffsregeln von Anbietern für die Administration. Alles andere können Sie ändern.",
+                "readOnlyHint": "Sie können diesen Anbieter ansehen, aber nicht ändern (Bearbeitungsrecht fehlt).",
                 "removeWebhook": "Webhook entfernen",
                 "webhookRemovedOnSave": "Die gespeicherte Webhook-URL wird beim Speichern entfernt.",
                 "loadError": "Der Anbieter konnte nicht geladen werden.",
@@ -370,6 +362,9 @@
             "registerError": "Der Passkey konnte nicht registriert werden. Bitte versuchen Sie es erneut.",
             "registerNoSupport": "Dieser Browser unterstützt keine Passkeys (WebAuthn).",
             "deleteConfirm": "Diesen Passkey löschen? Er kann danach nicht mehr zur Anmeldung verwendet werden.",
+            "deleteConfirmSessionsOwn": "Wenn Sie sich mit diesem Passkey angemeldet haben, beendet das Löschen alle Ihre Sitzungen in der Administration, auch diese, und Sie müssen sich erneut anmelden.",
+            "deleteConfirmSessionsAdmin": "Wenn sich dieser Administrator mit diesem Passkey angemeldet hat, beendet das Löschen alle seine Sitzungen in der Administration (sie lassen sich nur alle gemeinsam beenden). Ist es Ihr eigener Passkey, gilt das auch für Ihre aktuelle Sitzung.",
+            "deleteConfirmSessionsCustomer": "Sitzungen, die der Kunde mit diesem Passkey begonnen hat, werden beendet; er muss sich in diesen Verkaufskanälen erneut anmelden.",
             "deleteSuccess": "Passkey gelöscht.",
             "deleteSuccessLoggedOut": "Passkey gelöscht. Sie wurden abgemeldet, da mit diesem Passkey die aktuelle Sitzung gestartet wurde.",
             "deleteError": "Der Passkey konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.",

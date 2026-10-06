@@ -1,4 +1,7 @@
-{% block sw_profile_index_general_image %}
+{% block sw_profile_index_general_information %}
+{% parent %}
+
+{% block sw6oidc_profile_index_general_provider %}
 <mt-card
     v-if="user && user.id"
     class="sw6oidc-profile-provider"
@@ -16,6 +19,5 @@
 
     <sw6oidc-connect-sso :user-id="user.id" />
 </mt-card>
-
-{% parent %}
+{% endblock %}
 {% endblock %}

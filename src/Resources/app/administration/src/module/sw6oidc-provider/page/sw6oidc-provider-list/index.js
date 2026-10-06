@@ -42,18 +42,16 @@ Component.register('sw6oidc-provider-list', () => Promise.resolve({
 
         columns() {
             return [
-                { property: 'displayName', label: this.$tc('sw6oidc.provider.list.columnDisplayName'), routerLink: 'sw6oidc.provider.detail', primary: true },
-                { property: 'appName', label: this.$tc('sw6oidc.provider.list.columnAppName') },
-                { property: 'loginType', label: this.$tc('sw6oidc.provider.list.columnLoginType') },
-                { property: 'isActive', label: this.$tc('sw6oidc.provider.list.columnActive') },
-                { property: 'lastTestStatus', label: this.$tc('sw6oidc.provider.list.columnLastTestStatus') },
+                { property: 'displayName', label: this.$t('sw6oidc.provider.list.columnDisplayName'), routerLink: 'sw6oidc.provider.detail', primary: true },
+                { property: 'appName', label: this.$t('sw6oidc.provider.list.columnAppName') },
+                { property: 'loginType', label: this.$t('sw6oidc.provider.list.columnLoginType') },
+                { property: 'isActive', label: this.$t('sw6oidc.provider.list.columnActive') },
+                { property: 'lastTestStatus', label: this.$t('sw6oidc.provider.list.columnLastTestStatus') },
             ];
         },
     },
 
-    created() {
-        this.getList();
-    },
+    // No own created(): the listing mixin's created() already loads the list (R3-F11).
 
     methods: {
         async getList() {
@@ -72,7 +70,7 @@ Component.register('sw6oidc-provider-list', () => Promise.resolve({
                 }
             } catch {
                 if (requestId === this.requestId) {
-                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.list.loadError') });
+                    this.createNotificationError({ message: this.$t('sw6oidc.provider.list.loadError') });
                 }
             } finally {
                 if (requestId === this.requestId) {

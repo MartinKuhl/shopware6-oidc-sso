@@ -1,6 +1,6 @@
 {% block sw6oidc_profile_passkey %}
 <div class="sw6oidc-profile-passkey">
-    <sw-card
+    <mt-card
         :title="$t('sw6oidc.passkeySettings.profileCardTitle')"
         position-identifier="sw6oidc-profile-passkey"
     >
@@ -39,13 +39,13 @@
 
             <template #column-nickname="{ item }">
                 {{ item.nickname }}
-                <mt-label
+                <mt-badge
                     v-if="item.disabled"
-                    variant="danger"
-                    size="small"
+                    variant="critical"
+                    size="s"
                 >
                     {{ $t('sw6oidc.passkeySettings.disabledBadge') }}
-                </mt-label>
+                </mt-badge>
             </template>
 
             <template #actions="{ item }">
@@ -65,7 +65,7 @@
         >
             {{ $t('sw6oidc.passkeySettings.profileEmptyState') }}
         </p>
-    </sw-card>
+    </mt-card>
 
     <sw-verify-user-modal
         v-if="showVerifyModal"
@@ -80,6 +80,8 @@
         @modal-close="credentialToDelete = null"
     >
         <p>{{ $t('sw6oidc.passkeySettings.deleteConfirm') }}</p>
+        {# Admin sessions can't be ended one by one (F-6). #}
+        <p>{{ $t('sw6oidc.passkeySettings.deleteConfirmSessionsOwn') }}</p>
 
         <template #modal-footer>
             <mt-button

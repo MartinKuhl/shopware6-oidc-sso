@@ -77,7 +77,7 @@ Component.register('sw6oidc-connect-sso', () => Promise.resolve({
             } catch (error) {
                 this.isConnecting = false;
                 this.createNotificationError({
-                    message: this.$tc(Sw6oidcApiService.errorCode(error) === 'user_verification_required'
+                    message: this.$t(Sw6oidcApiService.errorCode(error) === 'user_verification_required'
                         ? 'sw6oidc.userProvider.connectVerificationRequired'
                         : 'sw6oidc.userProvider.connectError'),
                 });
@@ -89,7 +89,7 @@ Component.register('sw6oidc-connect-sso', () => Promise.resolve({
          */
         showLinkedNotice() {
             if (this.$route?.query?.sw6oidc_linked === '1') {
-                this.createNotificationSuccess({ message: this.$tc('sw6oidc.userProvider.connectSuccess') });
+                this.createNotificationSuccess({ message: this.$t('sw6oidc.userProvider.connectSuccess') });
             }
         },
     },

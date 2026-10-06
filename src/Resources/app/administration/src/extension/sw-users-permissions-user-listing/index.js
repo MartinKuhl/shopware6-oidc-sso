@@ -22,7 +22,7 @@ Shopware.Component.override('sw-users-permissions-user-listing', {
 
             columns.push({
                 property: 'sw6oidcProvider',
-                label: this.$tc('sw6oidc.userProvider.label'),
+                label: this.$t('sw6oidc.userProvider.label'),
                 sortable: false,
             });
 

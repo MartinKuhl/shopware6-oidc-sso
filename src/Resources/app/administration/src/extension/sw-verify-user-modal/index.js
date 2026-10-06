@@ -27,6 +27,7 @@ Component.override('sw-verify-user-modal', {
             sw6oidcStepUpMethods: { oidc: false, passkey: false },
             sw6oidcStepUpBusy: false,
             sw6oidcStepUpPopup: null,
+            sw6oidcStepUpPopupTimer: null,
         };
     },
 
@@ -36,6 +37,9 @@ Component.override('sw-verify-user-modal', {
 
     beforeUnmount() {
         window.removeEventListener('message', this.sw6oidcOnStepUpMessage);
+        this.sw6oidcStopPopupWatch();
+        this.sw6oidcStepUpPopup?.close();
+        this.sw6oidcStepUpPopup = null;
     },
 
     methods: {
@@ -63,15 +67,49 @@ Component.override('sw-verify-user-modal', {
             this.sw6oidcStepUpBusy = true;
             this.sw6oidcStepUpPopup = popup;
             window.addEventListener('message', this.sw6oidcOnStepUpMessage);
+            this.sw6oidcWatchPopup(popup);
 
             this.sw6oidcApiService.post('sw6oidc/admin/step-up/oidc/start')
                 .then(({ authorizeUrl }) => {
-                    popup.location.href = authorizeUrl;
+                    if (this.sw6oidcStepUpPopup === popup && !popup.closed) {
+                        popup.location.href = authorizeUrl;
+                    }
                 })
                 .catch(() => {
                     popup.close();
-                    this.sw6oidcStepUpFailed();
+
+                    if (this.sw6oidcStepUpPopup === popup) {
+                        this.sw6oidcStepUpFailed();
+                    }
                 });
+        },
+
+        /**
+         * Closing the IdP popup sends no message: without this, the buttons
+         * stayed disabled (R3-F9). Closing it is a cancel, so nothing is shown.
+         */
+        sw6oidcWatchPopup(popup) {
+            this.sw6oidcStopPopupWatch();
+            this.sw6oidcStepUpPopupTimer = window.setInterval(() => {
+                if (this.sw6oidcStepUpPopup !== popup) {
+                    this.sw6oidcStopPopupWatch();
+                    return;
+                }
+
+                if (popup.closed) {
+                    this.sw6oidcStopPopupWatch();
+                    window.removeEventListener('message', this.sw6oidcOnStepUpMessage);
+                    this.sw6oidcStepUpPopup = null;
+                    this.sw6oidcStepUpBusy = false;
+                }
+            }, 500);
+        },
+
+        sw6oidcStopPopupWatch() {
+            if (this.sw6oidcStepUpPopupTimer !== null) {
+                window.clearInterval(this.sw6oidcStepUpPopupTimer);
+                this.sw6oidcStepUpPopupTimer = null;
+            }
         },
 
         async sw6oidcOnStepUpMessage(event) {
@@ -83,8 +121,10 @@ Component.override('sw-verify-user-modal', {
             }
 
             window.removeEventListener('message', this.sw6oidcOnStepUpMessage);
+            this.sw6oidcStopPopupWatch();
             this.sw6oidcStepUpPopup = null;
 
+            // The callback page also reports failures, as {error} (R3-F9).
             if (typeof event.data.nonce !== 'string') {
                 this.sw6oidcStepUpFailed();
                 return;
@@ -141,9 +181,10 @@ Component.override('sw-verify-user-modal', {
 
         sw6oidcStepUpFailed() {
             window.removeEventListener('message', this.sw6oidcOnStepUpMessage);
+            this.sw6oidcStopPopupWatch();
             this.sw6oidcStepUpBusy = false;
             this.sw6oidcStepUpPopup = null;
-            this.createNotificationError({ message: this.$tc('sw6oidc.stepUp.error') });
+            this.createNotificationError({ message: this.$t('sw6oidc.stepUp.error') });
         },
     },
 });

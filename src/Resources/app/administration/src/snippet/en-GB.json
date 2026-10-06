@@ -3,16 +3,8 @@
         "login": {
             "ssoButton": "Login with SSO",
             "ssoButtonWithProvider": "Login with {name}",
-            "error": "Single sign-on login failed. Please try again or log in with your username and password.",
-            "errorRoleMissing": "Your account could not be created automatically because no administrator role could be assigned. Please contact your administrator.",
-            "errorAutoCreateDisabled": "Automatic account creation is disabled for this login method. Please contact your administrator.",
             "passkeyButton": "Login with Passkey",
-            "passkeyError": "Passkey login failed. Please try again or log in with your username and password.",
-            "passwordLoginDisabled": "Password login is disabled. Please sign in with single sign-on or a passkey.",
-            "errorAccessDenied": "Access denied: your account does not meet the requirements for signing in to the Administration.",
-            "errorLinkRequired": "An account with this email address already exists. Log in with your password and connect single sign-on in your profile.",
-            "errorEmailNotVerified": "Your identity provider has not verified your email address.",
-            "errorProviderMismatch": "This account is connected to a different single sign-on identity."
+            "passkeyError": "Passkey login failed. Please try again or log in with your username and password."
         },
         "provider": {
             "moduleTitle": "OIDC Providers",
@@ -332,13 +324,13 @@
                 "revokeSuperadminOnSso": "Role sync may revoke superadmin",
                 "revokeSuperadminOnSsoHelp": "With admin role sync on: when a login's groups no longer grant superadmin, the superadmin flag is removed (the mapped ACL role remains). Never applied to the last active superadmin.",
                 "issuerChange": {
-                "title": "Issuer changed",
-                "explanation": "Keep them connected if this is the same identity provider under a new URL (for example a renamed realm or domain). Disconnect them if the provider now points at a different identity provider or tenant: its users must never log into these accounts; they can connect again from their profile.",
-                "rebind": "Keep connected",
-                "disconnect": "Disconnect"
-            },
-            "superadminRequiredHint": "Only a superadmin can create providers or change their security-relevant settings: endpoints, issuer, client ID, scope, public client, login type, claim handling, account linking, admin auto-creation, the default and superadmin role mappings, and the email/username mappings and access rules of providers that serve the Administration. You can change everything else.",
-            "readOnlyHint": "You can view this provider but not change it (missing editor permission).",
+                    "title": "Issuer changed",
+                    "explanation": "Keep them connected if this is the same identity provider under a new URL (for example a renamed realm or domain). Disconnect them if the provider now points at a different identity provider or tenant: its users must never log into these accounts; they can connect again from their profile.",
+                    "rebind": "Keep connected",
+                    "disconnect": "Disconnect"
+                },
+                "superadminRequiredHint": "Only a superadmin can create providers or change their security-relevant settings: endpoints, issuer, client ID, scope, public client, login type, claim handling, account linking, admin auto-creation, the default and superadmin role mappings, and the email/username mappings and access rules of providers that serve the Administration. You can change everything else.",
+                "readOnlyHint": "You can view this provider but not change it (missing editor permission).",
                 "removeWebhook": "Remove webhook",
                 "webhookRemovedOnSave": "The stored webhook URL will be removed when you save.",
                 "loadError": "The provider could not be loaded.",
@@ -370,6 +362,9 @@
             "registerError": "The passkey could not be registered. Please try again.",
             "registerNoSupport": "This browser does not support passkeys (WebAuthn).",
             "deleteConfirm": "Delete this passkey? You will no longer be able to use it to log in.",
+            "deleteConfirmSessionsOwn": "If you logged in with this passkey, deleting it ends all of your Administration sessions, this one included, and you have to log in again.",
+            "deleteConfirmSessionsAdmin": "If this administrator logged in with this passkey, deleting it ends all of their Administration sessions (they can only be ended all at once). If it is your own passkey, that includes your current session.",
+            "deleteConfirmSessionsCustomer": "Sessions the customer started with this passkey end, so they have to log in again in those sales channels.",
             "deleteSuccess": "Passkey deleted.",
             "deleteSuccessLoggedOut": "Passkey deleted. You have been logged out because it was used to start this session.",
             "deleteError": "The passkey could not be deleted. Please try again.",

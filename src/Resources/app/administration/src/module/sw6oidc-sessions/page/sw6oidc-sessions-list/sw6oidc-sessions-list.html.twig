@@ -5,14 +5,14 @@
         <mt-switch
             v-model="onlyActive"
             class="sw6oidc-sessions-list__only-active"
-            :label="$tc('sw6oidc.sessions.onlyActive')"
+            :label="$t('sw6oidc.sessions.onlyActive')"
         />
         <mt-button
             variant="secondary"
             :is-loading="isLoading"
             @click="getList"
         >
-            {{ $tc('sw6oidc.sessions.refresh') }}
+            {{ $t('sw6oidc.sessions.refresh') }}
         </mt-button>
     </template>
     {% endblock %}
@@ -23,7 +23,7 @@
             variant="info"
             class="sw6oidc-sessions-list__hint"
         >
-            {{ $tc('sw6oidc.sessions.hint') }}
+            {{ $t('sw6oidc.sessions.hint') }}
         </mt-banner>
         <sw-entity-listing
             v-if="activities"
@@ -56,15 +56,15 @@
             <template #column-loggedOutAt="{ item }">
                 <mt-badge
                     v-if="sessionState(item) === 'active'"
-                    variant="success"
+                    variant="positive"
                 >
-                    {{ $tc('sw6oidc.sessions.active') }}
+                    {{ $t('sw6oidc.sessions.active') }}
                 </mt-badge>
                 <mt-badge
                     v-else-if="sessionState(item) === 'expired'"
                     variant="neutral"
                 >
-                    {{ $tc('sw6oidc.sessions.expired') }}
+                    {{ $t('sw6oidc.sessions.expired') }}
                 </mt-badge>
                 <template v-else>
                     {{ formatDate(item.loggedOutAt) }}
@@ -76,10 +76,10 @@
             <template #actions="{ item }">
                 <sw-context-menu-item
                     variant="danger"
-                    :disabled="!canForceLogout || !!item.loggedOutAt || forceLogoutPendingId === item.id"
+                    :disabled="!canForceLogout || sessionState(item) !== 'active' || forceLogoutPendingId === item.id"
                     @click="onForceLogout(item)"
                 >
-                    {{ $tc('sw6oidc.sessions.forceLogout') }}
+                    {{ $t('sw6oidc.sessions.forceLogout') }}
                 </sw-context-menu-item>
             </template>
         </sw-entity-listing>
@@ -87,7 +87,7 @@
         <sw-confirm-modal
             v-if="confirmItem"
             type="yesno"
-            :title="$tc('sw6oidc.sessions.forceLogout')"
+            :title="$t('sw6oidc.sessions.forceLogout')"
             :text="confirmText"
             @confirm="onConfirmForceLogout"
             @cancel="onCancelForceLogout"

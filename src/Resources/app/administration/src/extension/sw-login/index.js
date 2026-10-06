@@ -43,7 +43,7 @@ Component.override('sw-login-login', {
             /** @type {Array<{id: string, label: string|null}>} one entry per visible admin-scoped provider */
             sw6oidcSsoProviders: [],
             sw6oidcPasskeyAvailable: false,
-            /** disable_non_oidc_admin_login is on: hide the native form (the server refuses password logins anyway). */
+            /** disable_non_oidc_admin_login is on: hide the password fields and button (the server refuses password logins anyway). */
             sw6oidcPasswordLoginDisabled: false,
         };
     },

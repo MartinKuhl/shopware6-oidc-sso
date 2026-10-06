@@ -88,7 +88,9 @@ Component.register('sw6oidc-provider-detail', () => {
             return {
                 provider: null,
                 isLoading: true,
-                isSaveSuccessful: false,
+                /** Only the newest loadEntity()/loadFormContext() response is applied (R3-F12). */
+                entityRequestId: 0,
+                formContextRequestId: 0,
                 isLoadingConfiguration: false,
                 isTestingConnection: false,
                 connectionTestResult: null,
@@ -115,16 +117,8 @@ Component.register('sw6oidc-provider-detail', () => {
                 diagnostics: null,
                 /** @type {Record<string, unknown>} claims received on the last live login test, keyed by claim name */
                 liveTestClaims: {},
-                // Fixed, not measured: an earlier version tried to measure each
-                // "add mapping" button's own rendered width via a $refs lookup
-                // and mirror it onto the column, but that never reliably landed
-                // (button and column stayed visibly different widths through
-                // several rebuilds) - a shared literal both the column width
-                // below and the matching button's :style are bound to is less
-                // clever but actually renders correctly. Sized generously for
-                // each button's own (longer) German label; :style on the button
-                // itself guarantees the two always match regardless of exactly
-                // how wide the label really needs.
+                // Fixed widths of the two type columns, wide enough for the
+                // longest (German) option label.
                 attributeTypeColumnWidth: '280px',
                 mappingTypeColumnWidth: '260px',
             };
@@ -150,6 +144,19 @@ Component.register('sw6oidc-provider-detail', () => {
                 'revocationEndpoint',
                 'disableNonOidcCustomerLogin',
                 'disableNonOidcAdminLogin',
+                // Trust fields: SW6OIDC_SUPERADMIN_REQUIRED shows on the field (plan F-2).
+                'issuer',
+                'clientId',
+                'scope',
+                'publicClient',
+                'loginType',
+                'allowSuperadminGroupMapping',
+                'autoCreateAdmin',
+                'defaultAclRoleId',
+                'linkExistingAccounts',
+                'requireEmailVerified',
+                'base64Claims',
+                'groupAttribute',
             ]),
 
             /**
@@ -193,7 +200,7 @@ Component.register('sw6oidc-provider-detail', () => {
             operatorOptions() {
                 return ['eq', 'neq', 'contains', 'not_contains', 'ends_with', 'email_domain', 'exists', 'not_exists'].map((value) => ({
                     value,
-                    label: this.$tc(`sw6oidc.provider.detail.operators.${value}`),
+                    label: this.$t(`sw6oidc.provider.detail.operators.${value}`),
                 }));
             },
 
@@ -231,6 +238,24 @@ Component.register('sw6oidc-provider-detail', () => {
                 return Shopware.Store.get('session').currentUser?.admin === true;
             },
 
+            /**
+             * The fields of ProviderTrustGuardSubscriber::TRUST_FIELDS: only a
+             * superadmin may change them (plan F-2).
+             */
+            canEditTrust() {
+                return this.canEdit && this.isSuperadmin;
+            },
+
+            /** ProviderTrustGuardSubscriber::servesAdmins(): every login type but "customer". */
+            servesAdmins() {
+                return this.provider?.loginType !== 'customer';
+            },
+
+            /** Access rules of a provider that serves the Administration need a superadmin. */
+            canEditAccessControl() {
+                return this.canEdit && (this.isSuperadmin || !this.servesAdmins);
+            },
+
             webhookConfigured() {
                 return !this.removeWebhook && (this.formContext.webhookConfigured || !!this.diagnostics?.alerting?.webhookConfigured);
             },
@@ -250,20 +275,20 @@ Component.register('sw6oidc-provider-detail', () => {
                     'locale', 'zoneinfo', 'picture',
                     'billing_street', 'billing_zipcode', 'billing_city', 'billing_state', 'billing_country', 'billing_phone',
                     'shipping_street', 'shipping_zipcode', 'shipping_city', 'shipping_state', 'shipping_country', 'shipping_phone',
-                ].map((value) => ({ value, label: this.$tc(`sw6oidc.provider.detail.attributeType.${value}`) }));
+                ].map((value) => ({ value, label: this.$t(`sw6oidc.provider.detail.attributeType.${value}`) }));
             },
 
             mappingTypeOptions() {
                 return ['admin_role', 'customer_group', 'superadmin'].map((value) => ({
                     value,
-                    label: this.$tc(`sw6oidc.provider.detail.mappingType.${value}`),
+                    label: this.$t(`sw6oidc.provider.detail.mappingType.${value}`),
                 }));
             },
 
             loginTypeOptions() {
                 return ['both', 'customer', 'admin'].map((value) => ({
                     value,
-                    label: this.$tc(`sw6oidc.provider.detail.loginType.${value}`),
+                    label: this.$t(`sw6oidc.provider.detail.loginType.${value}`),
                 }));
             },
 
@@ -331,10 +356,10 @@ Component.register('sw6oidc-provider-detail', () => {
              */
             transformFunctionOptions() {
                 return [
-                    { value: null, label: this.$tc('sw6oidc.provider.detail.transform.none') },
+                    { value: null, label: this.$t('sw6oidc.provider.detail.transform.none') },
                     ...['concat', 'split', 'prefix', 'regex_replace'].map((fn) => ({
                         value: fn,
-                        label: this.$tc(`sw6oidc.provider.detail.transform.functions.${fn}`),
+                        label: this.$t(`sw6oidc.provider.detail.transform.functions.${fn}`),
                     })),
                 ];
             },
@@ -369,11 +394,14 @@ Component.register('sw6oidc-provider-detail', () => {
              * English `detail`, shown as-is.
              */
             testResultMessage(entry) {
-                if (entry.messageKey) {
-                    return this.$t(`sw6oidc.provider.detail.testMessage.${entry.messageKey}`, entry.messageParams ?? {});
+                const key = `sw6oidc.provider.detail.testMessage.${entry.messageKey}`;
+
+                // A key from a newer backend without a snippet falls back to the detail (R3-F16).
+                if (entry.messageKey && this.$te(key)) {
+                    return this.$t(key, entry.messageParams ?? {});
                 }
 
-                return entry.detail;
+                return entry.detail ?? entry.messageKey ?? '';
             },
 
             /**
@@ -381,11 +409,55 @@ Component.register('sw6oidc-provider-detail', () => {
              * snippet exists for it (new codes from a newer backend).
              */
             snippetOr(key, fallback) {
-                return this.$te(key) ? this.$tc(key) : String(fallback ?? "");
+                return this.$te(key) ? this.$t(key) : String(fallback ?? '');
             },
 
+            /** Meteor mt-badge variants (R3-F15). */
             testStatusVariant(status) {
-                return { pass: 'success', warning: 'warning', skipped: 'neutral' }[status] ?? 'danger';
+                return { pass: 'positive', warning: 'attention', skipped: 'neutral' }[status] ?? 'critical';
+            },
+
+            /**
+             * Role mappings that grant an Administration role or superadmin
+             * need a superadmin, also when they are changed away from that
+             * type (the server checks the stored type too).
+             */
+            isPrivilegedRoleMapping(item) {
+                const privileged = ['admin_role', 'superadmin'];
+
+                return privileged.includes(item.mappingType) || privileged.includes(item.getOrigin?.()?.mappingType);
+            },
+
+            canEditRoleMapping(item) {
+                return this.canEdit && (this.isSuperadmin || !this.isPrivilegedRoleMapping(item));
+            },
+
+            /** Non-superadmins can only add customer group rows. */
+            mappingTypeOptionsFor(item) {
+                if (this.isSuperadmin || this.isPrivilegedRoleMapping(item)) {
+                    return this.mappingTypeOptions;
+                }
+
+                return this.mappingTypeOptions.filter((option) => option.value === 'customer_group');
+            },
+
+            /** Email/username mappings decide which account a login resolves to. */
+            isIdentityAttributeMapping(item) {
+                const identity = ['email', 'username'];
+
+                return identity.includes(item.attributeType) || identity.includes(item.getOrigin?.()?.attributeType);
+            },
+
+            canEditAttributeMapping(item) {
+                return this.canEdit && (this.isSuperadmin || !this.servesAdmins || !this.isIdentityAttributeMapping(item));
+            },
+
+            attributeTypeOptionsFor(item) {
+                if (this.isSuperadmin || !this.servesAdmins || this.isIdentityAttributeMapping(item)) {
+                    return this.attributeTypeOptions;
+                }
+
+                return this.attributeTypeOptions.filter((option) => !['email', 'username'].includes(option.value));
             },
 
             createdComponent() {
@@ -401,13 +473,14 @@ Component.register('sw6oidc-provider-detail', () => {
                     return;
                 }
 
+                // A provider still loading from before must not replace the new one.
+                this.entityRequestId += 1;
                 this.loadedWellKnownConfigUrl = null;
                 this.liveTestClaims = {};
 
                 this.provider = this.providerRepository.create(Shopware.Context.api);
                 this.provider.scope = 'openid profile email';
                 this.provider.pkceFlow = 'S256';
-                this.provider.claimEncoding = 'none';
                 this.provider.base64Claims = [];
                 this.provider.groupAttribute = 'groups';
                 this.provider.loginType = 'both';
@@ -419,20 +492,29 @@ Component.register('sw6oidc-provider-detail', () => {
             },
 
             async loadFormContext(providerId) {
+                const requestId = ++this.formContextRequestId;
+                let formContext = { postLogoutLandingUrls: [], webhookConfigured: false };
+
                 try {
                     const context = await this.sw6oidcApiService.get('_action/sw6oidc/provider/form-context', {
                         params: providerId ? { providerId } : {},
                     });
-                    this.formContext = {
+                    formContext = {
                         postLogoutLandingUrls: Array.isArray(context.postLogoutLandingUrls) ? context.postLogoutLandingUrls : [],
                         webhookConfigured: !!context.webhookConfigured,
                     };
                 } catch {
-                    this.formContext = { postLogoutLandingUrls: [], webhookConfigured: false };
+                    // Defaults above.
+                }
+
+                // Fast A -> B navigation: A's answer must not land on B (R3-F12).
+                if (requestId === this.formContextRequestId) {
+                    this.formContext = formContext;
                 }
             },
 
             loadEntity(id) {
+                const requestId = ++this.entityRequestId;
                 this.isLoading = true;
                 const criteria = new Criteria();
                 criteria.addAssociation('attributeMappings');
@@ -440,6 +522,11 @@ Component.register('sw6oidc-provider-detail', () => {
                 criteria.addAssociation('accessControlRules');
 
                 return this.providerRepository.get(id, Shopware.Context.api, criteria).then((entity) => {
+                    // Fast A -> B navigation: A's entity must not replace B (R3-F12).
+                    if (requestId !== this.entityRequestId) {
+                        return;
+                    }
+
                     this.provider = entity;
                     this.loadedWellKnownConfigUrl = entity.wellKnownConfigUrl;
                     entity.attributeMappings.forEach((mapping) => {
@@ -456,8 +543,12 @@ Component.register('sw6oidc-provider-detail', () => {
                         : {};
                     this.isLoading = false;
                 }).catch(() => {
+                    if (requestId !== this.entityRequestId) {
+                        return;
+                    }
+
                     this.isLoading = false;
-                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.loadError') });
+                    this.createNotificationError({ message: this.$t('sw6oidc.provider.detail.loadError') });
                 });
             },
 
@@ -467,7 +558,6 @@ Component.register('sw6oidc-provider-detail', () => {
                 }
 
                 this.isLoading = true;
-                this.isSaveSuccessful = false;
 
                 // Only when the discovery URL changed: an unchanged one would
                 // overwrite deliberately edited endpoints on every save (F-M7).
@@ -481,8 +571,8 @@ Component.register('sw6oidc-provider-detail', () => {
                         await this.discoverAndApply(this.provider.wellKnownConfigUrl);
                     } catch (exception) {
                         this.createNotificationWarning({
-                            title: this.$tc('sw6oidc.provider.detail.discoverySaveWarningTitle'),
-                            message: exception.message || this.$tc('sw6oidc.provider.detail.discoveryError'),
+                            title: this.$t('sw6oidc.provider.detail.discoverySaveWarningTitle'),
+                            message: exception.message || this.$t('sw6oidc.provider.detail.discoveryError'),
                         });
                     }
                 }
@@ -503,7 +593,6 @@ Component.register('sw6oidc-provider-detail', () => {
                 }
 
                 return this.providerRepository.save(this.provider, Shopware.Context.api).then(() => {
-                    this.isSaveSuccessful = true;
                     this.isLoading = false;
                     this.removeWebhook = false;
                     this.loadFormContext(this.provider.id);
@@ -544,8 +633,8 @@ Component.register('sw6oidc-provider-detail', () => {
 
                     this.createNotificationError({
                         message: details.length
-                            ? `${this.$tc('sw6oidc.provider.detail.saveError')} ${details.join(' ')}`
-                            : this.$tc('sw6oidc.provider.detail.saveError'),
+                            ? `${this.$t('sw6oidc.provider.detail.saveError')} ${details.join(' ')}`
+                            : this.$t('sw6oidc.provider.detail.saveError'),
                     });
                 });
             },
@@ -561,7 +650,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 try {
                     await this.sw6oidcApiService.post(`_action/sw6oidc/provider/${this.provider.id}/confirm-lockout`);
                 } catch {
-                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.saveError') });
+                    this.createNotificationError({ message: this.$t('sw6oidc.provider.detail.saveError') });
 
                     return;
                 }
@@ -581,7 +670,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 try {
                     await this.sw6oidcApiService.post(`_action/sw6oidc/provider/${this.provider.id}/confirm-issuer-change`, { rebind });
                 } catch {
-                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.saveError') });
+                    this.createNotificationError({ message: this.$t('sw6oidc.provider.detail.saveError') });
 
                     return;
                 }
@@ -599,14 +688,14 @@ Component.register('sw6oidc-provider-detail', () => {
 
                 try {
                     const warnings = await this.discoverAndApply(this.provider.wellKnownConfigUrl);
-                    this.createNotificationSuccess({ message: this.$tc('sw6oidc.provider.detail.discoverySuccess') });
+                    this.createNotificationSuccess({ message: this.$t('sw6oidc.provider.detail.discoverySuccess') });
 
                     warnings.forEach((warning) => {
                         this.createNotificationWarning({ message: warning });
                     });
                 } catch (exception) {
                     this.createNotificationError({
-                        message: exception.message || this.$tc('sw6oidc.provider.detail.discoveryError'),
+                        message: exception.message || this.$t('sw6oidc.provider.detail.discoveryError'),
                     });
                 } finally {
                     this.isLoadingConfiguration = false;
@@ -624,7 +713,7 @@ Component.register('sw6oidc-provider-detail', () => {
              */
             async discoverAndApply(wellKnownConfigUrl) {
                 if (!wellKnownConfigUrl) {
-                    throw new Error(this.$tc('sw6oidc.provider.detail.wellKnownConfigUrlRequired'));
+                    throw new Error(this.$t('sw6oidc.provider.detail.wellKnownConfigUrlRequired'));
                 }
 
                 let result;
@@ -635,7 +724,7 @@ Component.register('sw6oidc-provider-detail', () => {
                         httpTimeout: this.provider.httpTimeout,
                     });
                 } catch (error) {
-                    throw new Error(error?.response?.data?.message || this.$tc('sw6oidc.provider.detail.discoveryError'));
+                    throw new Error(error?.response?.data?.message || this.$t('sw6oidc.provider.detail.discoveryError'));
                 }
 
                 DISCOVERED_ENDPOINT_FIELDS.forEach((key) => {
@@ -672,7 +761,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 } catch (exception) {
                     // eslint-disable-next-line no-console
                     console.error('sw6oidc: connection test failed', exception);
-                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.testConnectionError') });
+                    this.createNotificationError({ message: this.$t('sw6oidc.provider.detail.testConnectionError') });
                 } finally {
                     this.isTestingConnection = false;
                 }
@@ -694,14 +783,14 @@ Component.register('sw6oidc-provider-detail', () => {
                     });
 
                     if (!popup || popup.closed) {
-                        throw new Error(this.$tc('sw6oidc.provider.detail.liveTestPopupBlocked'));
+                        throw new Error(this.$t('sw6oidc.provider.detail.liveTestPopupBlocked'));
                     }
 
                     popup.location.href = result.authorizeUrl;
                 } catch (exception) {
                     popup?.close();
                     this.createNotificationError({
-                        message: exception?.response?.data?.message || exception.message || this.$tc('sw6oidc.provider.detail.liveTestError'),
+                        message: exception?.response?.data?.message || exception.message || this.$t('sw6oidc.provider.detail.liveTestError'),
                     });
                 } finally {
                     this.isRunningLiveTest = false;
@@ -764,7 +853,7 @@ Component.register('sw6oidc-provider-detail', () => {
                 } catch (exception) {
                     // eslint-disable-next-line no-console
                     console.error('sw6oidc: diagnostics failed', exception);
-                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.diagnosticsError') });
+                    this.createNotificationError({ message: this.$t('sw6oidc.provider.detail.diagnosticsError') });
                 } finally {
                     this.isRunningDiagnostics = false;
                 }
@@ -773,7 +862,8 @@ Component.register('sw6oidc-provider-detail', () => {
             onAddAttributeMapping() {
                 const mapping = this.attributeMappingRepository.create(Shopware.Context.api);
                 mapping.providerId = this.provider.id;
-                mapping.attributeType = 'email';
+                // Non-superadmins can't add identity mappings to a provider that serves admins.
+                mapping.attributeType = this.isSuperadmin || !this.servesAdmins ? 'email' : 'firstname';
                 mapping.attributeName = '';
                 this.provider.attributeMappings.add(mapping);
             },

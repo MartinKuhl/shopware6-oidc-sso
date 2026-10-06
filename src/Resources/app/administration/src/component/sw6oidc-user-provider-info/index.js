@@ -55,7 +55,7 @@ Component.register('sw6oidc-user-provider-info', () => Promise.resolve({
         },
 
         unlinkConfirmText() {
-            return this.$tc(`sw6oidc.userProvider.${this.userType === 'admin' ? 'unlinkConfirmAdmin' : 'unlinkConfirmCustomer'}`);
+            return this.$t(`sw6oidc.userProvider.${this.userType === 'admin' ? 'unlinkConfirmAdmin' : 'unlinkConfirmCustomer'}`);
         },
 
         formattedCreatedAt() {
@@ -129,13 +129,13 @@ Component.register('sw6oidc-user-provider-info', () => Promise.resolve({
             try {
                 await unlinkUserProvider(this.userType, this.userId);
                 this.binding = null;
-                this.createNotificationSuccess({ message: this.$tc('sw6oidc.userProvider.unlinkSuccess') });
+                this.createNotificationSuccess({ message: this.$t('sw6oidc.userProvider.unlinkSuccess') });
                 this.$emit('unlinked');
             } catch (exception) {
                 // eslint-disable-next-line no-console
                 console.error('sw6oidc: failed to unlink OIDC provider', exception);
                 this.createNotificationError({
-                    message: this.$tc(Sw6oidcApiService.errorCode(exception) === 'last_sso_admin'
+                    message: this.$t(Sw6oidcApiService.errorCode(exception) === 'last_sso_admin'
                         ? 'sw6oidc.userProvider.unlinkLastSsoAdmin'
                         : 'sw6oidc.userProvider.unlinkError'),
                 });

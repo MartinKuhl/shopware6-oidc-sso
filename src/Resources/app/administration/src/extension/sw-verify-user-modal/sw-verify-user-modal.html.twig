@@ -6,7 +6,7 @@
     class="sw6oidc-step-up"
 >
     <p class="sw6oidc-step-up__hint">
-        {{ $tc('sw6oidc.stepUp.hint') }}
+        {{ $t('sw6oidc.stepUp.hint') }}
     </p>
 
     <div class="sw6oidc-step-up__actions">
@@ -17,7 +17,7 @@
             :disabled="sw6oidcStepUpBusy"
             @click="sw6oidcStepUpWithSso"
         >
-            {{ $tc('sw6oidc.stepUp.sso') }}
+            {{ $t('sw6oidc.stepUp.sso') }}
         </mt-button>
 
         <mt-button
@@ -27,7 +27,7 @@
             :disabled="sw6oidcStepUpBusy"
             @click="sw6oidcStepUpWithPasskey"
         >
-            {{ $tc('sw6oidc.stepUp.passkey') }}
+            {{ $t('sw6oidc.stepUp.passkey') }}
         </mt-button>
     </div>
 </div>
