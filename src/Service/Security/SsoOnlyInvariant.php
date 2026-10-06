@@ -81,10 +81,12 @@ class SsoOnlyInvariant
      * @param array<string, array<string, mixed>|null> $providerChanges
      * @param list<string>                             $removedUserIds    admins about to be deleted or deactivated
      * @param list<string>                             $unboundUserIds    admins about to lose their binding
+     * @param list<string>                             $disconnectedProviderIds providers whose bindings stop counting
+     *                                                                          (issuer change without re-binding, R3-M9)
      */
-    public function adminAccessPossible(array $providerChanges = [], array $removedUserIds = [], array $unboundUserIds = []): bool
+    public function adminAccessPossible(array $providerChanges = [], array $removedUserIds = [], array $unboundUserIds = [], array $disconnectedProviderIds = []): bool
     {
-        $providerIds = array_keys($this->servingProviders('admin', $providerChanges));
+        $providerIds = array_values(array_diff(array_keys($this->servingProviders('admin', $providerChanges)), $disconnectedProviderIds));
 
         if ($providerIds === []) {
             return false;
@@ -115,11 +117,12 @@ class SsoOnlyInvariant
      * @param array<string, array<string, mixed>|null> $providerChanges
      * @param list<string>                             $removedUserIds
      * @param list<string>                             $unboundUserIds
+     * @param list<string>                             $disconnectedProviderIds
      */
-    public function holds(array $providerChanges = [], array $removedUserIds = [], array $unboundUserIds = []): bool
+    public function holds(array $providerChanges = [], array $removedUserIds = [], array $unboundUserIds = [], array $disconnectedProviderIds = []): bool
     {
         return !$this->passwordLoginDisabled('admin', $providerChanges)
-            || $this->adminAccessPossible($providerChanges, $removedUserIds, $unboundUserIds);
+            || $this->adminAccessPossible($providerChanges, $removedUserIds, $unboundUserIds, $disconnectedProviderIds);
     }
 
     /**

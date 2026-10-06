@@ -2,11 +2,15 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Event\CustomerAfterCreateEvent;
 use MartinKuhl\Sw6Oidc\Event\CustomerBeforeCreateEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\CustomerProvisioningDeniedException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Checkout\Customer\Event\CustomerRegisterEvent;
@@ -17,6 +21,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
+use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
@@ -50,6 +55,8 @@ class CustomerProvisioningService
         private readonly NumberRangeValueGeneratorInterface $numberRangeValueGenerator,
         private readonly LoggerInterface $logger,
         private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly Connection $connection,
+        private readonly SystemConfigService $systemConfigService,
     ) {
     }
 
@@ -66,6 +73,7 @@ class CustomerProvisioningService
         SalesChannelContext $salesChannelContext,
     ): CustomerEntity {
         $context = $salesChannelContext->getContext();
+        $salesChannelId = $salesChannelContext->getSalesChannelId();
         $emailMatch = $this->findByEmail($profile->email, $salesChannelContext);
 
         $customerId = $this->identityResolver->resolve(
@@ -75,35 +83,48 @@ class CustomerProvisioningService
             $emailMatch?->getId(),
             false,
             $context,
+            $salesChannelId,
+            // A channel-bound customer is bound in its channel's scope (R3-M14).
+            $emailMatch?->getBoundSalesChannelId(),
         );
 
         if ($customerId !== null) {
-            $existing = $emailMatch instanceof \Shopware\Core\Checkout\Customer\CustomerEntity && $emailMatch->getId() === $customerId
-                ? $emailMatch
-                : $this->customerRepository->search(new Criteria([$customerId]), $context)->first();
-
-            if (
-                !$existing instanceof CustomerEntity
-                || $existing->getGuest()
-                || !CustomerSalesChannelBinding::allows($existing, $salesChannelContext->getSalesChannelId())
-            ) {
-                throw new CustomerProvisioningDeniedException('The customer bound to this identity is not available in this sales channel.');
-            }
-
+            $existing = $this->existingCustomer($customerId, $emailMatch, $salesChannelContext);
             $this->syncExisting($provider, $existing, $profile, $salesChannelContext);
 
             return $existing;
         }
 
         if (!$provider->isAutoCreateCustomer()) {
-            throw new CustomerProvisioningDeniedException(sprintf(
-                'No customer account exists for "%s" and auto-creation is disabled for this provider.',
-                $profile->email,
-            ));
+            throw new CustomerProvisioningDeniedException('No customer account exists for this identity and auto-creation is disabled for this provider.');
         }
 
-        $customerId = $this->create($provider, $profile, $salesChannelContext);
-        $this->bindingService->bind(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $customerId, $identity, $context);
+        // Shopware's own registration rule for the bound sales channel (R3-M13).
+        $boundSalesChannelId = $this->boundSalesChannelId($profile->email, $salesChannelId);
+
+        try {
+            // Create and bind together: a concurrent first login of the same
+            // subject must not leave an unbound duplicate behind (R3-M12).
+            $customerId = $this->connection->transactional(function () use ($provider, $profile, $salesChannelContext, $boundSalesChannelId, $identity, $context): string {
+                $customerId = $this->create($provider, $profile, $salesChannelContext, $boundSalesChannelId);
+                $this->bindingService->bind(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $customerId, $identity, $context, $boundSalesChannelId);
+
+                return $customerId;
+            });
+        } catch (UniqueConstraintViolationException | SubjectAlreadyLinkedException | ProviderMismatchException $exception) {
+            $winnerId = $this->bindingService->findUserIdBySubject(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $identity, $context, $salesChannelId);
+
+            if ($winnerId === null) {
+                throw $exception;
+            }
+
+            $this->logger->info('sw6oidc: concurrent first login; using the account the other login created.', [
+                'providerId' => $provider->getId(),
+                'customerId' => $winnerId,
+            ]);
+
+            return $this->existingCustomer($winnerId, null, $salesChannelContext);
+        }
 
         $created = $this->customerRepository->search(new Criteria([$customerId]), $context)->first();
         \assert($created instanceof CustomerEntity);
@@ -115,6 +136,46 @@ class CustomerProvisioningService
         $this->eventDispatcher->dispatch(new CustomerRegisterEvent($salesChannelContext, $created));
 
         return $created;
+    }
+
+    /**
+     * @throws CustomerProvisioningDeniedException when the account can't log in to this sales channel
+     */
+    private function existingCustomer(string $customerId, ?CustomerEntity $emailMatch, SalesChannelContext $salesChannelContext): CustomerEntity
+    {
+        $existing = $emailMatch instanceof CustomerEntity && $emailMatch->getId() === $customerId
+            ? $emailMatch
+            : $this->customerRepository->search(new Criteria([$customerId]), $salesChannelContext->getContext())->first();
+
+        if (
+            !$existing instanceof CustomerEntity
+            || $existing->getGuest()
+            || !CustomerSalesChannelBinding::allows($existing, $salesChannelContext->getSalesChannelId())
+        ) {
+            throw new CustomerProvisioningDeniedException('The customer bound to this identity is not available in this sales channel.');
+        }
+
+        return $existing;
+    }
+
+    /**
+     * Core's RegisterRoute rule: a new customer is bound to the sales channel
+     * when the shop binds customers to sales channels, or when a bound
+     * account with this email already exists — otherwise that account's
+     * password login would start finding the new, unbound duplicate (R3-M13).
+     */
+    private function boundSalesChannelId(string $email, string $salesChannelId): ?string
+    {
+        if ($this->systemConfigService->get('core.systemWideLoginRegistration.isCustomerBoundToSalesChannel')) {
+            return $salesChannelId;
+        }
+
+        $hasBoundAccount = $this->connection->fetchOne(
+            'SELECT 1 FROM `customer` WHERE `email` = :email AND `bound_sales_channel_id` IS NOT NULL LIMIT 1',
+            ['email' => $email],
+        ) !== false;
+
+        return $hasBoundAccount ? $salesChannelId : null;
     }
 
     private function findByEmail(string $email, SalesChannelContext $salesChannelContext): ?CustomerEntity
@@ -136,7 +197,7 @@ class CustomerProvisioningService
         return null;
     }
 
-    private function create(Sw6OidcProviderEntity $provider, MappedProfile $profile, SalesChannelContext $salesChannelContext): string
+    private function create(Sw6OidcProviderEntity $provider, MappedProfile $profile, SalesChannelContext $salesChannelContext, ?string $boundSalesChannelId): string
     {
         $context = $salesChannelContext->getContext();
         $customerId = Uuid::randomHex();
@@ -193,6 +254,7 @@ class CustomerProvisioningService
             'firstName' => $firstName,
             'lastName' => $lastName,
             'email' => $profile->email,
+            'boundSalesChannelId' => $boundSalesChannelId,
             'guest' => false,
             'active' => true,
             'password' => bin2hex(random_bytes(32)),
@@ -291,7 +353,9 @@ class CustomerProvisioningService
         }
 
         if ($provider->isSyncCustomerGroupOnSso()) {
-            $groupId = $this->groupMappingResolver->resolveCustomerGroupId($provider, $profile->groups, $context);
+            // Only a matching mapping changes the group; the provider default
+            // is for new accounts and must not undo a merchant's choice (R3-M11).
+            $groupId = $this->groupMappingResolver->resolveCustomerGroupId($provider, $profile->groups, $context, withDefault: false);
 
             if ($groupId !== null) {
                 $payload['groupId'] = $groupId;

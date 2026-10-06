@@ -7,6 +7,8 @@ use Doctrine\DBAL\ParameterType;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
+use MartinKuhl\Sw6Oidc\Service\Security\IssuerChangeConfirmationStore;
 use MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore;
 use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\Message\PasswordSessionRevocationMessage;
@@ -63,6 +65,11 @@ use Symfony\Contracts\Service\ResetInterface;
  *  - When the effective policy goes from off to on, sessions that were
  *    started with a password by accounts without any SSO binding are ended,
  *    after commit and from the message queue.
+ *  - Issuer change (R3-M9): bindings belong to an issuer, so after the
+ *    change they no longer match. A provider with bound accounts needs the
+ *    acting superadmin's decision (IssuerChangeConfirmationStore): re-bind
+ *    them to the new issuer after commit (same IdP, new URL), or leave them
+ *    disconnected (another tenant). CLI writes leave them disconnected.
  *
  * Who may change trust-relevant fields is checked separately
  * (ProviderTrustGuardSubscriber).
@@ -79,6 +86,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     public const CODE_NO_VISIBLE_LOGIN = 'SW6OIDC_NO_VISIBLE_LOGIN';
     public const CODE_SECRET_REQUIRED = 'SW6OIDC_SECRET_REQUIRED_FOR_ENDPOINT_CHANGE';
     public const CODE_CLIENT_SECRET_REQUIRED = 'SW6OIDC_CLIENT_SECRET_REQUIRED';
+    public const CODE_ISSUER_CHANGE_CONFIRM = 'SW6OIDC_ISSUER_CHANGE_CONFIRM';
 
     /**
      * URLs the client secret (or tokens) are sent to: changing one on an
@@ -137,6 +145,9 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     /** @var array<string, true> provider ids (hex) of that pending write */
     private array $pendingProviderIds = [];
 
+    /** @var array<string, string> provider id (hex) => new issuer its bindings move to after commit */
+    private array $pendingRebinds = [];
+
     public function __construct(
         private readonly SsrfUrlValidator $urlValidator,
         private readonly Connection $connection,
@@ -146,6 +157,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         private readonly RequestStack $requestStack,
         private readonly LockoutConfirmationStore $confirmationStore,
         private readonly LoggerInterface $logger,
+        private readonly IssuerChangeConfirmationStore $issuerChangeConfirmations,
     ) {
     }
 
@@ -162,6 +174,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     {
         $this->pendingRevocations = [];
         $this->pendingProviderIds = [];
+        $this->pendingRebinds = [];
     }
 
     public function validate(PreWriteValidationEvent $event): void
@@ -181,6 +194,8 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         $commandsById = [];
         /** @var array<string, ConstraintViolationList> $violations */
         $violations = [];
+        /** @var list<string> $disconnected providers whose bindings stop matching (issuer change) */
+        $disconnected = [];
 
         foreach ($commands as $command) {
             $idBytes = $command->getPrimaryKey()['id'] ?? null;
@@ -211,10 +226,14 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
             $this->validateCustomerLockout($command, $idBytes, $current, $violations[$id]);
             $this->validateEmailVerification($command, $idBytes, $current, $violations[$id]);
 
+            if ($this->validateIssuerChange($command, $id, $current, $violations[$id], $event->getContext()) === IssuerChangeConfirmationStore::DECISION_DISCONNECT) {
+                $disconnected[] = $id;
+            }
+
             $changes[$id] = $this->policyColumnsAfter($command, $current);
         }
 
-        $this->validateSsoOnlyMode($changes, $commandsById, $violations, $event->getContext());
+        $this->validateSsoOnlyMode($changes, $commandsById, $violations, $event->getContext(), $disconnected);
 
         foreach ($violations as $id => $list) {
             if ($list->count() > 0) {
@@ -229,6 +248,8 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
      */
     public function onProviderWritten(EntityWrittenEvent $event): void
     {
+        $this->applyRebinds($event);
+
         if ($this->pendingRevocations === []) {
             return;
         }
@@ -402,6 +423,106 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     }
 
     /**
+     * @param array<string, mixed>|null $current
+     *
+     * @return IssuerChangeConfirmationStore::DECISION_*|null the decision, when the issuer changes with bound accounts
+     */
+    private function validateIssuerChange(WriteCommand $command, string $providerId, ?array $current, ConstraintViolationList $violations, Context $context): ?string
+    {
+        $payload = $command->getPayload();
+
+        if ($current === null || !\array_key_exists('issuer', $payload)) {
+            return null;
+        }
+
+        $newIssuer = trim((string) $payload['issuer']);
+
+        if ($newIssuer === trim((string) ($current['issuer'] ?? ''))) {
+            return null;
+        }
+
+        $affected = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM `sw6oidc_user_provider` WHERE `provider_id` = :id AND (`issuer_hash` IS NULL OR `issuer_hash` <> :hash)',
+            ['id' => Uuid::fromHexToBytes($providerId), 'hash' => UserProviderBindingService::issuerHash($newIssuer)],
+            ['id' => ParameterType::BINARY],
+        );
+
+        if ($affected === 0) {
+            return null;
+        }
+
+        $decision = $this->issuerChangeDecision($providerId, $context);
+
+        if ($decision === null) {
+            $violations->add($this->violation(
+                \sprintf(
+                    '%d account(s) are connected to the previous issuer. Decide whether they stay connected '
+                    . '(the same identity provider under a new URL) or are disconnected (another identity provider).',
+                    $affected,
+                ),
+                'issuer',
+                $newIssuer,
+                self::CODE_ISSUER_CHANGE_CONFIRM,
+            ));
+
+            return null;
+        }
+
+        if ($decision === IssuerChangeConfirmationStore::DECISION_REBIND && $newIssuer !== '') {
+            $this->pendingRebinds[$providerId] = $newIssuer;
+        }
+
+        $outcome = $decision === IssuerChangeConfirmationStore::DECISION_REBIND ? 're-bound to the new issuer.' : 'disconnected.';
+        $this->logger->warning('sw6oidc: provider issuer changes; connected accounts are ' . $outcome, [
+            'providerId' => $providerId,
+            'accounts' => $affected,
+        ]);
+
+        return $decision;
+    }
+
+    /**
+     * @return IssuerChangeConfirmationStore::DECISION_*|null
+     */
+    private function issuerChangeDecision(string $providerId, Context $context): ?string
+    {
+        // CLI (config import): never moves accounts to another issuer implicitly.
+        if (!$this->requestStack->getMainRequest() instanceof Request) {
+            return IssuerChangeConfirmationStore::DECISION_DISCONNECT;
+        }
+
+        $source = $context->getSource();
+        $userId = $source instanceof AdminApiSource ? $source->getUserId() : null;
+
+        return $userId !== null ? $this->issuerChangeConfirmations->consume($providerId, $userId) : null;
+    }
+
+    private function applyRebinds(EntityWrittenEvent $event): void
+    {
+        foreach ($event->getIds() as $id) {
+            if (!\is_string($id) || !isset($this->pendingRebinds[strtolower($id)])) {
+                continue;
+            }
+
+            $issuer = $this->pendingRebinds[strtolower($id)];
+            unset($this->pendingRebinds[strtolower($id)]);
+
+            try {
+                $this->connection->executeStatement(
+                    'UPDATE `sw6oidc_user_provider` SET `issuer` = :issuer, `issuer_hash` = :hash WHERE `provider_id` = :id',
+                    ['issuer' => $issuer, 'hash' => UserProviderBindingService::issuerHash($issuer), 'id' => Uuid::fromHexToBytes($id)],
+                    ['id' => ParameterType::BINARY],
+                );
+            } catch (\Throwable $exception) {
+                $this->logger->error('sw6oidc: re-binding the accounts of a provider to its new issuer failed.', [
+                    'providerId' => $id,
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
      * Checks the SSO-only policy *after* all provider changes of this write
      * against the state before it (R3-H7). A write is refused only when it
      * makes things worse, so an already inconsistent state can be repaired.
@@ -409,8 +530,9 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
      * @param array<string, array<string, mixed>|null> $changes
      * @param array<string, WriteCommand>              $commandsById
      * @param array<string, ConstraintViolationList>   $violations
+     * @param list<string>                             $disconnected providers whose bindings stop counting
      */
-    private function validateSsoOnlyMode(array $changes, array $commandsById, array $violations, Context $context): void
+    private function validateSsoOnlyMode(array $changes, array $commandsById, array $violations, Context $context, array $disconnected = []): void
     {
         if ($changes === []) {
             return;
@@ -436,7 +558,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
             }
 
             if ($userType === LoginType::Admin->value) {
-                if (!$this->invariant->adminAccessPossible($changes) && $this->invariant->holds()) {
+                if (!$this->invariant->adminAccessPossible($changes, disconnectedProviderIds: $disconnected) && $this->invariant->holds()) {
                     $this->addToAll($violations, $affected, $this->violation(
                         'Administration password login is disabled and no active admin could log in through an active provider after this change.',
                         $property,
@@ -564,7 +686,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         $row = $this->connection->fetchAssociative(
             'SELECT `is_active`, `login_type`, `disable_non_oidc_admin_login`, `disable_non_oidc_customer_login`, `show_admin_link`, `show_customer_link`,
                     `public_client`, `client_secret`, `access_token_endpoint`, `revocation_endpoint`, `user_info_endpoint`, `well_known_config_url`,
-                    `require_email_verified`
+                    `require_email_verified`, `issuer`
              FROM `sw6oidc_provider` WHERE `id` = :id',
             ['id' => $providerIdBytes],
             ['id' => ParameterType::BINARY],

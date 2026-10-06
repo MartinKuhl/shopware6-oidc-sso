@@ -2,19 +2,22 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Event\AdminAfterCreateEvent;
 use MartinKuhl\Sw6Oidc\Event\AdminBeforeCreateEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Content\Media\MediaService;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
-use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\NotFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\User\UserEntity;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
@@ -22,6 +25,10 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 /**
  * Finds-or-JIT-creates a Shopware Administration `user` from a MappedProfile,
  * with ACL role mapping, role/profile sync and per-user IdP binding.
+ *
+ * Role sync only adds and removes the roles it granted itself
+ * (`sw6oidc_managed_acl_role`): roles granted by hand in Shopware survive
+ * every login (R3-M11).
  */
 class AdminProvisioningService
 {
@@ -41,6 +48,8 @@ class AdminProvisioningService
         private readonly LoggerInterface $logger,
         private readonly EventDispatcherInterface $eventDispatcher,
         private readonly EntityRepository $aclUserRoleRepository,
+        private readonly Connection $connection,
+        private readonly AdminRoleStore $roleStore,
     ) {
     }
 
@@ -59,49 +68,70 @@ class AdminProvisioningService
             $provider,
             $identity,
             $emailMatch?->getId(),
-            $emailMatch?->isAdmin() ?? false,
+            // Every admin is privileged: an all-powerful ACL role is as
+            // dangerous as the superadmin flag (R3-M10, R3-L23).
+            $emailMatch instanceof UserEntity,
             $context,
         );
 
         if ($userId !== null) {
-            $existing = $emailMatch instanceof \Shopware\Core\System\User\UserEntity && $emailMatch->getId() === $userId
-                ? $emailMatch
-                : $this->userRepository->search(new Criteria([$userId]), $context)->first();
-
-            if (!$existing instanceof UserEntity) {
-                throw AdminProvisioningDeniedException::accountMissing();
-            }
-
-            if ($provider->isSyncAdminRoleOnSso()) {
-                $this->syncRole($provider, $existing->getId(), $profile->groups, $context);
-            }
-
-            if ($provider->isSyncAdminProfileOnSso()) {
-                $this->syncProfile($existing, $profile, $context);
-            }
-
-            return $existing;
+            return $this->syncExisting($provider, $this->existingAdmin($userId, $emailMatch, $context), $profile, $context);
         }
 
         if (!$provider->isAutoCreateAdmin()) {
-            throw AdminProvisioningDeniedException::autoCreateDisabled($profile->email);
+            throw AdminProvisioningDeniedException::autoCreateDisabled();
         }
 
         $isSuperadmin = $provider->isAllowSuperadminGroupMapping()
             && $this->groupMappingResolver->matchesSuperadminGroup($provider, $profile->groups, $context);
 
-        $aclRoleId = null;
+        $mappedRoleIds = [];
+        $aclRoleIds = [];
 
         if (!$isSuperadmin) {
-            $aclRoleId = $this->groupMappingResolver->resolveAclRoleId($provider, $profile->groups, $context);
+            $mappedRoleIds = $this->groupMappingResolver->resolveAclRoleIds($provider, $profile->groups, $context);
+            // The provider default applies to new accounts only (R3-M11).
+            $defaultRoleId = $provider->getDefaultAclRoleId();
+            $aclRoleIds = $mappedRoleIds !== [] ? $mappedRoleIds : ($defaultRoleId !== null ? [$defaultRoleId] : []);
 
-            if ($aclRoleId === null) {
+            if ($aclRoleIds === []) {
                 throw AdminProvisioningDeniedException::noRoleResolved();
             }
         }
 
-        $userId = $this->create($provider, $profile, $aclRoleId, $isSuperadmin, $context);
-        $this->bindingService->bind(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $userId, $identity, $context);
+        try {
+            // Create and bind together: a concurrent first login of the same
+            // subject must not leave an unbound duplicate behind (R3-M12).
+            $userId = $this->connection->transactional(function () use ($provider, $profile, $aclRoleIds, $mappedRoleIds, $isSuperadmin, $identity, $context): string {
+                $userId = $this->create($provider, $profile, $aclRoleIds, $isSuperadmin, $context);
+                $this->roleStore->rememberManaged($userId, $mappedRoleIds, $provider->getId());
+                $this->bindingService->bind(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $userId, $identity, $context);
+
+                return $userId;
+            });
+        } catch (UniqueConstraintViolationException | SubjectAlreadyLinkedException | ProviderMismatchException $exception) {
+            $winnerId = $this->bindingService->findUserIdBySubject(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $identity, $context);
+
+            if ($winnerId === null) {
+                throw $exception;
+            }
+
+            $this->logger->info('sw6oidc: concurrent first login; using the account the other login created.', [
+                'providerId' => $provider->getId(),
+                'userId' => $winnerId,
+            ]);
+
+            return $this->existingAdmin($winnerId, null, $context);
+        }
+
+        // Outside the transaction: the media file can't be rolled back.
+        if ($profile->picture !== null) {
+            $avatarPayload = $this->syncAvatar($userId, $profile->picture, null, $context);
+
+            if ($avatarPayload !== []) {
+                $this->userRepository->update([['id' => $userId, ...$avatarPayload]], $context);
+            }
+        }
 
         $created = $this->userRepository->search(new Criteria([$userId]), $context)->first();
         \assert($created instanceof UserEntity);
@@ -109,6 +139,32 @@ class AdminProvisioningService
         $this->eventDispatcher->dispatch(new AdminAfterCreateEvent($provider, $profile, $created, $context));
 
         return $created;
+    }
+
+    private function existingAdmin(string $userId, ?UserEntity $emailMatch, Context $context): UserEntity
+    {
+        $existing = $emailMatch instanceof UserEntity && $emailMatch->getId() === $userId
+            ? $emailMatch
+            : $this->userRepository->search(new Criteria([$userId]), $context)->first();
+
+        if (!$existing instanceof UserEntity) {
+            throw AdminProvisioningDeniedException::accountMissing();
+        }
+
+        return $existing;
+    }
+
+    private function syncExisting(Sw6OidcProviderEntity $provider, UserEntity $existing, MappedProfile $profile, Context $context): UserEntity
+    {
+        if ($provider->isSyncAdminRoleOnSso()) {
+            $this->syncRole($provider, $existing, $profile->groups, $context);
+        }
+
+        if ($provider->isSyncAdminProfileOnSso()) {
+            $this->syncProfile($existing, $profile, $context);
+        }
+
+        return $existing;
     }
 
     private function findByEmail(string $email, Context $context): ?UserEntity
@@ -123,7 +179,10 @@ class AdminProvisioningService
         return $user;
     }
 
-    private function create(Sw6OidcProviderEntity $provider, MappedProfile $profile, ?string $aclRoleId, bool $isSuperadmin, Context $context): string
+    /**
+     * @param list<string> $aclRoleIds
+     */
+    private function create(Sw6OidcProviderEntity $provider, MappedProfile $profile, array $aclRoleIds, bool $isSuperadmin, Context $context): string
     {
         $userId = Uuid::randomHex();
 
@@ -138,7 +197,7 @@ class AdminProvisioningService
             'password' => bin2hex(random_bytes(32)),
             'active' => true,
             'admin' => $isSuperadmin,
-            'aclRoles' => $isSuperadmin ? [] : [['id' => $aclRoleId]],
+            'aclRoles' => $isSuperadmin ? [] : array_map(static fn (string $roleId): array => ['id' => $roleId], $aclRoleIds),
         ];
 
         $timeZone = $this->resolveTimeZone($profile->zoneinfo);
@@ -152,14 +211,6 @@ class AdminProvisioningService
         $payload = $this->recheckListenerPayload($provider, $payload, [...$event->getPayload(), 'id' => $userId]);
 
         $this->createWithUniqueUsername($payload, $profile, $context);
-
-        if ($profile->picture !== null) {
-            $avatarPayload = $this->syncAvatar($userId, $profile->picture, null, $context);
-
-            if ($avatarPayload !== []) {
-                $this->userRepository->update([['id' => $userId, ...$avatarPayload]], $context);
-            }
-        }
 
         $this->logger->info('sw6oidc: JIT-created Administration user via OIDC.', [
             'providerId' => $provider->getId(),
@@ -209,7 +260,9 @@ class AdminProvisioningService
 
     /**
      * The username is unique; two concurrent first logins can derive the same
-     * one. Retry with a fresh suffix instead of failing the login.
+     * one. Retry with a fresh suffix instead of failing the login. Any other
+     * unique violation (the email) is a concurrent login of the same person:
+     * rethrown, so the caller re-resolves (R3-M12).
      *
      * @param array<string, mixed> $payload
      */
@@ -221,7 +274,7 @@ class AdminProvisioningService
 
                 return;
             } catch (UniqueConstraintViolationException $exception) {
-                if ($attempt >= 2) {
+                if ($attempt >= 2 || !str_contains($exception->getMessage(), 'username')) {
                     throw $exception;
                 }
 
@@ -231,87 +284,78 @@ class AdminProvisioningService
     }
 
     /**
-     * Makes the admin's permissions match the IdP groups of this login:
+     * Makes the admin's permissions follow the IdP groups of this login:
      *
      * - A superadmin group match (two gates: provider flag + explicit
      *   mapping row) grants superadmin.
-     * - Otherwise the resolved ACL role *replaces* the user's roles, so a
-     *   role taken away at the IdP is taken away here too (H3). When nothing
-     *   resolves (not even the provider default) the roles are left alone
-     *   rather than emptied — a claims glitch must not strip everything.
-     * - Superadmin is only revoked with the provider's
-     *   `revoke_superadmin_on_sso` opt-in, and never from the last active
-     *   superadmin.
+     * - Otherwise every role a mapping grants is added, and roles the plugin
+     *   granted earlier (`sw6oidc_managed_acl_role`) that no group grants any
+     *   more are removed. Roles granted by hand are never touched, and the
+     *   provider default never applies here (R3-M11, H3).
+     * - Superadmin is revoked only with the provider's
+     *   `revoke_superadmin_on_sso` opt-in — also when no group resolves at
+     *   all — and never from the last active superadmin.
      *
      * @param string[] $groups
      */
-    private function syncRole(Sw6OidcProviderEntity $provider, string $userId, array $groups, Context $context): void
+    private function syncRole(Sw6OidcProviderEntity $provider, UserEntity $user, array $groups, Context $context): void
     {
+        $userId = $user->getId();
+
         if ($provider->isAllowSuperadminGroupMapping() && $this->groupMappingResolver->matchesSuperadminGroup($provider, $groups, $context)) {
-            $this->userRepository->update([[
-                'id' => $userId,
-                'admin' => true,
-            ]], $context);
-
-            return;
-        }
-
-        $aclRoleId = $this->groupMappingResolver->resolveAclRoleId($provider, $groups, $context);
-
-        if ($aclRoleId === null) {
-            return;
-        }
-
-        $criteria = (new Criteria([$userId]))->addAssociation('aclRoles');
-        $user = $this->userRepository->search($criteria, $context)->first();
-
-        if (!$user instanceof UserEntity) {
-            return;
-        }
-
-        $obsolete = [];
-        $hasRole = false;
-
-        foreach ($user->getAclRoles() ?? [] as $role) {
-            if ($role->getId() === $aclRoleId) {
-                $hasRole = true;
-
-                continue;
+            if (!$user->isAdmin()) {
+                $this->userRepository->update([['id' => $userId, 'admin' => true]], $context);
             }
 
-            $obsolete[] = ['userId' => $userId, 'aclRoleId' => $role->getId()];
+            return;
         }
 
-        if ($obsolete !== []) {
-            $this->aclUserRoleRepository->delete($obsolete, $context);
+        $mapped = $this->groupMappingResolver->resolveAclRoleIds($provider, $groups, $context);
+        $current = $this->roleStore->roleIds($userId);
+        $managed = $this->roleStore->managedRoleIds($userId);
+
+        $toAdd = array_values(array_diff($mapped, $current));
+        $toRemove = array_values(array_intersect(array_diff($managed, $mapped), $current));
+        // Managed roles someone removed by hand: forget them.
+        $forget = array_values(array_diff($managed, $mapped));
+
+        if ($toAdd !== []) {
+            $this->userRepository->update([['id' => $userId, 'aclRoles' => array_map(static fn (string $roleId): array => ['id' => $roleId], $toAdd)]], $context);
+            $this->roleStore->rememberManaged($userId, $toAdd, $provider->getId());
         }
 
-        if (!$hasRole) {
-            $this->userRepository->update([['id' => $userId, 'aclRoles' => [['id' => $aclRoleId]]]], $context);
+        if ($toRemove !== []) {
+            $this->aclUserRoleRepository->delete(array_map(static fn (string $roleId): array => ['userId' => $userId, 'aclRoleId' => $roleId], $toRemove), $context);
         }
+
+        $this->roleStore->forgetManaged($userId, $forget);
 
         if ($user->isAdmin() && $provider->isRevokeSuperadminOnSso()) {
             $this->revokeSuperadmin($provider, $userId, $context);
         }
 
-        if ($obsolete !== [] || !$hasRole) {
+        if ($toAdd !== [] || $toRemove !== []) {
             $this->logger->info('sw6oidc: admin roles synced from IdP groups.', [
                 'providerId' => $provider->getId(),
                 'userId' => $userId,
-                'removedRoles' => \count($obsolete),
+                'addedRoles' => \count($toAdd),
+                'removedRoles' => \count($toRemove),
             ]);
         }
     }
 
+    /**
+     * Never the last active superadmin; the check and the revoke can't race
+     * (AdminRoleStore, R3-M11).
+     */
     private function revokeSuperadmin(Sw6OidcProviderEntity $provider, string $userId, Context $context): void
     {
-        $others = (new Criteria())
-            ->addFilter(new EqualsFilter('admin', true))
-            ->addFilter(new EqualsFilter('active', true))
-            ->addFilter(new NotFilter(NotFilter::CONNECTION_AND, [new EqualsFilter('id', $userId)]))
-            ->setLimit(1);
+        $revoked = $this->roleStore->revokeSuperadminUnlessLast(
+            $userId,
+            fn (): EntityWrittenContainerEvent => $this->userRepository->update([['id' => $userId, 'admin' => false]], $context),
+        );
 
-        if ($this->userRepository->searchIds($others, $context)->getTotal() === 0) {
+        if (!$revoked) {
             $this->logger->warning('sw6oidc: superadmin not revoked by role sync — this is the last active superadmin.', [
                 'providerId' => $provider->getId(),
                 'userId' => $userId,
@@ -320,14 +364,11 @@ class AdminProvisioningService
             return;
         }
 
-        $this->userRepository->update([['id' => $userId, 'admin' => false]], $context);
-
         $this->logger->warning('sw6oidc: superadmin revoked by role sync (IdP groups no longer grant it).', [
             'providerId' => $provider->getId(),
             'userId' => $userId,
         ]);
     }
-
     /**
      * Partial update only — a claim that isn't mapped (null on the profile)
      * is left alone rather than overwritten, same rationale as

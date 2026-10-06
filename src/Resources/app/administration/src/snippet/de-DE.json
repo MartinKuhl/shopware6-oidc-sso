@@ -331,7 +331,13 @@
                 "frontchannelAdminLogoutHelp": "Front-Channel-Logout-Anfragen sind nicht authentifiziert (nur iss und sid). Administrationssitzungen können nur alle gemeinsam beendet werden und bleiben daher standardmäßig bestehen; Back-Channel-Logout (signiert) beendet sie immer. Nur aktivieren, wenn Ihr IdP ausschließlich Front-Channel-Logout unterstützt.",
                 "revokeSuperadminOnSso": "Rollen-Sync darf Superadmin entziehen",
                 "revokeSuperadminOnSsoHelp": "Bei aktivem Admin-Rollen-Sync: Gewähren die Gruppen eines Logins keinen Superadmin mehr, wird das Superadmin-Flag entfernt (die zugeordnete ACL-Rolle bleibt). Wird nie beim letzten aktiven Superadmin angewendet.",
-                "superadminRequiredHint": "Nur Superadmins können Anbieter anlegen oder ihre sicherheitsrelevanten Einstellungen ändern: Endpunkte, Issuer, Client-ID, Scope, Public Client, Anmeldetyp, Claim-Verarbeitung, Kontoverknüpfung, automatische Admin-Anlage, die Standard- und Superadmin-Rollenzuordnungen sowie die E-Mail-/Benutzernamen-Zuordnungen und Zugriffsregeln von Anbietern für die Administration. Alles andere können Sie ändern.",
+                "issuerChange": {
+                "title": "Issuer geändert",
+                "explanation": "Verknüpft lassen, wenn es derselbe Identity Provider unter einer neuen URL ist (zum Beispiel ein umbenannter Realm oder eine neue Domain). Trennen, wenn der Anbieter jetzt auf einen anderen Identity Provider oder Mandanten zeigt: dessen Benutzer dürfen sich nie an diesen Konten anmelden; sie können sich in ihrem Profil neu verknüpfen.",
+                "rebind": "Verknüpft lassen",
+                "disconnect": "Trennen"
+            },
+            "superadminRequiredHint": "Nur Superadmins können Anbieter anlegen oder ihre sicherheitsrelevanten Einstellungen ändern: Endpunkte, Issuer, Client-ID, Scope, Public Client, Anmeldetyp, Claim-Verarbeitung, Kontoverknüpfung, automatische Admin-Anlage, die Standard- und Superadmin-Rollenzuordnungen sowie die E-Mail-/Benutzernamen-Zuordnungen und Zugriffsregeln von Anbietern für die Administration. Alles andere können Sie ändern.",
             "readOnlyHint": "Sie können diesen Anbieter ansehen, aber nicht ändern (Bearbeitungsrecht fehlt).",
                 "removeWebhook": "Webhook entfernen",
                 "webhookRemovedOnSave": "Die gespeicherte Webhook-URL wird beim Speichern entfernt.",

@@ -843,6 +843,43 @@
                 @verified="onLockoutVerified"
                 @close="lockoutVerifying = false"
             />
+
+            <sw-modal
+                v-if="issuerChangeConfirmation"
+                :title="$t('sw6oidc.provider.detail.issuerChange.title')"
+                variant="small"
+                @modal-close="issuerChangeConfirmation = null"
+            >
+                <p>{{ issuerChangeConfirmation }}</p>
+                <p class="sw6oidc-provider-detail__spaced-top-small">{{ $t('sw6oidc.provider.detail.issuerChange.explanation') }}</p>
+
+                <template #modal-footer>
+                    <mt-button
+                        variant="secondary"
+                        @click="issuerChangeConfirmation = null"
+                    >
+                        {{ $t('global.default.cancel') }}
+                    </mt-button>
+                    <mt-button
+                        variant="critical"
+                        @click="onDecideIssuerChange(false)"
+                    >
+                        {{ $t('sw6oidc.provider.detail.issuerChange.disconnect') }}
+                    </mt-button>
+                    <mt-button
+                        variant="primary"
+                        @click="onDecideIssuerChange(true)"
+                    >
+                        {{ $t('sw6oidc.provider.detail.issuerChange.rebind') }}
+                    </mt-button>
+                </template>
+            </sw-modal>
+
+            <sw-verify-user-modal
+                v-if="issuerChangeRebind !== null"
+                @verified="onIssuerChangeVerified"
+                @close="issuerChangeRebind = null"
+            />
             </fieldset>
         </sw-card-view>
     </template>

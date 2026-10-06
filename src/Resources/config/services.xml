@@ -230,6 +230,8 @@
             <argument type="service" id="Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="event_dispatcher" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="Shopware\Core\System\SystemConfig\SystemConfigService" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService">
@@ -245,6 +247,13 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="event_dispatcher" />
             <argument type="service" id="acl_user_role.repository" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\AdminRoleStore" />
+        </service>
+
+        <!-- R3-M11: the roles role sync granted, and the race-free superadmin revoke. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AdminRoleStore">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AvatarFetcher">
@@ -492,6 +501,14 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
+        </service>
+
+        <!-- R3-M16: placeholder addresses are completed before checkout; the flag clears on real values. -->
+        <service id="MartinKuhl\Sw6Oidc\Storefront\EventSubscriber\PlaceholderAddressSubscriber">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="router" />
+            <argument type="service" id="translator" />
+            <tag name="kernel.event_subscriber" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Storefront\EventSubscriber\CustomerLogoutSubscriber">
@@ -768,6 +785,7 @@
             <argument type="service" id="request_stack" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\IssuerChangeConfirmationStore" />
             <tag name="kernel.event_subscriber" />
             <tag name="kernel.reset" method="reset" />
         </service>
@@ -776,9 +794,15 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
         </service>
 
+        <!-- R3-M9: re-bind or disconnect the account bindings when a provider's issuer changes. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\IssuerChangeConfirmationStore">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\ProviderLockoutConfirmationController" public="true">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\IssuerChangeConfirmationStore" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>

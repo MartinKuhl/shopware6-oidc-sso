@@ -13,10 +13,14 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
- * Resolves OIDC group claims to an ACL role (admin) or customer group
- * (storefront) via sw6oidc_role_mapping, case-insensitive, first match by
- * sort_order wins, falling back to the provider's configured default
- * (mapping table -> default -> deny).
+ * Resolves OIDC group claims via sw6oidc_role_mapping, case-insensitive:
+ *
+ * - ACL roles (admin): *every* matching role (R3-M11);
+ * - customer group: the first match by sort_order (a customer has one).
+ *
+ * The provider's defaults (`default_acl_role_id`, `default_customer_group_id`)
+ * only apply when an account is created; role and group sync on later
+ * logins never falls back to them (R3-M11).
  */
 class GroupMappingResolver implements ResetInterface
 {
@@ -28,21 +32,36 @@ class GroupMappingResolver implements ResetInterface
     }
 
     /**
+     * Every ACL role a mapping row grants for these groups (no default).
+     *
      * @param string[] $oidcGroups
+     *
+     * @return list<string>
      */
-    public function resolveAclRoleId(Sw6OidcProviderEntity $provider, array $oidcGroups, Context $context): ?string
+    public function resolveAclRoleIds(Sw6OidcProviderEntity $provider, array $oidcGroups, Context $context): array
     {
-        return $this->resolve($provider->getId(), Sw6OidcRoleMappingDefinition::MAPPING_TYPE_ADMIN_ROLE, $oidcGroups, $context)
-            ?? $provider->getDefaultAclRoleId();
+        $roleIds = [];
+
+        foreach ($this->matching($provider->getId(), Sw6OidcRoleMappingDefinition::MAPPING_TYPE_ADMIN_ROLE, $oidcGroups, $context) as $mapping) {
+            $roleId = $mapping->getAclRoleId();
+
+            if ($roleId !== null) {
+                $roleIds[$roleId] = $roleId;
+            }
+        }
+
+        return array_values($roleIds);
     }
 
     /**
      * @param string[] $oidcGroups
+     * @param bool     $withDefault fall back to the provider's default group (account creation only)
      */
-    public function resolveCustomerGroupId(Sw6OidcProviderEntity $provider, array $oidcGroups, Context $context): ?string
+    public function resolveCustomerGroupId(Sw6OidcProviderEntity $provider, array $oidcGroups, Context $context, bool $withDefault = true): ?string
     {
-        return $this->resolve($provider->getId(), Sw6OidcRoleMappingDefinition::MAPPING_TYPE_CUSTOMER_GROUP, $oidcGroups, $context)
-            ?? $provider->getDefaultCustomerGroupId();
+        $mapping = $this->matching($provider->getId(), Sw6OidcRoleMappingDefinition::MAPPING_TYPE_CUSTOMER_GROUP, $oidcGroups, $context)[0] ?? null;
+
+        return $mapping?->getCustomerGroupId() ?? ($withDefault ? $provider->getDefaultCustomerGroupId() : null);
     }
 
     /**
@@ -71,27 +90,24 @@ class GroupMappingResolver implements ResetInterface
     }
 
     /**
+     * The mapping rows of this type matching the groups, in sort order.
+     *
      * @param string[] $oidcGroups
+     *
+     * @return list<Sw6OidcRoleMappingEntity>
      */
-    private function resolve(string $providerId, string $mappingType, array $oidcGroups, Context $context): ?string
+    private function matching(string $providerId, string $mappingType, array $oidcGroups, Context $context): array
     {
         if ($oidcGroups === []) {
-            return null;
+            return [];
         }
 
         $normalizedGroups = array_map(mb_strtolower(...), $oidcGroups);
 
-        foreach ($this->mappings($providerId, $mappingType, $context) as $mapping) {
-            if (!\in_array(mb_strtolower($mapping->getOidcGroup()), $normalizedGroups, true)) {
-                continue;
-            }
-
-            return $mappingType === Sw6OidcRoleMappingDefinition::MAPPING_TYPE_ADMIN_ROLE
-                ? $mapping->getAclRoleId()
-                : $mapping->getCustomerGroupId();
-        }
-
-        return null;
+        return array_values(array_filter(
+            $this->mappings($providerId, $mappingType, $context),
+            static fn (Sw6OidcRoleMappingEntity $mapping): bool => \in_array(mb_strtolower($mapping->getOidcGroup()), $normalizedGroups, true),
+        ));
     }
 
     public function reset(): void

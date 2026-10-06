@@ -208,7 +208,14 @@ class OidcCallbackController extends StorefrontController
             throw new InvalidStateException('The "Connect SSO" flow was started by a different customer session.');
         }
 
-        $this->identityResolver->linkExplicitly(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $customer->getId(), $result->identity(), $context->getContext());
+        // A channel-bound customer is bound in its channel's scope (R3-M14).
+        $this->identityResolver->linkExplicitly(
+            Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER,
+            $customer->getId(),
+            $result->identity(),
+            $context->getContext(),
+            $customer->getBoundSalesChannelId(),
+        );
 
         $this->eventDispatcher->dispatch(new AccountSsoLinkedEvent(
             Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER,
@@ -242,7 +249,7 @@ class OidcCallbackController extends StorefrontController
         AuthTimeValidator::assertFresh($result);
 
         $identity = $result->identity();
-        $owner = $this->bindingService->findUserIdBySubject(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $identity->providerId, $identity->subject, $context->getContext());
+        $owner = $this->bindingService->findUserIdBySubject(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $identity, $context->getContext(), $context->getSalesChannelId());
 
         if ($owner !== $customer->getId()) {
             throw new InvalidStateException('The re-authentication was performed with a different identity.');

@@ -34,7 +34,8 @@ final class SqliteSsoSchema
                 `revocation_endpoint` VARCHAR(1024) NULL,
                 `user_info_endpoint` VARCHAR(1024) NULL,
                 `well_known_config_url` VARCHAR(1024) NULL,
-                `require_email_verified` INTEGER NOT NULL DEFAULT 1
+                `require_email_verified` INTEGER NOT NULL DEFAULT 1,
+                `issuer` VARCHAR(1024) NULL
             )
         SQL);
         $this->connection->executeStatement('CREATE TABLE `user` (`id` BLOB NOT NULL PRIMARY KEY, `active` INTEGER NOT NULL DEFAULT 1)');
@@ -53,7 +54,9 @@ final class SqliteSsoSchema
                 `id` BLOB NOT NULL PRIMARY KEY,
                 `provider_id` BLOB NOT NULL,
                 `user_type` VARCHAR(16) NOT NULL,
-                `user_id` BLOB NOT NULL
+                `user_id` BLOB NOT NULL,
+                `issuer` VARCHAR(2048) NULL,
+                `issuer_hash` CHAR(64) NULL
             )
         SQL);
     }
@@ -92,13 +95,15 @@ final class SqliteSsoSchema
         return $id;
     }
 
-    public function bind(string $providerId, string $userId, string $userType = 'admin'): void
+    public function bind(string $providerId, string $userId, string $userType = 'admin', string $issuer = 'https://idp.example'): void
     {
         $this->connection->insert('sw6oidc_user_provider', [
             'id' => Uuid::randomBytes(),
             'provider_id' => Uuid::fromHexToBytes($providerId),
             'user_type' => $userType,
             'user_id' => Uuid::fromHexToBytes($userId),
+            'issuer' => $issuer,
+            'issuer_hash' => hash('sha256', $issuer),
         ], ['id' => ParameterType::BINARY, 'provider_id' => ParameterType::BINARY, 'user_id' => ParameterType::BINARY]);
     }
 }

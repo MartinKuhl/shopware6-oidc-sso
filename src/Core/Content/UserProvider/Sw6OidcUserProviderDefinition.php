@@ -28,6 +28,10 @@ use Shopware\Core\Framework\DataAbstractionLayer\FieldCollection;
  * is writable in system scope only (R3-H3), and
  * TrustEntityWriteGuardSubscriber refuses inserts and deletes outside it.
  * UserProviderBindingService is the only writer.
+ *
+ * The key of a binding is provider + user type + issuer + subject + scope
+ * (R3-M9, R3-M14): `issuer_hash` is sha256 of `issuer`, `binding_scope` the
+ * sales channel of a channel-bound customer, else GLOBAL_SCOPE.
  */
 class Sw6OidcUserProviderDefinition extends EntityDefinition
 {
@@ -59,6 +63,8 @@ class Sw6OidcUserProviderDefinition extends EntityDefinition
             (new FkField('provider_id', 'providerId', Sw6OidcProviderDefinition::class))->addFlags(new ApiAware(), new Required(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new StringField('issuer', 'issuer', 2048))->addFlags(new ApiAware(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new StringField('sub', 'sub', 255))->addFlags(new ApiAware(), new WriteProtected(Context::SYSTEM_SCOPE)),
+            (new StringField('issuer_hash', 'issuerHash', 64))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE)),
+            (new IdField('binding_scope', 'bindingScope'))->addFlags(new ApiAware(), new WriteProtected(Context::SYSTEM_SCOPE)),
             new CreatedAtField(),
             new UpdatedAtField(),
 

@@ -49,9 +49,28 @@ final class GroupMappingResolverTest extends TestCase
         ]));
 
         self::assertSame(
-            $aclRoleId,
-            $resolver->resolveAclRoleId($provider, ['SHOP-ADMINS'], Context::createDefaultContext()),
+            [$aclRoleId],
+            $resolver->resolveAclRoleIds($provider, ['SHOP-ADMINS'], Context::createDefaultContext()),
         );
+    }
+
+    /**
+     * R3-M11: a user in several mapped groups gets every mapped role.
+     */
+    public function testEveryMatchingAclRoleIsReturned(): void
+    {
+        $provider = $this->provider();
+        $editor = Uuid::randomHex();
+        $support = Uuid::randomHex();
+
+        $resolver = new GroupMappingResolver($this->repositoryReturning([
+            $this->mapping($provider->getId(), RoleMapping::MAPPING_TYPE_ADMIN_ROLE, 'editors', aclRoleId: $editor, sortOrder: 0),
+            $this->mapping($provider->getId(), RoleMapping::MAPPING_TYPE_ADMIN_ROLE, 'support', aclRoleId: $support, sortOrder: 1),
+            $this->mapping($provider->getId(), RoleMapping::MAPPING_TYPE_ADMIN_ROLE, 'also-editors', aclRoleId: $editor, sortOrder: 2),
+            $this->mapping($provider->getId(), RoleMapping::MAPPING_TYPE_ADMIN_ROLE, 'finance', aclRoleId: Uuid::randomHex(), sortOrder: 3),
+        ]));
+
+        self::assertSame([$editor, $support], $resolver->resolveAclRoleIds($provider, ['editors', 'support', 'also-editors'], Context::createDefaultContext()));
     }
 
     public function testFirstMatchInSortOrderWins(): void
@@ -80,7 +99,7 @@ final class GroupMappingResolverTest extends TestCase
 
         $resolver = new GroupMappingResolver($this->repositoryReturning([]));
         $resolver->resolveCustomerGroupId($provider, ['any'], Context::createDefaultContext());
-        $resolver->resolveAclRoleId($provider, ['any'], Context::createDefaultContext());
+        $resolver->resolveAclRoleIds($provider, ['any'], Context::createDefaultContext());
         $resolver->matchesSuperadminGroup($provider, ['any'], Context::createDefaultContext());
 
         self::assertSame(1, $this->searches, 'one query per provider and request (L8)');
@@ -111,18 +130,20 @@ final class GroupMappingResolverTest extends TestCase
         );
     }
 
-    public function testFallsBackToProviderDefaultAclRoleWhenNothingMatches(): void
+    /**
+     * R3-M11: the defaults are for new accounts; sync never falls back to them.
+     */
+    public function testDefaultsOnlyApplyWhenAsked(): void
     {
-        $defaultRoleId = Uuid::randomHex();
         $provider = $this->provider();
-        $provider->setDefaultAclRoleId($defaultRoleId);
+        $provider->setDefaultAclRoleId(Uuid::randomHex());
+        $provider->setDefaultCustomerGroupId(Uuid::randomHex());
 
         $resolver = new GroupMappingResolver($this->repositoryReturning([]));
 
-        self::assertSame(
-            $defaultRoleId,
-            $resolver->resolveAclRoleId($provider, ['editors'], Context::createDefaultContext()),
-        );
+        self::assertSame([], $resolver->resolveAclRoleIds($provider, ['editors'], Context::createDefaultContext()));
+        self::assertNull($resolver->resolveCustomerGroupId($provider, ['vip'], Context::createDefaultContext(), withDefault: false));
+        self::assertSame($provider->getDefaultCustomerGroupId(), $resolver->resolveCustomerGroupId($provider, ['vip'], Context::createDefaultContext()));
     }
 
     public function testFallsBackToProviderDefaultWithoutQueryingWhenUserHasNoGroups(): void
@@ -147,7 +168,7 @@ final class GroupMappingResolverTest extends TestCase
             $this->mapping($provider->getId(), RoleMapping::MAPPING_TYPE_ADMIN_ROLE, 'admins', aclRoleId: Uuid::randomHex()),
         ]));
 
-        self::assertNull($resolver->resolveAclRoleId($provider, ['guests'], Context::createDefaultContext()));
+        self::assertSame([], $resolver->resolveAclRoleIds($provider, ['guests'], Context::createDefaultContext()));
         self::assertNull($resolver->resolveCustomerGroupId($provider, ['guests'], Context::createDefaultContext()));
     }
 
@@ -178,9 +199,9 @@ final class GroupMappingResolverTest extends TestCase
         $provider = $this->provider();
         $resolver = new GroupMappingResolver($this->repositoryReturning([]));
 
-        $resolver->resolveAclRoleId($provider, ['any'], Context::createDefaultContext());
+        $resolver->resolveAclRoleIds($provider, ['any'], Context::createDefaultContext());
         $resolver->reset();
-        $resolver->resolveAclRoleId($provider, ['any'], Context::createDefaultContext());
+        $resolver->resolveAclRoleIds($provider, ['any'], Context::createDefaultContext());
 
         self::assertSame(2, $this->searches);
     }

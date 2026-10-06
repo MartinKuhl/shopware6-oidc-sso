@@ -12,6 +12,7 @@ class Sw6Oidc extends Plugin
     private const TABLES = [
         'sw6oidc_passkey_credential',
         'sw6oidc_user_provider',
+        'sw6oidc_managed_acl_role',
         'sw6oidc_session_activity',
         'sw6oidc_session',
         'sw6oidc_one_time_token',

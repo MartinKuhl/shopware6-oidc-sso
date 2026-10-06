@@ -11,6 +11,9 @@
             "emailNotVerified": "Your identity provider has not verified your email address. Please verify it there and try again.",
             "providerMismatch": "This account is connected to a different single sign-on identity."
         },
+        "checkout": {
+            "completeAddress": "Please complete your address before placing an order: your account was created without one."
+        },
         "passkey": {
             "button": "Login with Passkey",
             "pageTitle": "Passkeys",

@@ -95,7 +95,7 @@ class StepUpService
         AuthTimeValidator::assertFresh($result);
 
         $identity = $result->identity();
-        $owner = $this->bindingService->findUserIdBySubject(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $identity->providerId, $identity->subject, $context);
+        $owner = $this->bindingService->findUserIdBySubject(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $identity, $context);
 
         if ($owner !== $userId) {
             throw new InvalidStateException('The re-authentication was performed with a different identity.');

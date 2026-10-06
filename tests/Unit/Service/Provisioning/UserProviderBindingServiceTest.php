@@ -2,10 +2,10 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Provisioning;
 
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\ExternalIdentity;
@@ -16,6 +16,7 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\IdSearchResult;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -107,7 +108,9 @@ final class UserProviderBindingServiceTest extends TestCase
                         'userId' => $userId,
                         'providerId' => $providerId,
                         'issuer' => 'https://idp.example.com',
+                        'issuerHash' => hash('sha256', 'https://idp.example.com'),
                         'sub' => 'subject-1',
+                        'bindingScope' => Sw6OidcUserProviderEntity::GLOBAL_SCOPE,
                     ], $payload[0]);
 
                     return true;
@@ -179,6 +182,34 @@ final class UserProviderBindingServiceTest extends TestCase
         (new UserProviderBindingService($repository))->bind(self::USER_TYPE, $userId, $this->identity(Uuid::randomHex()), Context::createDefaultContext());
     }
 
+    /**
+     * R3-M9: the issuer is part of the identity; R3-M14: a channel-scoped
+     * binding wins over the global one of the same subject.
+     */
+    public function testLookupFiltersOnIssuerAndPrefersTheChannelScope(): void
+    {
+        $providerId = Uuid::randomHex();
+        $channel = Uuid::randomHex();
+        $global = $this->binding(Uuid::randomHex(), $providerId, 'subject-1');
+        $scoped = $this->binding(Uuid::randomHex(), $providerId, 'subject-1');
+        $scoped->setBindingScope($channel);
+        $captured = null;
+
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->method('search')->willReturnCallback(function (Criteria $criteria, Context $context) use (&$captured, $global, $scoped): EntitySearchResult {
+            $captured = $criteria;
+
+            return new EntitySearchResult(Sw6OidcUserProviderDefinition::ENTITY_NAME, 2, new Sw6OidcUserProviderCollection([$global, $scoped]), null, $criteria, $context);
+        });
+
+        $service = new UserProviderBindingService($repository);
+
+        self::assertSame($scoped->getUserId(), $service->findUserIdBySubject(self::USER_TYPE, $this->identity($providerId), Context::createDefaultContext(), $channel));
+        self::assertInstanceOf(Criteria::class, $captured);
+        self::assertContainsEquals(new EqualsFilter('issuerHash', hash('sha256', 'https://idp.example.com')), $captured->getFilters());
+        self::assertContainsEquals(new EqualsAnyFilter('bindingScope', [$channel, Sw6OidcUserProviderEntity::GLOBAL_SCOPE]), $captured->getFilters());
+    }
+
     public function testUnbindDeletesAllBindingRowsForUser(): void
     {
         $userId = Uuid::randomHex();
@@ -221,6 +252,8 @@ final class UserProviderBindingServiceTest extends TestCase
         $entity->setUserId($userId);
         $entity->setProviderId($providerId);
         $entity->setSub($sub);
+        $entity->setIssuer('https://idp.example.com');
+        $entity->setIssuerHash(UserProviderBindingService::issuerHash('https://idp.example.com'));
 
         return $entity;
     }

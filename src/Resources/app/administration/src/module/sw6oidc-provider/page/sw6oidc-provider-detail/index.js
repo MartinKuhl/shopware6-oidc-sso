@@ -99,6 +99,10 @@ Component.register('sw6oidc-provider-detail', () => {
                 lockoutConfirmation: null,
                 /** The confirmation needs a fresh re-authentication (R3-M22). */
                 lockoutVerifying: false,
+                /** Issuer change with connected accounts: the server's message (R3-M9). */
+                issuerChangeConfirmation: null,
+                /** true = keep the accounts connected, false = disconnect; set while verifying */
+                issuerChangeRebind: null,
                 /** Discovery URL as loaded: save re-discovers only when it changed (F-M7) */
                 loadedWellKnownConfigUrl: null,
                 /** Live test popup, to verify where results come from (F-M9) */
@@ -524,6 +528,14 @@ Component.register('sw6oidc-provider-detail', () => {
                         return;
                     }
 
+                    const issuerChange = errors.find((entry) => entry.code === 'SW6OIDC_ISSUER_CHANGE_CONFIRM');
+
+                    if (issuerChange && !this.isNewProvider) {
+                        this.issuerChangeConfirmation = issuerChange.detail;
+
+                        return;
+                    }
+
                     // Surface the server's own violation messages (SSRF block,
                     // lockout guard, ...) instead of only a generic failure.
                     const details = errors
@@ -548,6 +560,26 @@ Component.register('sw6oidc-provider-detail', () => {
 
                 try {
                     await this.sw6oidcApiService.post(`_action/sw6oidc/provider/${this.provider.id}/confirm-lockout`);
+                } catch {
+                    this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.saveError') });
+
+                    return;
+                }
+
+                await this.onClickSave();
+            },
+
+            onDecideIssuerChange(rebind) {
+                this.issuerChangeConfirmation = null;
+                this.issuerChangeRebind = rebind;
+            },
+
+            async onIssuerChangeVerified() {
+                const rebind = this.issuerChangeRebind;
+                this.issuerChangeRebind = null;
+
+                try {
+                    await this.sw6oidcApiService.post(`_action/sw6oidc/provider/${this.provider.id}/confirm-issuer-change`, { rebind });
                 } catch {
                     this.createNotificationError({ message: this.$tc('sw6oidc.provider.detail.saveError') });
 

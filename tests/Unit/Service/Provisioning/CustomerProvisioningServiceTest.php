@@ -2,27 +2,28 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Provisioning;
 
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
+use MartinKuhl\Sw6Oidc\Event\CustomerAfterCreateEvent;
+use MartinKuhl\Sw6Oidc\Event\CustomerBeforeCreateEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AddressProfile;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CountryResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AccountLinkingRequiredException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\CustomerProvisioningDeniedException;
-use MartinKuhl\Sw6Oidc\Service\Provisioning\ExternalIdentity;
-use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\ExternalIdentity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\GroupMappingResolver;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\MappedProfile;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
-use MartinKuhl\Sw6Oidc\Event\CustomerAfterCreateEvent;
-use MartinKuhl\Sw6Oidc\Event\CustomerBeforeCreateEvent;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\EventDispatcher\EventDispatcher;
 use Psr\Log\NullLogger;
 use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupEntity;
 use Shopware\Core\Checkout\Customer\CustomerCollection;
@@ -40,10 +41,16 @@ use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 use Shopware\Core\System\SalesChannel\SalesChannelEntity;
+use Shopware\Core\System\SystemConfig\SystemConfigService;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 
 #[CoversClass(CustomerProvisioningService::class)]
 final class CustomerProvisioningServiceTest extends TestCase
 {
+    private bool $bindCustomersToSalesChannel = false;
+
+    private bool $boundAccountWithEmailExists = false;
+
     private ?EventDispatcher $eventDispatcher = null;
 
     private const CUSTOMER_NUMBER = '10042';
@@ -608,6 +615,84 @@ final class CustomerProvisioningServiceTest extends TestCase
         self::assertSame(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $this->bindingPayloads[0]['userType']);
     }
 
+    public function testJitCustomerIsGlobalUnlessTheShopBindsCustomers(): void
+    {
+        $payload = $this->captureCreatePayload();
+
+        $this->createService()->findOrCreateCustomer($this->provider(), new MappedProfile('jane@example.com'), $this->identity(), $this->salesChannelContext());
+
+        self::assertNull($payload->value['boundSalesChannelId'] ?? null);
+        self::assertSame(Sw6OidcUserProviderEntity::GLOBAL_SCOPE, $this->bindingPayloads[0]['bindingScope']);
+    }
+
+    /**
+     * R3-M13/R3-M14: core's registration rule for the bound sales channel,
+     * and the binding lives in that channel's scope.
+     */
+    public function testJitCustomerIsBoundToTheChannelWhenTheShopBindsCustomers(): void
+    {
+        $this->bindCustomersToSalesChannel = true;
+
+        $this->assertBoundToTheCurrentChannel();
+    }
+
+    /**
+     * R3-M13: an unbound duplicate would make the bound account's password
+     * login find the new one.
+     */
+    public function testJitCustomerIsBoundWhenABoundAccountWithTheEmailExists(): void
+    {
+        $this->boundAccountWithEmailExists = true;
+
+        $this->assertBoundToTheCurrentChannel();
+    }
+
+    private function assertBoundToTheCurrentChannel(): void
+    {
+        $payload = $this->captureCreatePayload();
+
+        $this->createService()->findOrCreateCustomer($this->provider(), new MappedProfile('jane@example.com'), $this->identity(), $this->salesChannelContext());
+
+        self::assertSame($this->salesChannelId, $payload->value['boundSalesChannelId'] ?? null);
+        self::assertSame($this->salesChannelId, $this->bindingPayloads[0]['bindingScope']);
+    }
+
+    /**
+     * R3-M12: two first logins at once — the loser's customer is rolled back
+     * and it logs into the winner's account instead of failing.
+     */
+    public function testConcurrentFirstLoginUsesTheWinnersAccount(): void
+    {
+        $winner = $this->customer(Uuid::randomHex(), 'jane@example.com');
+        $this->captureCreatePayload();
+        $this->userProviderRepository = $this->createMock(EntityRepository::class);
+        $this->userProviderRepository->method('create')->willReturnCallback(function () use ($winner): never {
+            // The other login committed its customer and binding first.
+            $this->existingCustomers = [$winner];
+
+            throw $this->createStub(UniqueConstraintViolationException::class);
+        });
+        $this->userProviderRepository->method('search')->willReturnCallback(function (Criteria $criteria, Context $context) use ($winner): EntitySearchResult {
+            $byUser = array_filter($criteria->getFilters(), static fn ($filter): bool => $filter instanceof EqualsFilter && $filter->getField() === 'userId') !== [];
+            $entities = [];
+
+            if ($this->existingCustomers !== [] && !$byUser) {
+                $binding = new Sw6OidcUserProviderEntity();
+                $binding->setId(Uuid::randomHex());
+                $binding->setUserType(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER);
+                $binding->setUserId($winner->getId());
+                $binding->setProviderId($this->providerId);
+                $entities[] = $binding;
+            }
+
+            return new EntitySearchResult(Sw6OidcUserProviderDefinition::ENTITY_NAME, \count($entities), new Sw6OidcUserProviderCollection($entities), null, $criteria, $context);
+        });
+
+        $result = $this->createService()->findOrCreateCustomer($this->provider(), new MappedProfile('jane@example.com'), $this->identity(), $this->salesChannelContext());
+
+        self::assertSame($winner->getId(), $result->getId());
+    }
+
     public function testCreateDispatchesBeforeAndAfterEventsAndHonorsPayloadChanges(): void
     {
         $dispatched = [];
@@ -832,7 +917,29 @@ final class CustomerProvisioningServiceTest extends TestCase
             $this->numberRangeValueGenerator(),
             new NullLogger(),
             $this->eventDispatcher ??= new EventDispatcher(),
+            $this->connection(),
+            $this->systemConfig(),
         );
+    }
+
+    private function connection(): Connection
+    {
+        $connection = $this->createStub(Connection::class);
+        $connection->method('transactional')->willReturnCallback(static fn (\Closure $callback): mixed => $callback($connection));
+        // No bound account with this email (core's RegisterRoute rule, R3-M13).
+        $connection->method('fetchOne')->willReturnCallback(fn (): string|false => $this->boundAccountWithEmailExists ? '1' : false);
+
+        return $connection;
+    }
+
+    private function systemConfig(): SystemConfigService
+    {
+        $systemConfig = $this->createStub(SystemConfigService::class);
+        $systemConfig->method('get')->willReturnCallback(
+            fn (string $key): bool => $key === 'core.systemWideLoginRegistration.isCustomerBoundToSalesChannel' && $this->bindCustomersToSalesChannel,
+        );
+
+        return $systemConfig;
     }
 
     /**

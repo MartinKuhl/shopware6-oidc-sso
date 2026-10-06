@@ -11,6 +11,9 @@
             "emailNotVerified": "Ihr Identitätsanbieter hat Ihre E-Mail-Adresse nicht bestätigt. Bitte bestätigen Sie sie dort und versuchen Sie es erneut.",
             "providerMismatch": "Dieses Konto ist mit einer anderen Single-Sign-on-Identität verbunden."
         },
+        "checkout": {
+            "completeAddress": "Bitte vervollständigen Sie Ihre Adresse, bevor Sie bestellen: Ihr Konto wurde ohne Adresse angelegt."
+        },
         "passkey": {
             "button": "Login mit Passkey",
             "pageTitle": "Passkeys",

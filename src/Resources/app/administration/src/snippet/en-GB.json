@@ -331,7 +331,13 @@
                 "frontchannelAdminLogoutHelp": "Front-channel logout requests are unauthenticated (only iss and sid). Administration sessions can only be ended all at once, so they are left alone by default; back-channel logout (signed) always ends them. Enable only if your IdP supports nothing but front-channel logout.",
                 "revokeSuperadminOnSso": "Role sync may revoke superadmin",
                 "revokeSuperadminOnSsoHelp": "With admin role sync on: when a login's groups no longer grant superadmin, the superadmin flag is removed (the mapped ACL role remains). Never applied to the last active superadmin.",
-                "superadminRequiredHint": "Only a superadmin can create providers or change their security-relevant settings: endpoints, issuer, client ID, scope, public client, login type, claim handling, account linking, admin auto-creation, the default and superadmin role mappings, and the email/username mappings and access rules of providers that serve the Administration. You can change everything else.",
+                "issuerChange": {
+                "title": "Issuer changed",
+                "explanation": "Keep them connected if this is the same identity provider under a new URL (for example a renamed realm or domain). Disconnect them if the provider now points at a different identity provider or tenant: its users must never log into these accounts; they can connect again from their profile.",
+                "rebind": "Keep connected",
+                "disconnect": "Disconnect"
+            },
+            "superadminRequiredHint": "Only a superadmin can create providers or change their security-relevant settings: endpoints, issuer, client ID, scope, public client, login type, claim handling, account linking, admin auto-creation, the default and superadmin role mappings, and the email/username mappings and access rules of providers that serve the Administration. You can change everything else.",
             "readOnlyHint": "You can view this provider but not change it (missing editor permission).",
                 "removeWebhook": "Remove webhook",
                 "webhookRemovedOnSave": "The stored webhook URL will be removed when you save.",

@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Subscriber;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
+use MartinKuhl\Sw6Oidc\Service\Security\IssuerChangeConfirmationStore;
 use MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore;
 use MartinKuhl\Sw6Oidc\Service\Security\Message\PasswordSessionRevocationMessage;
 use MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant;
@@ -16,8 +17,8 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
-use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\DeleteCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\InsertCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\UpdateCommand;
@@ -41,6 +42,8 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
 
     private LockoutConfirmationStore $confirmations;
 
+    private IssuerChangeConfirmationStore $issuerChanges;
+
     private string $actingAdmin;
 
     /** @var list<object> */
@@ -52,6 +55,7 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
     {
         $this->db = new SqliteSsoSchema();
         $this->confirmations = new LockoutConfirmationStore(new InMemoryAtomicCache());
+        $this->issuerChanges = new IssuerChangeConfirmationStore(new InMemoryAtomicCache());
         $this->actingAdmin = Uuid::randomHex();
     }
 
@@ -278,6 +282,49 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
         $this->assertNoViolations($this->validate([$this->update($id, ['require_email_verified' => 1])]));
     }
 
+    /**
+     * R3-M9: bindings belong to an issuer; changing it needs a decision.
+     */
+    public function testIssuerChangeWithBoundAccountsNeedsADecision(): void
+    {
+        $id = $this->db->provider(['issuer' => 'https://idp.example']);
+        $this->db->bind($id, Uuid::randomHex(), 'customer');
+
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['issuer' => 'https://other-tenant.example'])]));
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_ISSUER_CHANGE_CONFIRM, $violation->getCode());
+        self::assertStringContainsString('1 account', (string) $violation->getMessage());
+
+        // Unchanged issuer, or no bound accounts: nothing to decide.
+        $this->assertNoViolations($this->validate([$this->update($id, ['issuer' => 'https://idp.example'])]));
+        $this->assertNoViolations($this->validate([$this->update($this->db->provider(['issuer' => 'https://a.example']), ['issuer' => 'https://b.example'])]));
+    }
+
+    public function testRebindingMovesTheBindingsToTheNewIssuerAfterCommit(): void
+    {
+        $id = $this->db->provider(['issuer' => 'https://idp.example']);
+        $this->db->bind($id, Uuid::randomHex(), 'customer');
+        $this->issuerChanges->confirm($id, $this->actingAdmin, true);
+
+        $this->assertNoViolations($this->validate([$this->update($id, ['issuer' => 'https://idp.example/realms/shop'])]));
+        $this->written($id);
+
+        self::assertSame(
+            [hash('sha256', 'https://idp.example/realms/shop')],
+            $this->db->connection->fetchFirstColumn('SELECT `issuer_hash` FROM `sw6oidc_user_provider`'),
+        );
+    }
+
+    public function testDisconnectingTheOnlyAdminBindingsUnderSsoOnlyModeIsRefused(): void
+    {
+        $id = $this->db->provider(['issuer' => 'https://idp.example', 'disable_non_oidc_admin_login' => 1]);
+        $this->db->bind($id, $this->db->admin());
+        $this->issuerChanges->confirm($id, $this->actingAdmin, false);
+
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['issuer' => 'https://other-tenant.example'])]));
+
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD, $violation->getCode());
+    }
+
     public function testBreakGlassSkipsTheLockoutChecks(): void
     {
         $this->assertNoViolations($this->validate([$this->update($this->db->provider(), ['disable_non_oidc_admin_login' => 1])], breakGlass: true));
@@ -340,6 +387,7 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
             $requestStack,
             $this->confirmations,
             new NullLogger(),
+            $this->issuerChanges,
         );
 
         $source = new AdminApiSource($this->actingAdmin);

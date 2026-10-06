@@ -13,12 +13,10 @@ class AdminProvisioningDeniedException extends \RuntimeException
         parent::__construct($message);
     }
 
-    public static function autoCreateDisabled(string $email): self
+    public static function autoCreateDisabled(): self
     {
-        return new self(sprintf(
-            'No admin account exists for "%s" and auto-creation is disabled for this provider.',
-            $email,
-        ), self::REASON_AUTO_CREATE_DISABLED);
+        // No email in the message: it ends up in warning-level logs (R3-L24).
+        return new self('No admin account exists for this identity and auto-creation is disabled for this provider.', self::REASON_AUTO_CREATE_DISABLED);
     }
 
     public static function noRoleResolved(): self
