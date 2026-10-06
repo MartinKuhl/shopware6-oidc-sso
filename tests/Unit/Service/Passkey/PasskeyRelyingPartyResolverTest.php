@@ -22,7 +22,7 @@ final class PasskeyRelyingPartyResolverTest extends TestCase
     public function testConfiguredRpIdKeepsOnlyOriginsItCovers(): void
     {
         $config = $this->createStub(PasskeyConfig::class);
-        $config->method('getRpId')->willReturn('example.com');
+        $config->method('getAdminRpId')->willReturn('example.com');
         $config->method('getRpName')->willReturn('Shop');
 
         $rp = (new PasskeyRelyingPartyResolver($config, $this->createStub(Connection::class), 'https://admin.example.com'))->forAdministration();
@@ -44,7 +44,7 @@ final class PasskeyRelyingPartyResolverTest extends TestCase
     private function resolver(string $appUrl): PasskeyRelyingPartyResolver
     {
         $config = $this->createStub(PasskeyConfig::class);
-        $config->method('getRpId')->willReturnArgument(0);
+        $config->method('getAdminRpId')->willReturnArgument(0);
         $config->method('getRpName')->willReturnArgument(0);
 
         return new PasskeyRelyingPartyResolver($config, $this->createStub(Connection::class), $appUrl);

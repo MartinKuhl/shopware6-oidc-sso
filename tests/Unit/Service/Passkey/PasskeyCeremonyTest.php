@@ -84,11 +84,11 @@ final class PasskeyCeremonyTest extends TestCase
     {
         $this->register();
 
-        $result = $this->authentication->buildRequestOptions([], $this->rp());
+        $result = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
         $assertion = $this->authenticator->assert($options, hash('sha256', 'admin:' . $this->userId, true));
 
-        $resolved = $this->authentication->verifyAssertion($result['nonce'], $assertion, 'shop.example');
+        $resolved = $this->authentication->verifyAssertion($result['nonce'], $assertion, 'shop.example', 'storefront-login:test');
 
         self::assertSame('admin', $resolved['userType']);
         self::assertSame($this->userId, $resolved['userId']);
@@ -101,47 +101,61 @@ final class PasskeyCeremonyTest extends TestCase
         $handle = hash('sha256', 'admin:' . $this->userId, true);
         $allow = array_map(static fn ($record) => $record->getPublicKeyCredentialDescriptor(), $this->credentials->findAllForUserHandle($handle));
 
-        $result = $this->authentication->buildRequestOptions($allow, $this->rp());
+        $result = $this->authentication->buildRequestOptions($allow, $this->rp(), 'storefront-login:test');
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
         self::assertCount(1, $options['allowCredentials']);
 
-        $resolved = $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, $handle), 'shop.example');
+        $resolved = $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, $handle), 'shop.example', 'storefront-login:test');
 
         self::assertSame($this->userId, $resolved['userId']);
+    }
+
+    /**
+     * R3-M7: a Storefront ceremony can't be redeemed at the Administration's
+     * login, even when one RP ID covers both hosts.
+     */
+    public function testCeremonyOnlyCompletesForItsPurpose(): void
+    {
+        $this->register();
+        $result = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
+        $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
+
+        $this->expectException(PasskeyCeremonyException::class);
+        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, hash('sha256', 'admin:' . $this->userId, true)), 'shop.example', 'admin-login');
     }
 
     public function testLoginNonceIsSingleUse(): void
     {
         $this->register();
-        $result = $this->authentication->buildRequestOptions([], $this->rp());
+        $result = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
         $handle = hash('sha256', 'admin:' . $this->userId, true);
 
-        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, $handle), 'shop.example');
+        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, $handle), 'shop.example', 'storefront-login:test');
 
         $this->expectException(PasskeyCeremonyException::class);
-        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, $handle), 'shop.example');
+        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, $handle), 'shop.example', 'storefront-login:test');
     }
 
     public function testUnregisteredCredentialIsRejected(): void
     {
-        $result = $this->authentication->buildRequestOptions([], $this->rp());
+        $result = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
 
         $this->expectException(PasskeyCeremonyException::class);
         $this->expectExceptionMessage('not registered');
-        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, random_bytes(32)), 'shop.example');
+        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, random_bytes(32)), 'shop.example', 'storefront-login:test');
     }
 
     public function testWrongHostIsRejected(): void
     {
         $this->register();
-        $result = $this->authentication->buildRequestOptions([], $this->rp());
+        $result = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
         $evil = new SoftwareAuthenticator('https://evil.example');
 
         $this->expectException(PasskeyCeremonyException::class);
-        $this->authentication->verifyAssertion($result['nonce'], $evil->assert($options, random_bytes(32)), 'shop.example');
+        $this->authentication->verifyAssertion($result['nonce'], $evil->assert($options, random_bytes(32)), 'shop.example', 'storefront-login:test');
     }
 
     public function testUnknownRegistrationNonceIsRejected(): void
@@ -152,7 +166,7 @@ final class PasskeyCeremonyTest extends TestCase
 
     public function testRequestOptionsRequireUserVerification(): void
     {
-        $options = json_decode($this->authentication->buildRequestOptions([], $this->rp())['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
+        $options = json_decode($this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test')['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
 
         self::assertSame('required', $options['userVerification']);
         self::assertSame('required', $this->creationOptions()['authenticatorSelection']['userVerification']);
@@ -163,12 +177,12 @@ final class PasskeyCeremonyTest extends TestCase
         $this->register();
         // The same key, used without PIN/biometrics: possession alone is not enough (H6).
         $this->authenticator->setUserVerified(false);
-        $result = $this->authentication->buildRequestOptions([], $this->rp());
+        $result = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
 
         $this->expectException(PasskeyCeremonyException::class);
         $this->expectExceptionMessage('User authentication required');
-        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, hash('sha256', 'admin:' . $this->userId, true)), 'shop.example');
+        $this->authentication->verifyAssertion($result['nonce'], $this->authenticator->assert($options, hash('sha256', 'admin:' . $this->userId, true)), 'shop.example', 'storefront-login:test');
     }
 
     public function testAssertionRelayedThroughASubdomainIsRejected(): void
@@ -176,11 +190,11 @@ final class PasskeyCeremonyTest extends TestCase
         $this->register();
         // Same credential and RP ID, but the ceremony ran on another host of the domain (N-M1).
         $relay = new SoftwareAuthenticator('https://blog.shop.example', 'shop.example');
-        $result = $this->authentication->buildRequestOptions([], $this->rp());
+        $result = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
         $options = json_decode($result['optionsJson'], true, 512, \JSON_THROW_ON_ERROR);
 
         $this->expectException(PasskeyCeremonyException::class);
-        $this->authentication->verifyAssertion($result['nonce'], $relay->assert($options, hash('sha256', 'admin:' . $this->userId, true)), 'blog.shop.example');
+        $this->authentication->verifyAssertion($result['nonce'], $relay->assert($options, hash('sha256', 'admin:' . $this->userId, true)), 'blog.shop.example', 'storefront-login:test');
     }
 
     public function testRegistrationCannotBeCompletedByAnotherAccount(): void
@@ -201,25 +215,25 @@ final class PasskeyCeremonyTest extends TestCase
         $this->register();
         $handle = hash('sha256', 'admin:' . $this->userId, true);
 
-        $first = $this->authentication->buildRequestOptions([], $this->rp());
-        $this->authentication->verifyAssertion($first['nonce'], $this->authenticator->assert(json_decode($first['optionsJson'], true, 512, \JSON_THROW_ON_ERROR), $handle), 'shop.example');
+        $first = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
+        $this->authentication->verifyAssertion($first['nonce'], $this->authenticator->assert(json_decode($first['optionsJson'], true, 512, \JSON_THROW_ON_ERROR), $handle), 'shop.example', 'storefront-login:test');
         $this->authenticator->rewindCounter(0);
 
-        $second = $this->authentication->buildRequestOptions([], $this->rp());
+        $second = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
 
         try {
-            $this->authentication->verifyAssertion($second['nonce'], $this->authenticator->assert(json_decode($second['optionsJson'], true, 512, \JSON_THROW_ON_ERROR), $handle), 'shop.example');
+            $this->authentication->verifyAssertion($second['nonce'], $this->authenticator->assert(json_decode($second['optionsJson'], true, 512, \JSON_THROW_ON_ERROR), $handle), 'shop.example', 'storefront-login:test');
             self::fail('Expected PasskeyCeremonyException');
         } catch (PasskeyCeremonyException) {
         }
 
         self::assertNotNull(array_values($this->store->rows)[0]['disabledAt'] ?? null, 'the possible clone was disabled');
 
-        $third = $this->authentication->buildRequestOptions([], $this->rp());
+        $third = $this->authentication->buildRequestOptions([], $this->rp(), 'storefront-login:test');
         $this->expectException(PasskeyCeremonyException::class);
         $this->expectExceptionMessage('disabled');
         $this->authenticator->rewindCounter(10);
-        $this->authentication->verifyAssertion($third['nonce'], $this->authenticator->assert(json_decode($third['optionsJson'], true, 512, \JSON_THROW_ON_ERROR), $handle), 'shop.example');
+        $this->authentication->verifyAssertion($third['nonce'], $this->authenticator->assert(json_decode($third['optionsJson'], true, 512, \JSON_THROW_ON_ERROR), $handle), 'shop.example', 'storefront-login:test');
     }
 
     private function rp(): PasskeyRelyingParty

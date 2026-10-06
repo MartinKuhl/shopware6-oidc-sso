@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Support;
 
+use Doctrine\DBAL\Connection;
 use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Controller\Api\OidcAdminAuthController;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore;
@@ -26,6 +27,7 @@ use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Psr\Log\NullLogger;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\DependencyInjection\Container;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 
 /**
  * Builds an OidcAdminAuthController with working defaults for every
@@ -64,6 +66,8 @@ trait BuildsOidcAdminAuthController
             'activityRecorder' => $this->createMock(Sw6OidcSessionActivityRecorder::class),
             'identityResolver' => $this->createMock(IdentityResolver::class),
             'stepUpService' => $this->createMock(StepUpService::class),
+            'connection' => $this->createStub(Connection::class),
+            'eventDispatcher' => new EventDispatcher(),
         ];
 
         $unknown = array_diff_key($overrides, $defaults);

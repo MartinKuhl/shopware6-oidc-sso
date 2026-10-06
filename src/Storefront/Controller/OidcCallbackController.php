@@ -4,6 +4,8 @@ namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
+use MartinKuhl\Sw6Oidc\Event\AccountSsoLinkedEvent;
+use MartinKuhl\Sw6Oidc\Service\Oidc\AuthTimeValidator;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackResult;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
@@ -12,12 +14,14 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\EmailNotVerifiedException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\UnknownStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
+use MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
@@ -33,6 +37,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Step 2 of the Storefront customer OIDC flow: exchanges the code, verifies
@@ -54,6 +59,9 @@ class OidcCallbackController extends StorefrontController
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
         private readonly IdentityResolver $identityResolver,
         private readonly RelayStateValidator $relayStateValidator,
+        private readonly SessionAuthenticationClock $authenticationClock,
+        private readonly UserProviderBindingService $bindingService,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -96,6 +104,10 @@ class OidcCallbackController extends StorefrontController
 
             if ($result->flow->purpose === AuthorizationFlowContext::PURPOSE_LINK) {
                 return $this->completeLink($result, $context);
+            }
+
+            if ($result->flow->purpose === AuthorizationFlowContext::PURPOSE_REAUTH) {
+                return $this->completeReauthentication($result, $context);
             }
 
             if ($result->flow->purpose !== AuthorizationFlowContext::PURPOSE_LOGIN) {
@@ -198,8 +210,46 @@ class OidcCallbackController extends StorefrontController
 
         $this->identityResolver->linkExplicitly(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $customer->getId(), $result->identity(), $context->getContext());
 
+        $this->eventDispatcher->dispatch(new AccountSsoLinkedEvent(
+            Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER,
+            $customer->getId(),
+            $customer->getEmail(),
+            trim($customer->getFirstName() . ' ' . $customer->getLastName()),
+            $result->provider->getDisplayName() ?: $result->provider->getAppName(),
+            $context->getSalesChannelId(),
+            $context->getContext(),
+        ));
+
         $this->addFlash(self::SUCCESS, $this->trans('sw6oidc.account.linkSuccess'));
 
         return new RedirectResponse($this->generateUrl('frontend.account.profile.page'));
+    }
+
+    /**
+     * Re-authentication round trip (`/sw6oidc/reauth`): the IdP must confirm
+     * a fresh login (`auth_time`) of the identity bound to the customer who
+     * started it, still logged in here. Then *this* session counts as freshly
+     * authenticated (R3-M5); nobody is logged in or out.
+     */
+    private function completeReauthentication(OidcCallbackResult $result, SalesChannelContext $context): Response
+    {
+        $customer = $context->getCustomer();
+
+        if (!$customer instanceof \Shopware\Core\Checkout\Customer\CustomerEntity || $customer->getId() !== $result->flow->expectedUserId) {
+            throw new InvalidStateException('The re-authentication was started by a different customer session.');
+        }
+
+        AuthTimeValidator::assertFresh($result);
+
+        $identity = $result->identity();
+        $owner = $this->bindingService->findUserIdBySubject(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER, $identity->providerId, $identity->subject, $context->getContext());
+
+        if ($owner !== $customer->getId()) {
+            throw new InvalidStateException('The re-authentication was performed with a different identity.');
+        }
+
+        $this->authenticationClock->markAuthenticated($customer->getId());
+
+        return new RedirectResponse($this->relayStateValidator->safePath($result->flow->relayState) ?? $this->generateUrl('frontend.account.home.page'));
     }
 }

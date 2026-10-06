@@ -43,7 +43,7 @@ class PasskeyRelyingPartyResolver
         }
 
         $host = (string) parse_url($origin, PHP_URL_HOST);
-        $rpId = $this->passkeyConfig->getRpId($host);
+        $rpId = $this->passkeyConfig->getAdminRpId($host);
 
         return new PasskeyRelyingParty($rpId, $this->passkeyConfig->getRpName('Shopware Administration'), $this->originsForRpId([$origin], $rpId));
     }
@@ -71,10 +71,22 @@ class PasskeyRelyingPartyResolver
             throw new PasskeyCeremonyException('The sales channel has no domain to bind passkeys to.');
         }
 
-        $rpId = $this->passkeyConfig->getRpId($currentHost);
+        $rpId = $this->passkeyConfig->getRpId($currentHost, $context->getSalesChannelId());
         $name = $this->passkeyConfig->getRpName((string) ($context->getSalesChannel()->getTranslated()['name'] ?? 'Shop'));
 
         return new PasskeyRelyingParty($rpId, $name, $this->originsForRpId($origins, $rpId));
+    }
+
+    /**
+     * Whether $rpId may serve as the WebAuthn RP ID for $host: the host
+     * itself or one of its parent domains.
+     */
+    public static function covers(string $rpId, string $host): bool
+    {
+        $rpId = strtolower(trim($rpId));
+        $host = strtolower($host);
+
+        return $rpId !== '' && ($host === $rpId || str_ends_with($host, '.' . $rpId));
     }
 
     /**
@@ -100,10 +112,9 @@ class PasskeyRelyingPartyResolver
     {
         $rpId = strtolower($rpId);
 
-        return array_values(array_filter($origins, static function (string $origin) use ($rpId): bool {
-            $host = (string) parse_url($origin, PHP_URL_HOST);
-
-            return $host === $rpId || str_ends_with($host, '.' . $rpId);
-        }));
+        return array_values(array_filter(
+            $origins,
+            static fn (string $origin): bool => self::covers($rpId, (string) parse_url($origin, PHP_URL_HOST)),
+        ));
     }
 }

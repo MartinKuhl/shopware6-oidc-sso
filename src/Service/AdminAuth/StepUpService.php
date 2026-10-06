@@ -2,11 +2,11 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\AdminAuth;
 
-use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
+use MartinKuhl\Sw6Oidc\Service\Oidc\AuthTimeValidator;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackResult;
 use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyCeremonyException;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
@@ -17,6 +17,7 @@ use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 use Webauthn\CredentialRecord;
@@ -44,8 +45,6 @@ class StepUpService
 {
     private const NONCE_TTL_SECONDS = 120;
     private const NONCE_PREFIX = 'sw6oidc_step_up_';
-    /** Tolerated clock difference between IdP and shop for `auth_time`. */
-    private const AUTH_TIME_LEEWAY_SECONDS = 60;
 
     public function __construct(
         private readonly UserProviderBindingService $bindingService,
@@ -93,11 +92,7 @@ class StepUpService
         $userId = $result->flow->expectedUserId;
         \assert($userId !== null);
 
-        $authTime = $result->idTokenClaims['auth_time'] ?? null;
-
-        if (!\is_int($authTime) || $authTime < $result->flow->startedAt - self::AUTH_TIME_LEEWAY_SECONDS) {
-            throw new InvalidStateException('The identity provider did not confirm a fresh login (auth_time).');
-        }
+        AuthTimeValidator::assertFresh($result);
 
         $identity = $result->identity();
         $owner = $this->bindingService->findUserIdBySubject(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $identity->providerId, $identity->subject, $context);
@@ -145,7 +140,11 @@ class StepUpService
             return null;
         }
 
-        return $this->passkeyAuthenticationService->buildRequestOptions($descriptors, $this->relyingPartyResolver->forAdministration());
+        return $this->passkeyAuthenticationService->buildRequestOptions(
+            $descriptors,
+            $this->relyingPartyResolver->forAdministration(),
+            PasskeyAuthenticationService::adminStepUpPurpose($userId),
+        );
     }
 
     /**
@@ -153,7 +152,7 @@ class StepUpService
      */
     public function verifyPasskey(string $ceremonyId, string $credentialJson, string $host, string $userId): void
     {
-        $resolved = $this->passkeyAuthenticationService->verifyAssertion($ceremonyId, $credentialJson, $host);
+        $resolved = $this->passkeyAuthenticationService->verifyAssertion($ceremonyId, $credentialJson, $host, PasskeyAuthenticationService::adminStepUpPurpose($userId));
 
         if ($resolved['userType'] !== Sw6OidcUserProviderEntity::USER_TYPE_ADMIN || $resolved['userId'] !== $userId) {
             $this->logger->warning('sw6oidc: step-up refused, the passkey belongs to a different account.', ['userId' => $userId]);

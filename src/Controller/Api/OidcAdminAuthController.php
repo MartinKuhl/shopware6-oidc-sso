@@ -2,10 +2,11 @@
 
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
-use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
+use Doctrine\DBAL\Connection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
+use MartinKuhl\Sw6Oidc\Event\AccountSsoLinkedEvent;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonce;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
@@ -16,6 +17,7 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
+use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackResult;
 use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
 use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
@@ -23,7 +25,6 @@ use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AdminProvisioningService;
-use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackResult;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AccountLinkingRequiredException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\EmailNotVerifiedException;
@@ -31,19 +32,21 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\UnknownStateException;
-use MartinKuhl\Sw6Oidc\Service\Security\UserVerifiedScope;
-use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
 use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
+use MartinKuhl\Sw6Oidc\Service\Security\UserVerifiedScope;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\PlatformRequest;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -52,6 +55,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * The Administration OIDC bridge: SP-initiated login, IdP callback, and the
@@ -93,6 +97,8 @@ class OidcAdminAuthController extends AbstractController
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
         private readonly IdentityResolver $identityResolver,
         private readonly StepUpService $stepUpService,
+        private readonly Connection $connection,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -647,6 +653,23 @@ class OidcAdminAuthController extends AbstractController
         \assert($userId !== null);
 
         $this->identityResolver->linkExplicitly(Sw6OidcUserProviderEntity::USER_TYPE_ADMIN, $userId, $result->identity(), $context);
+
+        $user = $this->connection->fetchAssociative(
+            'SELECT `email`, `first_name`, `last_name` FROM `user` WHERE `id` = :id',
+            ['id' => Uuid::fromHexToBytes($userId)],
+        );
+
+        if (\is_array($user)) {
+            $this->eventDispatcher->dispatch(new AccountSsoLinkedEvent(
+                Sw6OidcUserProviderEntity::USER_TYPE_ADMIN,
+                $userId,
+                (string) $user['email'],
+                trim($user['first_name'] . ' ' . $user['last_name']),
+                $result->provider->getDisplayName() ?: $result->provider->getAppName(),
+                null,
+                $context,
+            ));
+        }
 
         return new RedirectResponse(rtrim($this->administrationBaseUrl, '/') . '/#/sw/profile/index/general?sw6oidc_linked=1');
     }

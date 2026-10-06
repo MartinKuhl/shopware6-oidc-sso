@@ -44,6 +44,8 @@ class Sw6OidcSessionActivityRecorder
         ?Request $request,
         ?string $providerId = null,
         ?Sw6OidcSession $registrySession = null,
+        /** credential_id_hash of the passkey that logged in, so deleting it ends this session (R3-M6) */
+        ?string $passkeyCredentialHash = null,
     ): void {
         try {
             $this->activityRepository->create([[
@@ -56,6 +58,7 @@ class Sw6OidcSessionActivityRecorder
                 'loginMethod' => $loginMethod,
                 'sessionKeyHash' => $this->hash($sessionKey),
                 'registrySessionId' => $registrySession?->id,
+                'passkeyCredentialHash' => $passkeyCredentialHash,
                 'ipAddress' => $this->ipAddress($request),
                 'userAgent' => $this->userAgent($request),
                 'loggedInAt' => new \DateTimeImmutable(),

@@ -70,6 +70,7 @@
                 <file name="src/Subscriber/AdminLockoutGuardSubscriber.php" />
                 <file name="src/Subscriber/ProviderTrustGuardSubscriber.php" />
                 <file name="src/Subscriber/TrustEntityWriteGuardSubscriber.php" />
+                <file name="src/Subscriber/PasskeyDeletionSubscriber.php" />
             </errorLevel>
         </InternalMethod>
 

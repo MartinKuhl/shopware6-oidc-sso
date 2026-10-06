@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Subscriber;
 
+use MartinKuhl\Sw6Oidc\Event\AccountSsoLinkedEvent;
 use MartinKuhl\Sw6Oidc\Event\PasskeyRegisteredEvent;
 use Shopware\Core\Framework\Event\BusinessEventCollector;
 use Shopware\Core\Framework\Event\BusinessEventCollectorEvent;
@@ -23,10 +24,12 @@ class BusinessEventSubscriber implements EventSubscriberInterface
 
     public function onCollect(BusinessEventCollectorEvent $event): void
     {
-        $definition = $this->collector->define(PasskeyRegisteredEvent::class);
+        foreach ([PasskeyRegisteredEvent::class, AccountSsoLinkedEvent::class] as $class) {
+            $definition = $this->collector->define($class);
 
-        if ($definition instanceof \Shopware\Core\Framework\Event\BusinessEventDefinition) {
-            $event->getCollection()->set($definition->getName(), $definition);
+            if ($definition instanceof \Shopware\Core\Framework\Event\BusinessEventDefinition) {
+                $event->getCollection()->set($definition->getName(), $definition);
+            }
         }
     }
 }

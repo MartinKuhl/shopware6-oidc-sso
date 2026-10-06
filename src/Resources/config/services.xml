@@ -298,9 +298,20 @@
             <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\LogoutRoute" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
+        </service>
+
+        <!-- R3-H6/R3-M5: per-session "authenticated at" for sensitive Storefront account changes. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock">
+            <argument type="service" id="request_stack" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\CustomerAuthenticationClockSubscriber">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock" />
+            <tag name="kernel.event_subscriber" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Storefront\Controller\OidcCallbackController" public="true">
@@ -314,6 +325,9 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
+            <argument type="service" id="event_dispatcher" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -558,6 +572,8 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\StepUpService" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="event_dispatcher" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -582,6 +598,13 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument>%env(APP_URL)%</argument>
+        </service>
+
+        <!-- R3-M8: a passkey RP ID must cover the hosts it applies to. -->
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\PasskeyRpIdConfigValidator">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument>%env(APP_URL)%</argument>
+            <tag name="kernel.event_subscriber" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\StepUpController" public="true">
@@ -767,6 +790,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver" />
             <argument type="service" id="event_dispatcher" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -781,9 +805,21 @@
             </call>
         </service>
 
-        <service id="MartinKuhl\Sw6Oidc\Service\Passkey\AdminPasskeyLoginTokenTracker">
-            <argument type="service" id="cache.app" />
+        <!-- R3-M6: deleting a passkey ends the sessions it logged in. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeySessionTerminator">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
+
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\PasskeyDeletionSubscriber">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeySessionTerminator" />
+            <tag name="kernel.event_subscriber" />
+            <tag name="kernel.reset" method="reset" />
+        </service>
+
 
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\PasskeyAdminController" public="true">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService" />
@@ -793,7 +829,7 @@
             <argument type="service" id="user.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\AdminPasskeyLoginTokenTracker" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Subscriber\PasskeyDeletionSubscriber" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver" />
             <argument type="service" id="event_dispatcher" />
@@ -852,6 +888,13 @@
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument>%env(APP_URL)%</argument>
+        </service>
+
+        <!-- R3-M8: a passkey RP ID must cover the hosts it applies to. -->
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\PasskeyRpIdConfigValidator">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument>%env(APP_URL)%</argument>
+            <tag name="kernel.event_subscriber" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\ScheduledTask\HealthCheckAlertTask">

@@ -72,6 +72,7 @@ class Sw6OidcSessionActivityDefinition extends EntityDefinition
             (new StringField('login_method', 'loginMethod', 16))->addFlags(new ApiAware(), new Required(), $systemOnly),
             (new StringField('session_key_hash', 'sessionKeyHash', 64))->addFlags($systemOnly),
             (new StringField('registry_session_id', 'registrySessionId', 64))->addFlags($systemOnly),
+            (new StringField('passkey_credential_hash', 'passkeyCredentialHash', 64))->addFlags($systemOnly),
             (new StringField('ip_address', 'ipAddress', 45))->addFlags(new ApiAware(), $systemOnly),
             (new StringField('user_agent', 'userAgent', 512))->addFlags(new ApiAware(), $systemOnly),
             (new DateTimeField('logged_in_at', 'loggedInAt'))->addFlags(new ApiAware(), new Required(), $systemOnly),

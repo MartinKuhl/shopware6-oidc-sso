@@ -2,29 +2,28 @@
 
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
-use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Event\PasskeyRegisteredEvent;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer;
 use MartinKuhl\Sw6Oidc\Service\Jwt\JwtPayloadReader;
-use MartinKuhl\Sw6Oidc\Service\Passkey\AdminPasskeyLoginTokenTracker;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver;
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Security\UserVerifiedScope;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
+use MartinKuhl\Sw6Oidc\Subscriber\PasskeyDeletionSubscriber;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
-use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\User\UserEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -58,7 +57,7 @@ class PasskeyAdminController extends AbstractController
         private readonly EntityRepository $userRepository,
         private readonly AdminTokenIssuer $tokenIssuer,
         private readonly LoggerInterface $logger,
-        private readonly AdminPasskeyLoginTokenTracker $tokenTracker,
+        private readonly PasskeyDeletionSubscriber $passkeyDeletion,
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
         private readonly PasskeyRelyingPartyResolver $relyingPartyResolver,
         private readonly EventDispatcherInterface $eventDispatcher,
@@ -156,9 +155,9 @@ class PasskeyAdminController extends AbstractController
      * Deletes one of the *currently authenticated* admin's own passkeys.
      * Ownership is enforced by PasskeyCredentialRepository::deleteOwnedByUser().
      *
-     * If the deleted credential is the one that authenticated the current
-     * access token (AdminPasskeyLoginTokenTracker), the response tells the SPA
-     * to log itself out.
+     * If the credential had logged in sessions that are still open, all of
+     * the admin's sessions end (R3-M6, PasskeyDeletionSubscriber), this one
+     * included, and the response tells the SPA to log itself out.
      */
     #[Route(path: '/api/sw6oidc/admin/passkey/delete', name: 'api.action.sw6oidc.admin.passkey.delete', methods: ['POST'])]
     public function deleteCredential(Request $request, Context $context): JsonResponse
@@ -170,10 +169,7 @@ class PasskeyAdminController extends AbstractController
             return new JsonResponse(['status' => false, 'error' => 'not_found'], 404);
         }
 
-        $currentTokenId = $request->attributes->get(PlatformRequest::ATTRIBUTE_OAUTH_ACCESS_TOKEN_ID);
-        $forceLogout = \is_string($currentTokenId) && $this->tokenTracker->wasUsedFor($currentTokenId, $id);
-
-        return new JsonResponse(['status' => true, 'forceLogout' => $forceLogout]);
+        return new JsonResponse(['status' => true, 'forceLogout' => $this->passkeyDeletion->endedSessionsOf($user->getId())]);
     }
 
     #[Route(path: '/api/sw6oidc/admin/passkey/login-options', name: 'api.action.sw6oidc.admin.passkey.login-options', defaults: ['auth_required' => false], methods: ['POST'])]
@@ -191,7 +187,7 @@ class PasskeyAdminController extends AbstractController
         try {
             // Always usernameless: listing an account's credentials here would
             // tell anonymous callers which accounts exist (M6).
-            $result = $this->authenticationService->buildRequestOptions([], $this->relyingPartyResolver->forAdministration());
+            $result = $this->authenticationService->buildRequestOptions([], $this->relyingPartyResolver->forAdministration(), PasskeyAuthenticationService::PURPOSE_ADMIN_LOGIN);
         } catch (\Throwable $exception) {
             return PublicError::response($this->logger, 'sw6oidc: admin passkey login could not start.', $exception, 'passkey_unavailable', Response::HTTP_BAD_REQUEST);
         }
@@ -215,6 +211,7 @@ class PasskeyAdminController extends AbstractController
                 (string) $request->request->get('sessionId'),
                 (string) $request->request->get('credential'),
                 $request->getHost(),
+                PasskeyAuthenticationService::PURPOSE_ADMIN_LOGIN,
             );
 
             if ($resolved['userType'] !== 'admin') {
@@ -240,8 +237,14 @@ class PasskeyAdminController extends AbstractController
         $jti = $this->accessTokenJti($httpResponse);
 
         if ($jti !== null) {
-            $this->tokenTracker->remember($jti, $resolved['credentialId']);
-            $this->activityRecorder->recordLogin(Sw6OidcSession::USER_TYPE_ADMIN, $resolved['userId'], Sw6OidcSessionActivityDefinition::LOGIN_METHOD_PASSKEY, $jti, $request);
+            $this->activityRecorder->recordLogin(
+                Sw6OidcSession::USER_TYPE_ADMIN,
+                $resolved['userId'],
+                Sw6OidcSessionActivityDefinition::LOGIN_METHOD_PASSKEY,
+                $jti,
+                $request,
+                passkeyCredentialHash: $resolved['credentialIdHash'],
+            );
         }
 
         return $httpResponse;

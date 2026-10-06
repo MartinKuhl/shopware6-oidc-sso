@@ -10,6 +10,7 @@ use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver;
 use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
+use MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
@@ -35,9 +36,10 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
  *
  * - All ceremony endpoints answer 404 while customer passkeys are disabled
  *   for the sales channel (H6).
- * - Registering needs a recent login (within REAUTH_WINDOW_SECONDS);
- *   otherwise the customer is sent to re-authenticate first — a stolen
- *   session alone can't add a permanent way in (H7). Verification only
+ * - Registering needs a freshly authenticated *session* (within
+ *   REAUTH_WINDOW_SECONDS, SessionAuthenticationClock); otherwise the
+ *   customer is sent to re-authenticate first — a stolen session alone
+ *   can't add a permanent way in (H7, R3-M5). Verification only
  *   completes for the customer who started the ceremony (N-M2), and the
  *   owner is notified via the PasskeyRegisteredEvent flow trigger.
  * - The relying party comes from the sales channel's domains (M17, N-M1).
@@ -51,7 +53,7 @@ class PasskeyController extends StorefrontController
      */
     public const SESSION_KEY_LOGIN_CREDENTIAL_ID = 'sw6oidc_login_credential_id';
 
-    public const REAUTH_WINDOW_SECONDS = 600;
+    public const REAUTH_WINDOW_SECONDS = SessionAuthenticationClock::DEFAULT_WINDOW_SECONDS;
 
     public function __construct(
         private readonly PasskeyRegistrationService $registrationService,
@@ -65,6 +67,7 @@ class PasskeyController extends StorefrontController
         private readonly PasskeyRelyingPartyResolver $relyingPartyResolver,
         private readonly EventDispatcherInterface $eventDispatcher,
         private readonly Sw6OidcRateLimiter $rateLimiter,
+        private readonly SessionAuthenticationClock $authenticationClock,
     ) {
     }
 
@@ -80,11 +83,8 @@ class PasskeyController extends StorefrontController
             return $this->disabled();
         }
 
-        if (!$this->recentlyAuthenticated($customer)) {
-            return new JsonResponse([
-                'error' => 'reauthentication_required',
-                'reauthUrl' => $this->generateUrl('frontend.sw6oidc.reauth'),
-            ], Response::HTTP_FORBIDDEN);
+        if (!$this->authenticationClock->isFresh($context, self::REAUTH_WINDOW_SECONDS)) {
+            return $this->reauthenticationRequired();
         }
 
         try {
@@ -112,6 +112,10 @@ class PasskeyController extends StorefrontController
     {
         if (!$this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())) {
             return $this->disabled();
+        }
+
+        if (!$this->authenticationClock->isFresh($context, self::REAUTH_WINDOW_SECONDS)) {
+            return $this->reauthenticationRequired();
         }
 
         $nickname = $request->request->get('nickname') !== null ? mb_substr((string) $request->request->get('nickname'), 0, 255) : null;
@@ -162,7 +166,11 @@ class PasskeyController extends StorefrontController
         try {
             // Empty allowCredentials: usernameless/discoverable login, the
             // browser resolves the matching passkey itself.
-            $result = $this->authenticationService->buildRequestOptions([], $this->relyingPartyResolver->forSalesChannel($context));
+            $result = $this->authenticationService->buildRequestOptions(
+                [],
+                $this->relyingPartyResolver->forSalesChannel($context),
+                PasskeyAuthenticationService::storefrontLoginPurpose($context->getSalesChannelId()),
+            );
         } catch (\Throwable $exception) {
             return PublicError::response($this->logger, 'sw6oidc: passkey login could not start.', $exception, 'passkey_unavailable', Response::HTTP_BAD_REQUEST);
         }
@@ -191,6 +199,7 @@ class PasskeyController extends StorefrontController
                 (string) $request->request->get('sessionId'),
                 (string) $request->request->get('credential'),
                 $request->getHost(),
+                PasskeyAuthenticationService::storefrontLoginPurpose($context->getSalesChannelId()),
             );
 
             if ($resolved['userType'] !== 'customer' || !Uuid::isValid($resolved['userId'])) {
@@ -230,6 +239,7 @@ class PasskeyController extends StorefrontController
             Sw6OidcSessionActivityDefinition::LOGIN_METHOD_PASSKEY,
             $tokenResponse->getToken(),
             $request,
+            passkeyCredentialHash: $resolved['credentialIdHash'],
         );
 
         // Remembered for the lifetime of this browser session so
@@ -240,11 +250,12 @@ class PasskeyController extends StorefrontController
         return new JsonResponse(['status' => true]);
     }
 
-    private function recentlyAuthenticated(CustomerEntity $customer): bool
+    private function reauthenticationRequired(): JsonResponse
     {
-        $lastLogin = $customer->getLastLogin();
-
-        return $lastLogin instanceof \DateTimeInterface && $lastLogin->getTimestamp() >= time() - self::REAUTH_WINDOW_SECONDS;
+        return new JsonResponse([
+            'error' => 'reauthentication_required',
+            'reauthUrl' => $this->generateUrl('frontend.sw6oidc.reauth'),
+        ], Response::HTTP_FORBIDDEN);
     }
 
     private function rateLimited(): JsonResponse

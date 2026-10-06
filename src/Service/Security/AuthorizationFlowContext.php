@@ -11,16 +11,18 @@ use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
  *
  * `purpose` says what the round trip is for: a normal login, an explicit
  * "Connect SSO" of an already logged-in account (`link`), or a fresh
- * re-authentication (`step_up`). The last two carry the account that started
- * the flow in `expectedUserId`; the callback must act on exactly that account.
+ * re-authentication of the Administration (`step_up`) or the Storefront
+ * (`reauth`). All but `login` carry the account that started the flow in
+ * `expectedUserId`; the callback must act on exactly that account.
  */
 final readonly class AuthorizationFlowContext
 {
     public const PURPOSE_LOGIN = 'login';
     public const PURPOSE_LINK = 'link';
     public const PURPOSE_STEP_UP = 'step_up';
+    public const PURPOSE_REAUTH = 'reauth';
 
-    private const PURPOSES = [self::PURPOSE_LOGIN, self::PURPOSE_LINK, self::PURPOSE_STEP_UP];
+    private const PURPOSES = [self::PURPOSE_LOGIN, self::PURPOSE_LINK, self::PURPOSE_STEP_UP, self::PURPOSE_REAUTH];
     /** 'test' is the provider live login test (OidcProviderAdminController). */
     private const LOGIN_TYPES = ['customer', 'admin', 'test'];
 

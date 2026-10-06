@@ -27,4 +27,31 @@ test.describe('Customer passkeys', () => {
         await page.waitForURL(/\/account(\/|$|\?)/, { timeout: 20_000 });
         await expect(page.locator('.account-welcome, .account-overview')).toBeVisible();
     });
+
+    test('deleting the middle of three passkeys deletes exactly that one (R3-F3)', async ({ page }) => {
+        await page.goto('/account/login');
+        await page.locator('a[href*="/sw6oidc/login"]').first().click();
+        await dexLogin(page, CUSTOMER_EMAIL);
+        await page.waitForURL(/\/account/);
+        await page.goto('/account/passkey');
+
+        // excludeCredentials stops one authenticator from registering twice: one per key.
+        for (const nickname of ['Key A', 'Key B', 'Key C']) {
+            const { cdp, authenticatorId } = await addVirtualAuthenticator(page);
+            await page.locator('#sw6oidc-passkey-nickname').fill(nickname);
+            await page.locator('[data-sw6oidc-passkey-register]').click();
+            await expect(page.locator('.account-passkey-list table')).toContainText(nickname, { timeout: 20_000 });
+            await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
+        }
+
+        const row = page.locator('.account-passkey-list tbody tr', { hasText: 'Key B' });
+        await row.locator('button[type="submit"]').click();
+        await row.locator('dialog button[value="confirm"]').click();
+        await page.waitForURL(/\/account\/passkey/);
+
+        const table = page.locator('.account-passkey-list table');
+        await expect(table).not.toContainText('Key B');
+        await expect(table).toContainText('Key A');
+        await expect(table).toContainText('Key C');
+    });
 });

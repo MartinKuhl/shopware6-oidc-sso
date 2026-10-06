@@ -26,6 +26,24 @@ class PasskeyAuthenticationService
     private const TTL_SECONDS = 300;
     private const CACHE_PREFIX = 'sw6oidc_passkey_auth_';
 
+    /**
+     * Ceremony purposes (R3-M7): a ceremony can only be redeemed by the
+     * endpoint it was started for — a Storefront ceremony never logs into the
+     * Administration, even with an RP ID that covers both hosts, and a
+     * step-up ceremony belongs to the admin who started it.
+     */
+    public const PURPOSE_ADMIN_LOGIN = 'admin-login';
+
+    public static function storefrontLoginPurpose(string $salesChannelId): string
+    {
+        return 'storefront-login:' . $salesChannelId;
+    }
+
+    public static function adminStepUpPurpose(string $userId): string
+    {
+        return 'admin-stepup:' . $userId;
+    }
+
     public function __construct(
         private readonly WebauthnCeremonyFactory $ceremonyFactory,
         private readonly PasskeyCredentialRepository $credentialRepository,
@@ -36,10 +54,11 @@ class PasskeyAuthenticationService
 
     /**
      * @param PublicKeyCredentialDescriptor[] $allowCredentials empty = usernameless/discoverable login
+     * @param string                          $purpose          see PURPOSE_ADMIN_LOGIN and the *Purpose() factories
      *
      * @return array{optionsJson: string, nonce: string}
      */
-    public function buildRequestOptions(array $allowCredentials, PasskeyRelyingParty $relyingParty): array
+    public function buildRequestOptions(array $allowCredentials, PasskeyRelyingParty $relyingParty, string $purpose): array
     {
         $challenge = random_bytes(32);
         $options = $this->buildOptions($challenge, $relyingParty->id, $allowCredentials);
@@ -51,6 +70,7 @@ class PasskeyAuthenticationService
         $this->cache->save(
             self::CACHE_PREFIX . $nonce,
             json_encode([
+                'purpose' => $purpose,
                 'challenge' => bin2hex($challenge),
                 'rpId' => $relyingParty->id,
                 'origins' => $relyingParty->origins,
@@ -72,11 +92,13 @@ class PasskeyAuthenticationService
     /**
      * @param string $host the request host (passed to the library; the origin check itself uses the pinned origins)
      *
-     * @return array{userType: string, userId: string, credentialId: string}
+     * @param string $expectedPurpose the purpose the ceremony must have been started for (R3-M7)
+     *
+     * @return array{userType: string, userId: string, credentialId: string, credentialIdHash: string}
      *
      * @throws PasskeyCeremonyException
      */
-    public function verifyAssertion(string $nonce, string $assertionResponseJson, string $host): array
+    public function verifyAssertion(string $nonce, string $assertionResponseJson, string $host, string $expectedPurpose): array
     {
         $raw = $this->cache->getAndDelete(self::CACHE_PREFIX . $nonce);
 
@@ -85,6 +107,10 @@ class PasskeyAuthenticationService
         }
 
         $stored = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+
+        if (!\is_array($stored) || ($stored['purpose'] ?? null) !== $expectedPurpose) {
+            throw new PasskeyCeremonyException('The passkey ceremony was started for a different purpose.');
+        }
 
         $options = $this->buildOptions(
             (string) hex2bin($stored['challenge']),
@@ -145,7 +171,12 @@ class PasskeyAuthenticationService
 
         $this->credentialRepository->updateAfterAssertion($record);
 
-        return ['userType' => $entity->getUserType(), 'userId' => $entity->getUserId(), 'credentialId' => $entity->getId()];
+        return [
+            'userType' => $entity->getUserType(),
+            'userId' => $entity->getUserId(),
+            'credentialId' => $entity->getId(),
+            'credentialIdHash' => (string) $entity->getCredentialIdHash(),
+        ];
     }
 
     /**

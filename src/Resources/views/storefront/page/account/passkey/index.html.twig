@@ -56,30 +56,33 @@
                                         <form action="{{ path('frontend.account.passkey.delete', {credentialId: credential.id}) }}"
                                               method="post"
                                               data-sw6oidc-passkey-delete-form="true"
-                                              data-sw6oidc-confirm-dialog="sw6oidc-passkey-delete-dialog">
+                                              data-sw6oidc-confirm-dialog="sw6oidc-passkey-delete-dialog-{{ credential.id }}">
                                             <button type="submit" class="btn btn-sm btn-link p-0">
                                                 {% sw_icon 'trash' style {'size': 'xs'} %}
                                                 {{ 'sw6oidc.passkey.deleteButton'|trans|sw_sanitize }}
                                             </button>
                                         </form>
+                                        {# One dialog per row: a shared one made every row's form submit on confirm (R3-F3). #}
+                                        <dialog id="sw6oidc-passkey-delete-dialog-{{ credential.id }}"
+                                                class="sw6oidc-passkey-delete-dialog border-0 rounded p-4 text-start"
+                                                aria-labelledby="sw6oidc-passkey-delete-dialog-text-{{ credential.id }}">
+                                            <form method="dialog">
+                                                <p id="sw6oidc-passkey-delete-dialog-text-{{ credential.id }}">{{ 'sw6oidc.passkey.deleteConfirm'|trans|sw_sanitize }}</p>
+                                                <div class="d-flex justify-content-end gap-2">
+                                                    <button type="submit" value="cancel" class="btn btn-light">
+                                                        {{ 'sw6oidc.passkey.cancel'|trans|sw_sanitize }}
+                                                    </button>
+                                                    <button type="submit" value="confirm" class="btn btn-danger">
+                                                        {{ 'sw6oidc.passkey.deleteButton'|trans|sw_sanitize }}
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </dialog>
                                     </td>
                                 </tr>
                             {% endfor %}
                         </tbody>
                     </table>
-                    <dialog id="sw6oidc-passkey-delete-dialog" class="sw6oidc-passkey-delete-dialog border-0 rounded p-4">
-                        <form method="dialog">
-                            <p>{{ 'sw6oidc.passkey.deleteConfirm'|trans|sw_sanitize }}</p>
-                            <div class="d-flex justify-content-end gap-2">
-                                <button type="submit" value="cancel" class="btn btn-light">
-                                    {{ 'sw6oidc.passkey.cancel'|trans|sw_sanitize }}
-                                </button>
-                                <button type="submit" value="confirm" class="btn btn-danger">
-                                    {{ 'sw6oidc.passkey.deleteButton'|trans|sw_sanitize }}
-                                </button>
-                            </div>
-                        </form>
-                    </dialog>
                 {% else %}
                     <p>{{ 'sw6oidc.passkey.emptyState'|trans|sw_sanitize }}</p>
                 {% endif %}
