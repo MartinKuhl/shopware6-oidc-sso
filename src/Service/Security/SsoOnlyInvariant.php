@@ -94,9 +94,7 @@ class SsoOnlyInvariant
         $excludedUserIds = $this->bytes(array_values(array_unique([...$removedUserIds, ...$unboundUserIds])));
 
         foreach ($this->servingProviders('admin', $providerChanges) as $id => $provider) {
-            $issuer = trim((string) ($provider['issuer'] ?? ''));
-            // Legacy providers without an issuer, and a re-bind in progress, match any binding.
-            $issuerFilter = $issuer !== '' && !\in_array($id, $rebindProviderIds, true) ? ' AND binding.`issuer_hash` = :issuerHash' : '';
+            [$issuerFilter, $issuerHash] = $this->issuerCondition($id, $provider, $rebindProviderIds);
 
             $found = $this->connection->fetchOne(
                 'SELECT 1
@@ -107,7 +105,7 @@ class SsoOnlyInvariant
                    AND binding.`provider_id` = :provider
                    AND u.`id` NOT IN (:excluded)' . $issuerFilter . '
                  LIMIT 1',
-                ['provider' => Uuid::fromHexToBytes($id), 'excluded' => $excludedUserIds, 'issuerHash' => hash('sha256', $issuer)],
+                ['provider' => Uuid::fromHexToBytes($id), 'excluded' => $excludedUserIds, 'issuerHash' => $issuerHash],
                 ['provider' => ParameterType::BINARY, 'excluded' => ArrayParameterType::BINARY],
             );
 
@@ -137,32 +135,57 @@ class SsoOnlyInvariant
      * Active admins with no binding to a provider that serves admin logins
      * after the pending changes: the accounts SSO-only mode locks out.
      *
+     * A binding on a provider's previous issuer doesn't count, exactly as in
+     * adminAccessPossible() — so the lockout confirmation and the password-
+     * session revocation see the same accounts as the invariant (R6-L1).
+     *
      * @param array<string, array<string, mixed>|null> $providerChanges
+     * @param list<string>                             $rebindProviderIds see adminAccessPossible()
      *
      * @return list<string> hex user ids
      */
-    public function unboundActiveAdminIds(array $providerChanges = []): array
+    public function unboundActiveAdminIds(array $providerChanges = [], array $rebindProviderIds = []): array
     {
-        $providerIds = array_keys($this->servingProviders('admin', $providerChanges));
+        $boundIds = [];
 
-        /** @var list<string> $ids */
-        $ids = $this->connection->fetchFirstColumn(
-            <<<'SQL'
-                SELECT LOWER(HEX(u.`id`))
-                FROM `user` u
-                WHERE u.`active` = 1
-                  AND NOT EXISTS (
-                      SELECT 1 FROM `sw6oidc_user_provider` binding
-                      WHERE binding.`user_type` = 'admin'
-                        AND binding.`user_id` = u.`id`
-                        AND binding.`provider_id` IN (:providers)
-                  )
-            SQL,
-            ['providers' => $this->bytes($providerIds)],
-            ['providers' => ArrayParameterType::BINARY],
-        );
+        foreach ($this->servingProviders('admin', $providerChanges) as $id => $provider) {
+            [$issuerFilter, $issuerHash] = $this->issuerCondition($id, $provider, $rebindProviderIds);
 
-        return $ids;
+            $boundIds[] = $this->connection->fetchFirstColumn(
+                'SELECT LOWER(HEX(binding.`user_id`))
+                 FROM `sw6oidc_user_provider` binding
+                 WHERE binding.`user_type` = \'admin\'
+                   AND binding.`provider_id` = :provider' . $issuerFilter,
+                ['provider' => Uuid::fromHexToBytes($id), 'issuerHash' => $issuerHash],
+                ['provider' => ParameterType::BINARY],
+            );
+        }
+
+        /** @var list<string> $activeIds */
+        $activeIds = $this->connection->fetchFirstColumn('SELECT LOWER(HEX(`id`)) FROM `user` WHERE `active` = 1');
+
+        return array_values(array_diff($activeIds, array_merge([], ...$boundIds)));
+    }
+
+    /**
+     * The SQL condition (and its parameter) a binding must meet to count for
+     * this provider: its current issuer. Legacy providers without an issuer,
+     * and a re-bind in progress, accept any binding.
+     *
+     * @param array<string, mixed> $provider
+     * @param list<string>         $rebindProviderIds
+     *
+     * @return array{string, string}
+     */
+    private function issuerCondition(string $providerId, array $provider, array $rebindProviderIds): array
+    {
+        $issuer = trim((string) ($provider['issuer'] ?? ''));
+
+        if ($issuer === '' || \in_array($providerId, $rebindProviderIds, true)) {
+            return ['', ''];
+        }
+
+        return [' AND binding.`issuer_hash` = :issuerHash', hash('sha256', $issuer)];
     }
 
     /**

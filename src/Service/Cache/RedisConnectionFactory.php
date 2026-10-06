@@ -23,6 +23,8 @@ class RedisConnectionFactory
     private const DOWN_MARKER_KEY = 'sw6oidc_redis_down';
     private const DOWN_MARKER_TTL_SECONDS = 30;
 
+    private static int $processDownAt = 0;
+
     public function __construct(
         #[\SensitiveParameter]
         private readonly ?string $dsn,
@@ -98,15 +100,42 @@ class RedisConnectionFactory
         }
     }
 
+    /**
+     * Whether a connect failed within the last 30 s, on this node: APCu when
+     * available, else this process plus a marker file shared by the node's
+     * processes — without one, every request of an outage would wait for
+     * the connect timeout (R3-L39).
+     */
     private function recentlyDown(): bool
     {
-        return \function_exists('apcu_enabled') && apcu_enabled() && apcu_fetch(self::DOWN_MARKER_KEY) === true;
+        if (\function_exists('apcu_enabled') && apcu_enabled()) {
+            return apcu_fetch(self::DOWN_MARKER_KEY) === true;
+        }
+
+        if (time() - self::$processDownAt < self::DOWN_MARKER_TTL_SECONDS) {
+            return true;
+        }
+
+        $markedAt = @filemtime($this->markerFile());
+
+        return \is_int($markedAt) && time() - $markedAt < self::DOWN_MARKER_TTL_SECONDS;
     }
 
     private function markDown(): void
     {
         if (\function_exists('apcu_enabled') && apcu_enabled()) {
             apcu_store(self::DOWN_MARKER_KEY, true, self::DOWN_MARKER_TTL_SECONDS);
+
+            return;
         }
+
+        self::$processDownAt = time();
+        @touch($this->markerFile());
+    }
+
+    private function markerFile(): string
+    {
+        // Per DSN, so two shops on one host don't share an outage marker.
+        return sys_get_temp_dir() . '/' . self::DOWN_MARKER_KEY . '_' . substr(hash('sha256', (string) $this->dsn), 0, 16);
     }
 }

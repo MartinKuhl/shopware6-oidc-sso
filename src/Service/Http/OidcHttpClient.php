@@ -22,6 +22,7 @@ class OidcHttpClient
 
     /**
      * @param array<string, string> $formParams
+     * @param int|null              $maxDurationSeconds cap on the whole request (`timeout` alone is an idle timeout)
      *
      * @return array<string, mixed>
      */
@@ -31,6 +32,7 @@ class OidcHttpClient
         int $timeoutSeconds,
         ?string $basicAuthUsername = null,
         ?string $basicAuthPassword = null,
+        ?int $maxDurationSeconds = null,
     ): array {
         $headers = ['Accept' => 'application/json'];
 
@@ -38,11 +40,17 @@ class OidcHttpClient
             $headers['Authorization'] = 'Basic ' . base64_encode($basicAuthUsername . ':' . ($basicAuthPassword ?? ''));
         }
 
-        return $this->requestJson('POST', $url, [
+        $options = [
             'body' => $formParams,
             'timeout' => $timeoutSeconds,
             'headers' => $headers,
-        ]);
+        ];
+
+        if ($maxDurationSeconds !== null) {
+            $options['max_duration'] = $maxDurationSeconds;
+        }
+
+        return $this->requestJson('POST', $url, $options);
     }
 
     /**

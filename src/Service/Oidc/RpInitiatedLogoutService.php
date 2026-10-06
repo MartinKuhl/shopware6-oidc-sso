@@ -15,6 +15,8 @@ use Psr\Log\LoggerInterface;
  */
 class RpInitiatedLogoutService
 {
+    private const REVOCATION_TIMEOUT_SECONDS = 3;
+
     public function __construct(
         private readonly OidcHttpClient $httpClient,
         private readonly LoggerInterface $logger,
@@ -65,12 +67,9 @@ class RpInitiatedLogoutService
     }
 
     /**
-     * Fire-and-forget: a failed revocation must never block the user from
-     * logging out.
-     */
-    /**
      * RFC 7009 revocation of the login's IdP tokens (refresh token first —
-     * revoking it usually invalidates the access token too). Fire-and-forget.
+     * revoking it usually invalidates the access token too). Fire-and-forget:
+     * a failed revocation must never block the user from logging out.
      */
     public function revokeTokens(Sw6OidcProviderEntity $provider, LogoutContext $logoutContext): void
     {
@@ -78,7 +77,7 @@ class RpInitiatedLogoutService
         $this->revokeToken($provider, $logoutContext->idpAccessToken, 'access_token');
     }
 
-    public function revokeToken(Sw6OidcProviderEntity $provider, ?string $token, string $tokenTypeHint = 'access_token'): void
+    private function revokeToken(Sw6OidcProviderEntity $provider, ?string $token, string $tokenTypeHint): void
     {
         if ($token === null || $token === '') {
             return;
@@ -114,9 +113,12 @@ class RpInitiatedLogoutService
             $this->httpClient->postForm(
                 $revocationEndpoint,
                 $params,
-                $provider->getHttpTimeout(),
+                // Runs inside the user's logout request: an unreachable IdP
+                // may cost seconds, never twice the provider timeout (R3-L33).
+                min($provider->getHttpTimeout(), self::REVOCATION_TIMEOUT_SECONDS),
                 $provider->isPublicClient() ? null : $provider->getClientId(),
                 $secret,
+                self::REVOCATION_TIMEOUT_SECONDS,
             );
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: RFC 7009 token revocation failed (non-fatal).', [

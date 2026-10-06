@@ -18,7 +18,8 @@ use Shopware\Core\Defaults;
  */
 class DatabaseAtomicCache implements AtomicCacheInterface
 {
-    private const PURPOSE = 'sw6oidc_one_time_token.value';
+    /** Encryption purpose of one-time token values, also used by RedisAtomicCache. */
+    public const VALUE_PURPOSE = 'sw6oidc_one_time_token.value';
     private const PRUNE_BATCH_SIZE = 5000;
     private const PRUNE_TIME_BUDGET_SECONDS = 30;
 
@@ -32,7 +33,7 @@ class DatabaseAtomicCache implements AtomicCacheInterface
     {
         $this->connection->executeStatement(
             'REPLACE INTO `sw6oidc_one_time_token` (`key_hash`, `value`, `expires_at`) VALUES (:key, :value, :expiresAt)',
-            ['key' => $this->hash($key), 'value' => $this->encryptor->encrypt($value, self::PURPOSE), 'expiresAt' => $this->expiresAt($ttlSeconds)],
+            ['key' => $this->hash($key), 'value' => $this->encryptor->encrypt($value, self::VALUE_PURPOSE), 'expiresAt' => $this->expiresAt($ttlSeconds)],
         );
     }
 
@@ -55,7 +56,7 @@ class DatabaseAtomicCache implements AtomicCacheInterface
             return (string) $row['expires_at'] > $this->now() ? (string) $row['value'] : null;
         });
 
-        return $value === null ? null : $this->encryptor->decryptOrNull($value, self::PURPOSE);
+        return $value === null ? null : $this->encryptor->decryptOrNull($value, self::VALUE_PURPOSE);
     }
 
     public function addIfAbsent(string $key, string $value, int $ttlSeconds): bool
@@ -71,7 +72,7 @@ class DatabaseAtomicCache implements AtomicCacheInterface
         try {
             $this->connection->executeStatement(
                 'INSERT INTO `sw6oidc_one_time_token` (`key_hash`, `value`, `expires_at`) VALUES (:key, :value, :expiresAt)',
-                ['key' => $keyHash, 'value' => $this->encryptor->encrypt($value, self::PURPOSE), 'expiresAt' => $this->expiresAt($ttlSeconds)],
+                ['key' => $keyHash, 'value' => $this->encryptor->encrypt($value, self::VALUE_PURPOSE), 'expiresAt' => $this->expiresAt($ttlSeconds)],
             );
         } catch (UniqueConstraintViolationException) {
             return false;

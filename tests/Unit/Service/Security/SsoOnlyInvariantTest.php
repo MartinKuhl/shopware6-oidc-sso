@@ -129,6 +129,22 @@ final class SsoOnlyInvariantTest extends TestCase
         self::assertTrue($this->invariant->adminAccessPossible());
     }
 
+    /**
+     * R6-L1: the unbound list (lockout confirmation, password-session
+     * revocation) agrees with the invariant about bindings on an old issuer.
+     */
+    public function testBindingsOnAPreviousIssuerAreUnbound(): void
+    {
+        $provider = $this->db->provider(['issuer' => 'https://new-tenant.example']);
+        $stale = $this->db->admin();
+        $current = $this->db->admin();
+        $this->db->bind($provider, $stale, issuer: 'https://old-tenant.example');
+        $this->db->bind($provider, $current, issuer: 'https://new-tenant.example');
+
+        self::assertSame([$stale], $this->invariant->unboundActiveAdminIds());
+        self::assertSame([], $this->invariant->unboundActiveAdminIds(rebindProviderIds: [$provider]));
+    }
+
     public function testLoginButtonVisibility(): void
     {
         $provider = $this->db->provider(['show_admin_link' => 0]);

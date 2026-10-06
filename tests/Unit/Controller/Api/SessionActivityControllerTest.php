@@ -12,6 +12,8 @@ use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemorySessionActivityRepository;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Framework\Api\Context\AdminApiSource;
+use Shopware\Core\Framework\Context;
 use Psr\Log\NullLogger;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
@@ -72,6 +74,17 @@ final class SessionActivityControllerTest extends TestCase
         self::assertSame([], $this->registry->resolveByUser('admin', 'e1000000000000000000000000000001'));
     }
 
+    public function testOnlyASuperadminMayEndAnAdministratorsSessions(): void
+    {
+        $this->recorder->recordLogin('admin', 'e1000000000000000000000000000001', 'oidc', 'jti-a', null);
+        $this->destruction->expects(self::never())->method(self::anything());
+
+        $response = $this->controller()->forceLogout($this->activityIdFor('jti-a'), new Context(new AdminApiSource('f1000000000000000000000000000001')));
+
+        // A role with force_logout alone can't end a superadmin's sessions (R3-L37).
+        self::assertSame(403, $response->getStatusCode());
+    }
+
     public function testClosedOrUnknownActivity(): void
     {
         $this->recorder->recordLogin('customer', 'c1000000000000000000000000000001', 'passkey', 'ctx-a', null);
@@ -79,15 +92,16 @@ final class SessionActivityControllerTest extends TestCase
         $this->destruction->expects(self::never())->method(self::anything());
 
         self::assertTrue($this->forceLogout($this->activityIdFor('ctx-a'))['alreadyLoggedOut']);
-        self::assertSame(404, $this->controller()->forceLogout('0190a1b2c3d4e5f60718293a4b5c6d7e')->getStatusCode());
+        self::assertSame(404, $this->controller()->forceLogout('0190a1b2c3d4e5f60718293a4b5c6d7e', Context::createDefaultContext())->getStatusCode());
+        self::assertSame(404, $this->controller()->forceLogout('not-a-uuid', Context::createDefaultContext())->getStatusCode());
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function forceLogout(string $activityId): array
+    private function forceLogout(string $activityId, ?Context $context = null): array
     {
-        return json_decode((string) $this->controller()->forceLogout($activityId)->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        return json_decode((string) $this->controller()->forceLogout($activityId, $context ?? Context::createDefaultContext())->getContent(), true, 512, JSON_THROW_ON_ERROR);
     }
 
     private function controller(): SessionActivityController

@@ -9,6 +9,9 @@ use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Framework\Api\Context\AdminApiSource;
+use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\Uuid\Uuid;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
@@ -72,12 +75,21 @@ class SessionActivityController extends AbstractController
         defaults: ['_acl' => ['sw6oidc_session_activity:force_logout']],
         methods: ['POST'],
     )]
-    public function forceLogout(string $activityId): JsonResponse
+    public function forceLogout(string $activityId, Context $context): JsonResponse
     {
-        $activity = $this->activityRecorder->get($activityId);
+        $activity = Uuid::isValid($activityId) ? $this->activityRecorder->get($activityId) : null;
 
         if (!$activity instanceof Sw6OidcSessionActivityEntity) {
             return new JsonResponse(['error' => 'not_found'], 404);
+        }
+
+        // Ending an Administration user's sessions (all of them: admin tokens
+        // can't be targeted) is a superadmin's call, not every role holding
+        // force_logout (R3-L37).
+        $source = $context->getSource();
+
+        if ($activity->getUserType() === Sw6OidcSession::USER_TYPE_ADMIN && $source instanceof AdminApiSource && !$source->isAdmin()) {
+            return new JsonResponse(['error' => 'superadmin_required'], 403);
         }
 
         if ($activity->getLoggedOutAt() instanceof \DateTimeInterface) {

@@ -102,11 +102,20 @@ final class HealthCheckControllerTest extends TestCase
 
     public function testConfiguredTokenIsRequired(): void
     {
-        [$status] = $this->health([$this->provider([])], token: 's3cret');
+        [$status] = $this->health([$this->provider([])], token: 's3cret', sentToken: null);
         self::assertSame(401, $status);
 
         [$status] = $this->health([$this->provider([])], token: 's3cret', sentToken: 's3cret');
         self::assertSame(200, $status);
+    }
+
+    public function testWithoutAConfiguredTokenOnlyTheStatusIsPublic(): void
+    {
+        [$status, $body] = $this->health([$this->provider([])], token: null, sentToken: null);
+
+        // No counts, no infrastructure warnings for anonymous callers (R3-L36).
+        self::assertSame(200, $status);
+        self::assertSame(['status' => 'ok'], $body);
     }
 
     /**
@@ -114,7 +123,7 @@ final class HealthCheckControllerTest extends TestCase
      *
      * @return array{int, array<string, mixed>}
      */
-    private function health(array $providers, ?string $token = null, ?string $sentToken = null): array
+    private function health(array $providers, ?string $token = 'monitor-token', ?string $sentToken = 'monitor-token'): array
     {
         $repository = $this->createStub(EntityRepository::class);
         $repository->method('search')->willReturnCallback(static fn (Criteria $criteria, Context $context): EntitySearchResult => new EntitySearchResult(
@@ -140,6 +149,7 @@ final class HealthCheckControllerTest extends TestCase
             new ProviderConfigInspector(new Sw6OidcEncryptor('app-secret')),
             $infrastructure,
             new ArrayAdapter(),
+            null,
             $token,
         ))->health($request);
 

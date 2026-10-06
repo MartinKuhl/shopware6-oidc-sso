@@ -58,7 +58,13 @@ class BackChannelLogoutController extends AbstractController
             $logoutToken = $this->logoutToken($request);
             $provider = $this->resolveProvider($logoutToken);
         } catch (InvalidJwtException $exception) {
-            // Malformed or not addressed to any provider of this shop.
+            // Malformed or not addressed to any provider of this shop. Such a
+            // token can never be valid here, so once the address's budget is
+            // used up it is answered 429 without another log line (R3-L8).
+            if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_BACKCHANNEL_LOGOUT, $clientIp)) {
+                return $this->respond(Response::HTTP_TOO_MANY_REQUESTS);
+            }
+
             $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_BACKCHANNEL_LOGOUT, $clientIp);
             $this->logger->warning('sw6oidc: back-channel logout rejected.', ['reason' => $exception->getMessage()]);
 

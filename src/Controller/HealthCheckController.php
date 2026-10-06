@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Controller;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Health\HealthAlertState;
 use MartinKuhl\Sw6Oidc\Service\Health\InfrastructureInspector;
+use MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat;
 use MartinKuhl\Sw6Oidc\Service\Health\ProviderConfigInspector;
 use Psr\Cache\CacheItemPoolInterface;
 use Shopware\Core\Framework\Context;
@@ -52,6 +53,7 @@ class HealthCheckController extends AbstractController
         private readonly ProviderConfigInspector $configInspector,
         private readonly InfrastructureInspector $infrastructureInspector,
         private readonly CacheItemPoolInterface $cache,
+        private readonly ?NodeHeartbeat $nodeHeartbeat = null,
         #[\SensitiveParameter]
         private readonly ?string $healthToken = null,
     ) {
@@ -72,6 +74,9 @@ class HealthCheckController extends AbstractController
             return $this->noStore(new JsonResponse(['error' => 'unauthorized'], Response::HTTP_UNAUTHORIZED));
         }
 
+        // Every web node answers this probe, the message worker never does (R3-L32).
+        $this->nodeHeartbeat?->record();
+
         $item = $this->cache->getItem(self::CACHE_KEY);
 
         if (!$item->isHit() || !\is_array($item->get())) {
@@ -82,8 +87,15 @@ class HealthCheckController extends AbstractController
 
         /** @var array{status: string} $result */
         $result = $item->get();
+        $status = $result['status'] === 'down' ? Response::HTTP_SERVICE_UNAVAILABLE : Response::HTTP_OK;
 
-        return $this->noStore(new JsonResponse($result, $result['status'] === 'down' ? Response::HTTP_SERVICE_UNAVAILABLE : Response::HTTP_OK));
+        // Counts and infrastructure warnings only for a caller holding the
+        // token: anonymous callers learn whether SSO works, nothing more (R3-L36).
+        if ($this->healthToken === null || $this->healthToken === '') {
+            return $this->noStore(new JsonResponse(['status' => $result['status']], $status));
+        }
+
+        return $this->noStore(new JsonResponse($result, $status));
     }
 
     /**

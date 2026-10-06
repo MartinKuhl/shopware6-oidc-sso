@@ -34,7 +34,7 @@ final class Sw6OidcSessionActivityRecorderTest extends TestCase
         $row = array_values($this->store->rows)[0];
         self::assertSame('198.51.100.7', $row['ipAddress']);
         self::assertSame('Browser/1.0', $row['userAgent']);
-        self::assertSame(['sub-1', 'sid-1', 'reg-1', 'p1'], [$row['sub'], $row['sid'], $row['registrySessionId'], $row['providerId']]);
+        self::assertSame(['sub-1', 'sha256:' . hash('sha256', 'sid-1'), 'reg-1', 'p1'], [$row['sub'], $row['sid'], $row['registrySessionId'], $row['providerId']]);
         self::assertSame(hash('sha256', 'ctx-token'), $row['sessionKeyHash']);
         self::assertStringNotContainsString('ctx-token', (string) json_encode($row));
     }
@@ -87,6 +87,18 @@ final class Sw6OidcSessionActivityRecorderTest extends TestCase
         $this->recorder->recordLogoutOfAllSessions('customer', 'c1', 'forced');
 
         self::assertSame(['ctx-a' => 'forced', 'ctx-b' => 'forced'], $this->reasons());
+    }
+
+    public function testLogoutOfAllSessionsClosesMoreThanOneBatch(): void
+    {
+        for ($i = 0; $i < 450; ++$i) {
+            $this->store->rows['a' . $i] = ['id' => 'a' . $i, 'userType' => 'customer', 'userId' => 'c1', 'loggedOutAt' => null, 'loggedInAt' => new \DateTimeImmutable('-' . $i . ' minutes')];
+        }
+
+        $this->recorder->recordLogoutOfAllSessions('customer', 'c1', 'forced');
+
+        // Not just the newest 200 (R3-L31).
+        self::assertSame([], array_filter($this->store->rows, static fn (array $row): bool => $row['loggedOutAt'] === null));
     }
 
     public function testRepositoryFailuresNeverEscape(): void

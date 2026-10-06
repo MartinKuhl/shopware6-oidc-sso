@@ -66,6 +66,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\RedisConnectionFactory" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\DatabaseAtomicCache" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
         </service>
         <service id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" alias="MartinKuhl\Sw6Oidc\Service\Cache\RedisAtomicCache" />
 
@@ -951,7 +952,6 @@
             <argument type="service" id="scheduled_task.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\ProviderHealthMonitor" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat" />
             <tag name="messenger.message_handler" />
         </service>
 
@@ -960,6 +960,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\ProviderConfigInspector" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\InfrastructureInspector" />
             <argument type="service" id="cache.app" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat" />
             <argument>%env(default::SW6OIDC_HEALTH_TOKEN)%</argument>
             <call method="setContainer">
                 <argument type="service" id="service_container" />

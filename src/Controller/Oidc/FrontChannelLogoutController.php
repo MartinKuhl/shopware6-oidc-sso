@@ -53,19 +53,16 @@ class FrontChannelLogoutController extends AbstractController
     public function logout(Request $request): Response
     {
         $clientIp = $request->getClientIp();
-
-        if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_FRONTCHANNEL_LOGOUT, $clientIp)) {
-            $this->logger->warning('sw6oidc: front-channel logout rate-limited.');
-
-            return $this->pixel();
-        }
-
         $issuer = $request->query->get('iss');
         $sid = $request->query->get('sid');
 
+        // The budget only counts and blocks malformed requests: a NAT whose
+        // clients sent junk must not lose its real logouts (R3-L9).
         if (!\is_string($issuer) || $issuer === '' || !\is_string($sid) || $sid === '') {
-            $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_FRONTCHANNEL_LOGOUT, $clientIp);
-            $this->logger->info('sw6oidc: front-channel logout without iss/sid, nothing to do.');
+            if (!$this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_FRONTCHANNEL_LOGOUT, $clientIp)) {
+                $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_FRONTCHANNEL_LOGOUT, $clientIp);
+                $this->logger->info('sw6oidc: front-channel logout without iss/sid, nothing to do.');
+            }
 
             return $this->pixel();
         }

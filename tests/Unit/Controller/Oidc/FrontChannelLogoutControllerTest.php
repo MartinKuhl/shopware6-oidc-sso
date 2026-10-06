@@ -78,18 +78,19 @@ final class FrontChannelLogoutControllerTest extends TestCase
         self::assertCount(1, $this->destroyed);
     }
 
-    public function testMalformedRequestsBlockTheAddress(): void
+    public function testMalformedRequestsNeverBlockWellFormedOnes(): void
     {
         $controller = $this->controller();
 
-        for ($i = 0; $i < 10; ++$i) {
-            $controller->logout($this->request(['iss' => self::ISSUER]));
+        for ($i = 0; $i < 15; ++$i) {
+            $this->assertPixel($controller->logout($this->request(['iss' => self::ISSUER])));
         }
 
         $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'customer', 'c1000000000000000000000000000001', 'ctx-1', '5c000000000000000000000000000001');
 
+        // Junk from the same office NAT must not drop a real logout (R3-L9).
         $this->assertPixel($controller->logout($this->request(['iss' => self::ISSUER, 'sid' => 'sid-1'])));
-        self::assertSame([], $this->destroyed);
+        self::assertCount(1, $this->destroyed);
     }
 
     public function testAdminSessionsAreOnlyEndedWithTheProviderOptIn(): void

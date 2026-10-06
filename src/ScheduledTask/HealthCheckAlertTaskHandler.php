@@ -2,7 +2,6 @@
 
 namespace MartinKuhl\Sw6Oidc\ScheduledTask;
 
-use MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat;
 use MartinKuhl\Sw6Oidc\Service\Health\ProviderHealthMonitor;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -16,14 +15,16 @@ class HealthCheckAlertTaskHandler extends ScheduledTaskHandler
         EntityRepository $scheduledTaskRepository,
         LoggerInterface $exceptionLogger,
         private readonly ProviderHealthMonitor $monitor,
-        private readonly ?NodeHeartbeat $nodeHeartbeat = null,
     ) {
         parent::__construct($scheduledTaskRepository, $exceptionLogger);
     }
 
+    /**
+     * No node heartbeat here: the worker isn't a web node, and counting it
+     * reported every one-web-node setup as multi-node (R3-L32).
+     */
     public function run(): void
     {
-        $this->nodeHeartbeat?->record();
         $this->monitor->run();
     }
 }

@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Cache;
 
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -48,6 +49,7 @@ class RedisAtomicCache implements AtomicCacheInterface
         private readonly RedisConnectionFactory $connectionFactory,
         private readonly AtomicCacheInterface $fallback,
         private readonly LoggerInterface $logger,
+        private readonly Sw6OidcEncryptor $encryptor,
     ) {
     }
 
@@ -70,7 +72,7 @@ class RedisAtomicCache implements AtomicCacheInterface
         }
 
         try {
-            if ($redis->setex($this->prefixedKey($key), max(1, $ttlSeconds), $value) !== true) {
+            if ($redis->setex($this->prefixedKey($key), max(1, $ttlSeconds), $this->seal($value)) !== true) {
                 throw new \RuntimeException($this->takeLastError($redis) ?? 'SETEX failed');
             }
         } catch (\Throwable $exception) {
@@ -105,7 +107,8 @@ class RedisAtomicCache implements AtomicCacheInterface
         }
 
         if (\is_string($value)) {
-            return $value;
+            // Values written before encryption (at most one TTL ago) pass through.
+            return $this->encryptor->decryptOrNull($value, DatabaseAtomicCache::VALUE_PURPOSE);
         }
 
         // Miss: the token may have been written to the database by a save()
@@ -122,7 +125,7 @@ class RedisAtomicCache implements AtomicCacheInterface
         }
 
         try {
-            $result = $redis->set($this->prefixedKey($key), $value, ['nx', 'ex' => max(1, $ttlSeconds)]);
+            $result = $redis->set($this->prefixedKey($key), $this->seal($value), ['nx', 'ex' => max(1, $ttlSeconds)]);
 
             if ($result === true) {
                 return true;
@@ -190,6 +193,15 @@ class RedisAtomicCache implements AtomicCacheInterface
 
         // The value may have been stored there during a Redis error.
         $this->fallback->delete($key);
+    }
+
+    /**
+     * PKCE verifiers, nonces and user ids are encrypted like in the database
+     * store, so a Redis dump or a shared instance reveals nothing (R3-L35).
+     */
+    private function seal(string $value): string
+    {
+        return $this->encryptor->encrypt($value, DatabaseAtomicCache::VALUE_PURPOSE);
     }
 
     /**
