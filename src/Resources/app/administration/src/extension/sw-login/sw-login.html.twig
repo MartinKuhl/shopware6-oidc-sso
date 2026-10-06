@@ -1,24 +1,43 @@
 {#
-    sw_login_login wraps the whole native form; the SSO/passkey buttons are
-    rendered as its sibling (Shopware 6.7.14 has no narrower block around its
-    own SSO button).
-#}
-{% block sw_login_login %}
-{#
-    Native username/password form, hidden while disable_non_oidc_admin_login
-    is on and another way in is offered — cosmetic only, the server refuses
+    While disable_non_oidc_admin_login is on and another way in is offered,
+    only the username field, the password field and the login button are
+    hidden (R3-F10): core's "Keep me logged in" checkbox sits next to the
+    button inside sw_login_login_submit and has to stay, because the SSO and
+    passkey logins honour it (rememberMe). Cosmetic only, the server refuses
     password logins either way.
 #}
-<div v-show="!sw6oidcPasswordLoginDisabled">
-{% parent %}
-</div>
-
+{% block sw_login_login_user_field %}
 <p
     v-if="sw6oidcPasswordLoginDisabled"
     class="sw6oidc-login-actions__notice"
+    role="status"
 >
     {{ sw6oidcText('passwordLoginDisabled') }}
 </p>
+<template v-else>
+{% parent %}
+</template>
+{% endblock %}
+
+{% block sw_login_login_password_field %}
+<template v-if="!sw6oidcPasswordLoginDisabled">
+{% parent %}
+</template>
+{% endblock %}
+
+{% block sw_login_login_submit_button %}
+<template v-if="!sw6oidcPasswordLoginDisabled">
+{% parent %}
+</template>
+{% endblock %}
+
+{#
+    The SSO and passkey buttons are rendered as siblings after core's form:
+    they are not part of the password form, and must also show when core's
+    own SSO hides the default login (loginConfig.useDefault = false).
+#}
+{% block sw_login_login %}
+{% parent %}
 
 <div
     v-if="sw6oidcSsoProviders.length || sw6oidcPasskeyAvailable"
@@ -56,6 +75,7 @@
 <div
     v-if="sw6oidcExchangeError"
     class="sw6oidc-login-actions__error"
+    role="alert"
 >
     {{ sw6oidcErrorMessage }}
 </div>
@@ -63,6 +83,7 @@
 <div
     v-if="sw6oidcPasskeyError"
     class="sw6oidc-login-actions__error"
+    role="alert"
 >
     {{ sw6oidcText('passkeyError') }}
 </div>

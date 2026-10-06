@@ -39,8 +39,8 @@ Component.register('sw6oidc-profile-passkey', () => Promise.resolve({
     computed: {
         columns() {
             return [
-                { property: 'nickname', label: this.$tc('sw6oidc.passkeySettings.list.columnNickname') },
-                { property: 'createdAt', label: this.$tc('sw6oidc.passkeySettings.list.columnCreatedAt') },
+                { property: 'nickname', label: this.$t('sw6oidc.passkeySettings.list.columnNickname') },
+                { property: 'createdAt', label: this.$t('sw6oidc.passkeySettings.list.columnCreatedAt') },
             ];
         },
 
@@ -61,7 +61,7 @@ Component.register('sw6oidc-profile-passkey', () => Promise.resolve({
                 const { credentials } = await this.sw6oidcApiService.get('sw6oidc/admin/passkey/my-credentials');
                 this.credentials = Array.isArray(credentials) ? credentials : [];
             } catch {
-                this.createNotificationError({ message: this.$tc('sw6oidc.passkeySettings.loadError') });
+                this.createNotificationError({ message: this.$t('sw6oidc.passkeySettings.loadError') });
             } finally {
                 this.isLoading = false;
             }
@@ -69,7 +69,7 @@ Component.register('sw6oidc-profile-passkey', () => Promise.resolve({
 
         onClickRegister() {
             if (!window.PublicKeyCredential) {
-                this.createNotificationError({ message: this.$tc('sw6oidc.passkeySettings.registerNoSupport') });
+                this.createNotificationError({ message: this.$t('sw6oidc.passkeySettings.registerNoSupport') });
                 return;
             }
 
@@ -102,10 +102,10 @@ Component.register('sw6oidc-profile-passkey', () => Promise.resolve({
                 });
 
                 this.nickname = '';
-                this.createNotificationSuccess({ message: this.$tc('sw6oidc.passkeySettings.registerSuccess') });
+                this.createNotificationSuccess({ message: this.$t('sw6oidc.passkeySettings.registerSuccess') });
                 await this.getList();
             } catch {
-                this.createNotificationError({ message: this.$tc('sw6oidc.passkeySettings.registerError') });
+                this.createNotificationError({ message: this.$t('sw6oidc.passkeySettings.registerError') });
             } finally {
                 this.isRegistering = false;
             }
@@ -120,15 +120,15 @@ Component.register('sw6oidc-profile-passkey', () => Promise.resolve({
 
                 // The deleted passkey authenticated this very session: end it.
                 if (result?.forceLogout) {
-                    this.createNotificationSuccess({ message: this.$tc('sw6oidc.passkeySettings.deleteSuccessLoggedOut') });
+                    this.createNotificationSuccess({ message: this.$t('sw6oidc.passkeySettings.deleteSuccessLoggedOut') });
                     this.loginService.logout();
                     return;
                 }
 
-                this.createNotificationSuccess({ message: this.$tc('sw6oidc.passkeySettings.deleteSuccess') });
+                this.createNotificationSuccess({ message: this.$t('sw6oidc.passkeySettings.deleteSuccess') });
                 await this.getList();
             } catch {
-                this.createNotificationError({ message: this.$tc('sw6oidc.passkeySettings.deleteError') });
+                this.createNotificationError({ message: this.$t('sw6oidc.passkeySettings.deleteError') });
             } finally {
                 this.deletingId = null;
             }
