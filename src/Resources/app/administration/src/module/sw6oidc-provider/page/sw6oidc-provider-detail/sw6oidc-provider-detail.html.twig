@@ -27,6 +27,13 @@
             >
                 {{ $tc('sw6oidc.provider.detail.readOnlyHint') }}
             </mt-banner>
+            <mt-banner
+                v-else-if="!isSuperadmin"
+                variant="attention"
+                class="sw6oidc-provider-detail__superadmin-hint"
+            >
+                {{ $t('sw6oidc.provider.detail.superadminRequiredHint') }}
+            </mt-banner>
             {# Native inputs are disabled for viewers; saving is too (F-N8). #}
             <fieldset
                 class="sw6oidc-provider-detail__fieldset"
@@ -65,7 +72,7 @@
                         :label="$tc('sw6oidc.provider.detail.clientSecret')"
                         :help-text="$tc('sw6oidc.provider.detail.clientSecretHelp')"
                         :placeholder="isNewProvider ? '' : $tc('sw6oidc.provider.detail.clientSecretStoredPlaceholder')"
-                        :required="isNewProvider"
+                        :required="isNewProvider && !provider.publicClient"
                     />
                 </sw-container>
                 <sw-text-field
@@ -824,6 +831,12 @@
                     </mt-button>
                 </template>
             </sw-modal>
+
+            <sw-verify-user-modal
+                v-if="lockoutVerifying"
+                @verified="onLockoutVerified"
+                @close="lockoutVerifying = false"
+            />
             </fieldset>
         </sw-card-view>
     </template>

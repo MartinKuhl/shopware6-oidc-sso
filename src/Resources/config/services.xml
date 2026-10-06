@@ -604,6 +604,7 @@
             <argument type="service" id="sw6oidc_user_provider.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -616,6 +617,18 @@
 
         <!-- N-M8: the session-activity audit log can't be deleted through the API. -->
         <service id="MartinKuhl\Sw6Oidc\Subscriber\SessionActivityWriteGuardSubscriber">
+            <tag name="kernel.event_subscriber" />
+        </service>
+
+        <!-- R3-H4: trust-relevant provider settings need a superadmin; every change is audit-logged. -->
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\ProviderTrustGuardSubscriber">
+            <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <tag name="kernel.event_subscriber" />
+        </service>
+
+        <!-- R3-H2/R3-H3: passkey credentials and account bindings are written by the plugin only. -->
+        <service id="MartinKuhl\Sw6Oidc\Subscriber\TrustEntityWriteGuardSubscriber">
             <tag name="kernel.event_subscriber" />
         </service>
 
@@ -677,20 +690,27 @@
             <tag name="kernel.event_subscriber" />
         </service>
 
-        <service id="MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard">
+        <!-- R3-H7: the one SSO-only invariant, asked by every write that can change it. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant">
             <argument type="service" id="Doctrine\DBAL\Connection" />
+            <argument>%env(bool:SW6OIDC_ALLOW_PASSWORD_LOGIN)%</argument>
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Security\PasswordSessionRevoker">
             <argument type="service" id="Doctrine\DBAL\Connection" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
         </service>
 
+        <!-- R3-M21: password-session revocation runs from the message queue. -->
+        <service id="MartinKuhl\Sw6Oidc\Service\Security\Message\PasswordSessionRevocationHandler">
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordSessionRevoker" />
+            <tag name="messenger.message_handler" />
+        </service>
+
         <service id="MartinKuhl\Sw6Oidc\Subscriber\AdminLockoutGuardSubscriber">
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant" />
             <tag name="kernel.event_subscriber" />
         </service>
 
@@ -698,18 +718,17 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordSessionRevoker" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant" />
+            <argument type="service" id="messenger.default_bus" />
             <argument type="service" id="request_stack" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore" />
-            <argument>%env(bool:SW6OIDC_ALLOW_PASSWORD_LOGIN)%</argument>
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <tag name="kernel.event_subscriber" />
             <tag name="kernel.reset" method="reset" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore">
-            <argument type="service" id="cache.app" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\ProviderLockoutConfirmationController" public="true">

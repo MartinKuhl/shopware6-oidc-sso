@@ -30,6 +30,12 @@
             @cancel="onCancelUnlink"
             @close="onCancelUnlink"
         />
+
+        <sw-verify-user-modal
+            v-if="showVerify"
+            @verified="onVerified"
+            @close="showVerify = false"
+        />
     </template>
 
     <span

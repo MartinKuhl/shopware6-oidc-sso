@@ -68,6 +68,8 @@
                 <file name="src/Subscriber/SessionActivityWriteGuardSubscriber.php" />
                 <file name="src/Subscriber/AttributeMappingWriteGuardSubscriber.php" />
                 <file name="src/Subscriber/AdminLockoutGuardSubscriber.php" />
+                <file name="src/Subscriber/ProviderTrustGuardSubscriber.php" />
+                <file name="src/Subscriber/TrustEntityWriteGuardSubscriber.php" />
             </errorLevel>
         </InternalMethod>
 

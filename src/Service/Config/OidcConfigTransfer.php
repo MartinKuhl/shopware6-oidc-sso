@@ -447,7 +447,7 @@ class OidcConfigTransfer
      */
     private function plaintextSecret(Sw6OidcProviderEntity $provider): ?string
     {
-        if ($provider->isPublicClient() || $provider->getClientSecret() === '') {
+        if ($provider->isPublicClient() || (string) $provider->getClientSecret() === '') {
             return null;
         }
 

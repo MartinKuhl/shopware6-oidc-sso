@@ -97,6 +97,8 @@ Component.register('sw6oidc-provider-detail', () => {
                 isRunningDiagnostics: false,
                 /** Server message when disabling admin password login would lock out unbound admins */
                 lockoutConfirmation: null,
+                /** The confirmation needs a fresh re-authentication (R3-M22). */
+                lockoutVerifying: false,
                 /** Discovery URL as loaded: save re-discovers only when it changed (F-M7) */
                 loadedWellKnownConfigUrl: null,
                 /** Live test popup, to verify where results come from (F-M9) */
@@ -214,6 +216,15 @@ Component.register('sw6oidc-provider-detail', () => {
             /** Viewers see the page read-only (F-N8). */
             canEdit() {
                 return this.isNewProvider ? this.acl.can('sw6oidc_provider.creator') : this.acl.can('sw6oidc_provider.editor');
+            },
+
+            /**
+             * Endpoints, issuer, scope, superadmin mapping and the other
+             * trust-relevant settings need a superadmin (R3-H4); the server
+             * refuses them for everyone else.
+             */
+            isSuperadmin() {
+                return Shopware.Store.get('session').currentUser?.admin === true;
             },
 
             webhookConfigured() {
@@ -465,9 +476,10 @@ Component.register('sw6oidc-provider-detail', () => {
                     }
                 }
 
-                // A blank secret on an existing provider means "keep the stored
-                // one" — don't send the empty string (it would fail NotBlank).
-                if (!this.isNewProvider && !this.provider.clientSecret) {
+                // A blank secret means "keep the stored one" (or, for a public
+                // client, "none") — don't send the empty string (it would fail
+                // NotBlank). The server requires it for confidential clients.
+                if (!this.provider.clientSecret) {
                     this.provider.clientSecret = undefined;
                 }
 
@@ -519,8 +531,13 @@ Component.register('sw6oidc-provider-detail', () => {
                 });
             },
 
-            async onConfirmLockout() {
+            onConfirmLockout() {
                 this.lockoutConfirmation = null;
+                this.lockoutVerifying = true;
+            },
+
+            async onLockoutVerified() {
+                this.lockoutVerifying = false;
 
                 try {
                     await this.sw6oidcApiService.post(`_action/sw6oidc/provider/${this.provider.id}/confirm-lockout`);

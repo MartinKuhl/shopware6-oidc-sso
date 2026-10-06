@@ -80,7 +80,7 @@ class TokenExchangeService
         // ciphertext to the IdP and getting an opaque invalid_client back.
         $secret = $provider->getUsableClientSecret();
 
-        if ($secret === null && Sw6OidcEncryptor::isEnvelope($provider->getClientSecret())) {
+        if ($secret === null && Sw6OidcEncryptor::isEnvelope((string) $provider->getClientSecret())) {
             throw ClientSecretUnavailableException::forProvider($provider->getId());
         }
 

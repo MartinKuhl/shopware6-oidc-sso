@@ -2,22 +2,22 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Subscriber;
 
-use Doctrine\DBAL\Connection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore;
-use MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard;
-use MartinKuhl\Sw6Oidc\Service\Security\PasswordSessionRevoker;
+use MartinKuhl\Sw6Oidc\Service\Security\Message\PasswordSessionRevocationMessage;
+use MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant;
 use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 use MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcProviderWriteGuardSubscriber;
+use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
+use MartinKuhl\Sw6Oidc\Tests\Unit\Support\SqliteSsoSchema;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
+use Shopware\Core\Framework\Api\Context\AdminApiSource;
+use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityWriteResult;
-use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\HttpFoundation\RequestStack;
-use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\DeleteCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\InsertCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\UpdateCommand;
@@ -26,255 +26,381 @@ use Shopware\Core\Framework\DataAbstractionLayer\Write\Validation\PreWriteValida
 use Shopware\Core\Framework\DataAbstractionLayer\Write\WriteContext;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\Framework\Validation\WriteConstraintViolationException;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Validator\ConstraintViolationInterface;
 
 #[CoversClass(Sw6OidcProviderWriteGuardSubscriber::class)]
 final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
 {
     private const APP_SECRET = 'test-app-secret';
 
-    /** @var array<string, mixed> */
-    private array $currentRow = [
-        'is_active' => 1,
-        'login_type' => 'both',
-        'disable_non_oidc_admin_login' => 0,
-        'disable_non_oidc_customer_login' => 0,
-        'show_admin_link' => 1,
-        'show_customer_link' => 1,
-    ];
+    private SqliteSsoSchema $db;
 
-    /** @var list<string> */
-    private array $unboundAdmins = [];
+    private LockoutConfirmationStore $confirmations;
 
-    private bool $otherVisibleProvider = true;
+    private string $actingAdmin;
 
-    private bool $adminLoginRemainsPossible = true;
-
-    private bool $confirmed = false;
-
-    private PasswordSessionRevoker&MockObject $revoker;
+    /** @var list<object> */
+    private array $dispatched = [];
 
     private Sw6OidcProviderWriteGuardSubscriber $subscriber;
 
     protected function setUp(): void
     {
-        $this->revoker = $this->createMock(PasswordSessionRevoker::class);
+        $this->db = new SqliteSsoSchema();
+        $this->confirmations = new LockoutConfirmationStore(new InMemoryAtomicCache());
+        $this->actingAdmin = Uuid::randomHex();
     }
 
     public function testEncryptedWebhookUrlIsDecryptedAndSsrfChecked(): void
     {
+        $id = $this->db->provider();
         $encrypted = (new Sw6OidcEncryptor(self::APP_SECRET))->encrypt('https://hooks.internal.example/T000/B000/xyz', 'sw6oidc_provider.health_alert_webhook_url');
 
-        $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, ['health_alert_webhook_url' => $encrypted])], privateIps: true));
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['health_alert_webhook_url' => $encrypted])], privateIps: true));
         self::assertSame('/healthAlertWebhookUrl', $violation->getPropertyPath());
         self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_URL_BLOCKED, $violation->getCode());
 
-        self::assertCount(0, $this->validateCommands([$this->command(UpdateCommand::class, ['health_alert_webhook_url' => $encrypted])])->getExceptions()->getExceptions());
+        $this->assertNoViolations($this->validate([$this->update($id, ['health_alert_webhook_url' => $encrypted])]));
     }
 
     public function testBlockedEndpointAddsFieldScopedViolation(): void
     {
-        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['jwks_endpoint' => 'https://internal.example/jwks'])], privateIps: true);
+        $violation = $this->singleViolation($this->validate([$this->update($this->db->provider(), ['jwks_endpoint' => 'https://internal.example/jwks'])], privateIps: true));
 
-        $violation = $this->singleViolation($event);
         self::assertSame('/jwksEndpoint', $violation->getPropertyPath());
         self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_URL_BLOCKED, $violation->getCode());
     }
 
     public function testPublicEndpointsPass(): void
     {
-        $event = $this->validateCommands([$this->command(InsertCommand::class, [
+        $this->assertNoViolations($this->validate([$this->insert([
             'authorize_endpoint' => 'https://idp.example/authorize',
             'access_token_endpoint' => 'https://idp.example/token',
             'well_known_config_url' => 'https://idp.example/.well-known/openid-configuration',
-        ])]);
-
-        self::assertCount(0, $event->getExceptions()->getExceptions());
+            'client_secret' => 'sw6oidc_v2:new',
+        ])]));
     }
 
     public function testIssuerIsNotValidated(): void
     {
-        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['issuer' => 'http://127.0.0.1'])], privateIps: true);
-
-        self::assertCount(0, $event->getExceptions()->getExceptions());
-    }
-
-    public function testWritesWithoutUrlFieldsAreIgnored(): void
-    {
-        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['last_test_status' => 'passed'])], privateIps: true);
-
-        self::assertCount(0, $event->getExceptions()->getExceptions());
+        $this->assertNoViolations($this->validate([$this->update($this->db->provider(), ['issuer' => 'http://127.0.0.1'])], privateIps: true));
     }
 
     public function testPostLogoutUrlMustBeAnAbsoluteHttpUrl(): void
     {
+        $id = $this->db->provider();
+
         foreach (['javascript:alert(1)', '/account/login', 'data:text/html,x', 'https://'] as $bad) {
-            $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, ['post_logout_url' => $bad])]));
+            $violation = $this->singleViolation($this->validate([$this->update($id, ['post_logout_url' => $bad])]));
             self::assertSame('/postLogoutUrl', $violation->getPropertyPath(), $bad);
             self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_REDIRECT_URL_INVALID, $violation->getCode());
         }
+
+        $this->assertNoViolations($this->validate([$this->update($id, ['post_logout_url' => 'http://localhost/sw6oidc/postlogout'])], privateIps: true));
     }
 
-    public function testPostLogoutUrlIsNotSsrfChecked(): void
+    public function testConfidentialClientNeedsASecretOnInsert(): void
     {
-        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['post_logout_url' => 'http://localhost/sw6oidc/postlogout'])], privateIps: true);
+        $violation = $this->singleViolation($this->validate([$this->insert(['client_id' => 'shop'])]));
 
-        self::assertCount(0, $event->getExceptions()->getExceptions());
+        self::assertSame('/clientSecret', $violation->getPropertyPath());
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_CLIENT_SECRET_REQUIRED, $violation->getCode());
     }
 
-    public function testEnablingDisableFlagWithoutBoundAccountIsRejected(): void
+    public function testPublicClientNeedsNoSecret(): void
     {
-        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['disable_non_oidc_admin_login' => 1])], boundAccount: false);
+        $this->assertNoViolations($this->validate([$this->insert(['client_id' => 'spa', 'public_client' => 1])]));
+    }
 
-        $violation = $this->singleViolation($event);
+    public function testChangingATokenUrlNeedsTheSecretAgain(): void
+    {
+        $id = $this->db->provider(['access_token_endpoint' => 'https://idp.example/token']);
+
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['access_token_endpoint' => 'https://evil.example/token'])]));
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_SECRET_REQUIRED, $violation->getCode());
+
+        $this->assertNoViolations($this->validate([$this->update($id, ['access_token_endpoint' => 'https://evil.example/token', 'client_secret' => 'sw6oidc_v2:new'])]));
+    }
+
+    /**
+     * R3-M4: `{publicClient: true, endpoint: evil}` then `{publicClient: false}`.
+     */
+    public function testPublicClientToggleCannotBypassTheSecretRule(): void
+    {
+        $id = $this->db->provider(['access_token_endpoint' => 'https://idp.example/token']);
+
+        $first = $this->singleViolation($this->validate([$this->update($id, ['public_client' => 1, 'access_token_endpoint' => 'https://evil.example/token'])]));
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_SECRET_REQUIRED, $first->getCode());
+
+        // Even if the first step had gone through: turning the client confidential needs the secret.
+        $this->db->connection->executeStatement('UPDATE `sw6oidc_provider` SET `public_client` = 1');
+        $second = $this->singleViolation($this->validate([$this->update($id, ['public_client' => 0])]));
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_CLIENT_SECRET_REQUIRED, $second->getCode());
+    }
+
+    public function testEnablingCustomerFlagNeedsABoundCustomer(): void
+    {
+        $id = $this->db->provider();
+
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['disable_non_oidc_customer_login' => 1])]));
+        self::assertSame('/disableNonOidcCustomerLogin', $violation->getPropertyPath());
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD, $violation->getCode());
+
+        $this->db->bind($id, Uuid::randomHex(), 'customer');
+        $this->assertNoViolations($this->validate([$this->update($id, ['disable_non_oidc_customer_login' => 1])]));
+        self::assertEquals([new PasswordSessionRevocationMessage('customer')], $this->written($id));
+    }
+
+    public function testEnablingAdminFlagWithoutAnyBoundAdminIsRejected(): void
+    {
+        $violation = $this->singleViolation($this->validate([$this->update($this->db->provider(), ['disable_non_oidc_admin_login' => 1])]));
+
         self::assertSame('/disableNonOidcAdminLogin', $violation->getPropertyPath());
         self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD, $violation->getCode());
     }
 
-    public function testEnablingDisableFlagWithBoundAccountPasses(): void
+    public function testInactiveBoundAdminsDoNotCount(): void
     {
-        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['disable_non_oidc_customer_login' => 1])], boundAccount: true);
+        $id = $this->db->provider();
+        $this->db->bind($id, $this->db->admin(active: false));
 
-        self::assertCount(0, $event->getExceptions()->getExceptions());
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['disable_non_oidc_admin_login' => 1])]));
+
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD, $violation->getCode());
     }
 
-    public function testDisablingTheFlagNeverNeedsABinding(): void
+    public function testUnboundAdminsNeedAnExplicitConfirmationByTheActingAdmin(): void
     {
-        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['disable_non_oidc_admin_login' => 0])], boundAccount: false);
+        $id = $this->db->provider();
+        $this->db->bind($id, $this->db->admin());
+        $this->db->admin();
+        $this->db->admin();
 
-        self::assertCount(0, $event->getExceptions()->getExceptions());
-    }
-
-    public function testDeletesAreIgnored(): void
-    {
-        $event = $this->validateCommands([$this->command(DeleteCommand::class, [])], privateIps: true);
-
-        self::assertCount(0, $event->getExceptions()->getExceptions());
-    }
-
-    public function testUnboundAdminsNeedAnExplicitConfirmation(): void
-    {
-        $this->unboundAdmins = ['a', 'b'];
-
-        $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, ['disable_non_oidc_admin_login' => 1])], boundAccount: true));
-
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['disable_non_oidc_admin_login' => 1])]));
         self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_UNBOUND_USERS, $violation->getCode());
         self::assertStringContainsString('2 active admin', (string) $violation->getMessage());
-    }
 
-    public function testConfirmedLockoutPassesAndSchedulesSessionRevocation(): void
-    {
-        $this->unboundAdmins = ['a'];
-        $this->confirmed = true;
-        $this->revoker->expects(self::once())->method('revokeUnboundAdminSessions');
+        // Another admin's confirmation doesn't count (R3-M22).
+        $this->confirmations->confirm($id, Uuid::randomHex());
+        $this->singleViolation($this->validate([$this->update($id, ['disable_non_oidc_admin_login' => 1])]));
 
-        $command = $this->command(UpdateCommand::class, ['disable_non_oidc_admin_login' => 1]);
-        $event = $this->validateCommands([$command], boundAccount: true);
-
-        self::assertCount(0, $event->getExceptions()->getExceptions());
-
-        $providerId = $command->getPrimaryKey()['id'];
-        \assert(\is_string($providerId));
-        $this->subscriber->onProviderWritten(new EntityWrittenEvent(
-            Sw6OidcProviderDefinition::ENTITY_NAME,
-            [new EntityWriteResult(Uuid::fromBytesToHex($providerId), [], Sw6OidcProviderDefinition::ENTITY_NAME, EntityWriteResult::OPERATION_UPDATE)],
-            Context::createDefaultContext(),
-        ));
+        $this->confirmations->confirm($id, $this->actingAdmin);
+        $this->assertNoViolations($this->validate([$this->update($id, ['disable_non_oidc_admin_login' => 1])]));
+        self::assertEquals([new PasswordSessionRevocationMessage('admin')], $this->written($id));
     }
 
     public function testFlagThatIsAlreadyOnIsNotRevalidated(): void
     {
-        $this->currentRow['disable_non_oidc_admin_login'] = 1;
-        $this->unboundAdmins = ['a'];
+        $id = $this->db->provider(['disable_non_oidc_admin_login' => 1]);
 
-        $event = $this->validateCommands([$this->command(UpdateCommand::class, ['disable_non_oidc_admin_login' => 1])], boundAccount: false);
-
-        self::assertCount(0, $event->getExceptions()->getExceptions());
+        $this->assertNoViolations($this->validate([$this->update($id, ['disable_non_oidc_admin_login' => 1])]));
+        self::assertSame([], $this->written($id));
     }
 
     public function testFlagNeedsAVisibleSsoButton(): void
     {
-        $this->otherVisibleProvider = false;
+        $id = $this->db->provider();
+        $this->db->bind($id, Uuid::randomHex(), 'customer');
 
-        $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, [
-            'disable_non_oidc_customer_login' => 1,
-            'show_customer_link' => 0,
-        ])], boundAccount: true));
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['disable_non_oidc_customer_login' => 1, 'show_customer_link' => 0])]));
 
         self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_NO_VISIBLE_LOGIN, $violation->getCode());
     }
 
-    public function testDeactivatingTheLastAdminProviderUnderSsoOnlyModeIsRejected(): void
+    /**
+     * R3-H7: re-activating a provider that already has the flag, with only
+     * an inactive admin bound, used to skip every check.
+     */
+    public function testReactivatingAFlaggedProviderIsChecked(): void
     {
-        // boundAccount: fetchOne() also answers "another provider keeps the admin policy on".
-        $this->adminLoginRemainsPossible = false;
+        $id = $this->db->provider(['disable_non_oidc_admin_login' => 1, 'is_active' => 0]);
+        $this->db->bind($id, $this->db->admin(active: false));
 
-        $violation = $this->singleViolation($this->validateCommands([$this->command(UpdateCommand::class, ['is_active' => 0])], boundAccount: true));
+        $violation = $this->singleViolation($this->validate([$this->update($id, ['is_active' => 1])]));
 
+        self::assertSame('/disableNonOidcAdminLogin', $violation->getPropertyPath());
         self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD, $violation->getCode());
     }
 
-    public function testDeletingTheLastAdminProviderUnderSsoOnlyModeIsRejected(): void
+    public function testRescopingAFlaggedProviderNeedsConfirmationAndRevokesSessions(): void
     {
-        $this->adminLoginRemainsPossible = false;
+        $id = $this->db->provider(['disable_non_oidc_admin_login' => 1, 'login_type' => 'customer']);
+        $this->db->bind($id, $this->db->admin());
+        $this->db->admin();
 
-        $violation = $this->singleViolation($this->validateCommands([$this->command(DeleteCommand::class, [])], boundAccount: true));
+        self::assertSame(
+            Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_UNBOUND_USERS,
+            $this->singleViolation($this->validate([$this->update($id, ['login_type' => 'both'])]))->getCode(),
+        );
 
-        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD, $violation->getCode());
+        $this->confirmations->confirm($id, $this->actingAdmin);
+        $this->assertNoViolations($this->validate([$this->update($id, ['login_type' => 'both'])]));
+        self::assertEquals([new PasswordSessionRevocationMessage('admin')], $this->written($id));
+    }
+
+    public function testDeactivatingTheLastAdminProviderUnderSsoOnlyModeIsRejected(): void
+    {
+        $flagged = $this->db->provider(['disable_non_oidc_admin_login' => 1]);
+        $this->db->bind($flagged, $this->db->admin());
+        $other = $this->db->provider(['disable_non_oidc_admin_login' => 1]);
+
+        self::assertSame(
+            Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD,
+            $this->singleViolation($this->validate([$this->update($flagged, ['is_active' => 0])]))->getCode(),
+        );
+        self::assertSame(
+            Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD,
+            $this->singleViolation($this->validate([$this->delete($flagged)]))->getCode(),
+        );
+
+        // Without another flagged provider, password login simply comes back.
+        $this->db->connection->executeStatement('DELETE FROM `sw6oidc_provider` WHERE `id` = :id', ['id' => Uuid::fromHexToBytes($other)], ['id' => \Doctrine\DBAL\ParameterType::BINARY]);
+        $this->assertNoViolations($this->validate([$this->delete($flagged)]));
+    }
+
+    public function testBreakGlassSkipsTheLockoutChecks(): void
+    {
+        $this->assertNoViolations($this->validate([$this->update($this->db->provider(), ['disable_non_oidc_admin_login' => 1])], breakGlass: true));
+    }
+
+    public function testCliCountsAsConfirmed(): void
+    {
+        $id = $this->db->provider();
+        $this->db->bind($id, $this->db->admin());
+        $this->db->admin();
+
+        $this->assertNoViolations($this->validate([$this->update($id, ['disable_non_oidc_admin_login' => 1])], withRequest: false));
+    }
+
+    public function testFailedWriteLeavesNoRevocationBehind(): void
+    {
+        $id = $this->db->provider();
+        $this->db->bind($id, Uuid::randomHex(), 'customer');
+        $this->validate([$this->update($id, ['disable_non_oidc_customer_login' => 1])]);
+
+        // The write failed; the next validation starts clean.
+        $this->subscriber->validate(new PreWriteValidationEvent(WriteContext::createFromContext(Context::createDefaultContext()), [$this->update($id, ['scope' => 'openid'])]));
+
+        self::assertSame([], $this->written($id));
     }
 
     /**
      * @param list<WriteCommand> $commands
      */
-    private function validateCommands(array $commands, bool $privateIps = false, bool $boundAccount = false): PreWriteValidationEvent
+    private function validate(array $commands, bool $privateIps = false, bool $breakGlass = false, bool $withRequest = true): PreWriteValidationEvent
     {
-        $connection = $this->createMock(Connection::class);
-        $connection->method('fetchOne')->willReturn($boundAccount ? '1' : false);
-        $connection->method('fetchAssociative')->willReturn($this->currentRow);
-
-        $lockoutGuard = $this->createStub(LockoutGuard::class);
-        $lockoutGuard->method('unboundActiveAdminIds')->willReturn($this->unboundAdmins);
-        $lockoutGuard->method('otherVisibleProviderExists')->willReturn($this->otherVisibleProvider);
-        $lockoutGuard->method('adminLoginRemainsPossible')->willReturn($this->adminLoginRemainsPossible);
-
-        $confirmations = $this->createStub(LockoutConfirmationStore::class);
-        $confirmations->method('consume')->willReturn($this->confirmed);
-
         $requestStack = new RequestStack();
-        $requestStack->push(new Request());
 
-        $validator = new SsrfUrlValidator(false, static fn (): array => [$privateIps ? '10.0.0.1' : '93.184.215.14']);
-        $event = new PreWriteValidationEvent(WriteContext::createFromContext(Context::createDefaultContext()), $commands);
+        if ($withRequest) {
+            $requestStack->push(new Request());
+        }
+
+        $bus = new class($this->dispatched) implements MessageBusInterface {
+            /**
+             * @param list<object> $dispatched
+             */
+            public function __construct(private array &$dispatched)
+            {
+            }
+
+            public function dispatch(object $message, array $stamps = []): Envelope
+            {
+                $this->dispatched[] = $message;
+
+                return new Envelope($message);
+            }
+        };
 
         $this->subscriber = new Sw6OidcProviderWriteGuardSubscriber(
-            $validator,
-            $connection,
+            new SsrfUrlValidator(false, static fn (): array => [$privateIps ? '10.0.0.1' : '93.184.215.14']),
+            $this->db->connection,
             new Sw6OidcEncryptor(self::APP_SECRET),
-            $lockoutGuard,
-            $this->revoker,
+            new SsoOnlyInvariant($this->db->connection, $breakGlass),
+            $bus,
             $requestStack,
-            $confirmations,
+            $this->confirmations,
+            new NullLogger(),
         );
+
+        $source = new AdminApiSource($this->actingAdmin);
+        $source->setIsAdmin(true);
+        $event = new PreWriteValidationEvent(WriteContext::createFromContext(new Context($source)), $commands);
         $this->subscriber->validate($event);
 
         return $event;
     }
 
     /**
-     * @param class-string<WriteCommand> $class
+     * @return list<object> the messages dispatched once the provider write is committed
+     */
+    private function written(string $id): array
+    {
+        $this->dispatched = [];
+        $this->subscriber->onProviderWritten(new EntityWrittenEvent(
+            Sw6OidcProviderDefinition::ENTITY_NAME,
+            [new EntityWriteResult($id, [], Sw6OidcProviderDefinition::ENTITY_NAME, EntityWriteResult::OPERATION_UPDATE)],
+            Context::createDefaultContext(),
+        ));
+
+        return $this->dispatched;
+    }
+
+    /**
      * @param array<string, mixed> $payload
      */
-    private function command(string $class, array $payload): WriteCommand
+    private function update(string $id, array $payload): WriteCommand
     {
-        $command = $this->createMock($class);
+        return $this->command(UpdateCommand::class, $id, $payload);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function insert(array $payload): WriteCommand
+    {
+        return $this->command(InsertCommand::class, Uuid::randomHex(), $payload);
+    }
+
+    private function delete(string $id): WriteCommand
+    {
+        return $this->command(DeleteCommand::class, $id, []);
+    }
+
+    /**
+     * @param class-string<WriteCommand> $class
+     * @param array<string, mixed>       $payload
+     */
+    private function command(string $class, string $id, array $payload): WriteCommand
+    {
+        $command = $this->createStub($class);
         $command->method('getEntityName')->willReturn(Sw6OidcProviderDefinition::ENTITY_NAME);
         $command->method('getPayload')->willReturn($payload);
-        $command->method('getPrimaryKey')->willReturn(['id' => Uuid::randomBytes()]);
+        $command->method('getPrimaryKey')->willReturn(['id' => Uuid::fromHexToBytes($id)]);
         $command->method('getPath')->willReturn('/0');
 
         return $command;
     }
 
-    private function singleViolation(PreWriteValidationEvent $event): \Symfony\Component\Validator\ConstraintViolationInterface
+    private function assertNoViolations(PreWriteValidationEvent $event): void
+    {
+        $messages = [];
+
+        foreach ($event->getExceptions()->getExceptions() as $exception) {
+            if ($exception instanceof WriteConstraintViolationException) {
+                foreach ($exception->getViolations() as $violation) {
+                    $messages[] = $violation->getCode() . ': ' . $violation->getMessage();
+                }
+            }
+        }
+
+        self::assertSame([], $messages);
+    }
+
+    private function singleViolation(PreWriteValidationEvent $event): ConstraintViolationInterface
     {
         $exceptions = $event->getExceptions()->getExceptions();
         self::assertCount(1, $exceptions);

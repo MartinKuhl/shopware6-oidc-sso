@@ -5,6 +5,8 @@ namespace MartinKuhl\Sw6Oidc\Controller\Api;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
+use MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant;
+use MartinKuhl\Sw6Oidc\Service\Security\UserVerifiedScope;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
@@ -45,6 +47,7 @@ class OidcUserProviderAdminController extends AbstractController
         private readonly EntityRepository $userProviderRepository,
         private readonly UserProviderBindingService $bindingService,
         private readonly LoggerInterface $logger,
+        private readonly SsoOnlyInvariant $ssoOnlyInvariant,
     ) {
     }
 
@@ -107,6 +110,21 @@ class OidcUserProviderAdminController extends AbstractController
 
         if (!$this->isAllowed($context, self::PRIVILEGE_PREFIX[$userType] . ':update')) {
             return new JsonResponse(['error' => 'forbidden'], 403);
+        }
+
+        if ($userType === Sw6OidcUserProviderEntity::USER_TYPE_ADMIN) {
+            // Core requires a re-authenticated token for any user change; an
+            // unlink can lock an admin out, so it needs the same (R3-H7).
+            if (!UserVerifiedScope::isPresent($request)) {
+                return new JsonResponse(['error' => 'user_verification_required'], 403);
+            }
+
+            if (!$this->ssoOnlyInvariant->holds(unboundUserIds: [$userId]) && $this->ssoOnlyInvariant->holds()) {
+                return new JsonResponse([
+                    'error' => 'last_sso_admin',
+                    'message' => 'Administration password login is disabled and this is the last admin who can log in through single sign-on.',
+                ], 409);
+            }
         }
 
         // System scope: the acting role was checked above, but it holds no

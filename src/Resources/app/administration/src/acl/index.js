@@ -3,10 +3,16 @@
  * mappings the entities' privileges can't be granted to a normal role, so
  * only superadmins could use the modules. Owner names in the passkey and
  * session lists need user/customer read access.
+ *
+ * The bundle runs before core registers the `privileges` service (it is
+ * force-loaded on the login screen, see views/administration/index.html.twig),
+ * so the registration waits for it, like registerModuleWhenReady (R3-F2).
+ *
+ * Changing a provider's endpoints, issuer, scope, superadmin mapping and the
+ * other trust-relevant settings needs a superadmin, whatever role is granted
+ * here (R3-H4, ProviderTrustGuardSubscriber).
  */
-const privileges = Shopware.Service('privileges');
-
-if (privileges) {
+function registerPrivileges(privileges) {
     privileges.addPrivilegeMappingEntry({
         category: 'permissions',
         parent: 'settings',
@@ -81,11 +87,42 @@ if (privileges) {
                 privileges: ['sw6oidc_session_activity:read', 'sw6oidc_provider:read', 'user:read', 'customer:read'],
                 dependencies: [],
             },
+        },
+    });
+
+    // The permissions grid only renders viewer/editor/creator/deleter; a
+    // custom role belongs to the additional permissions (R3-F2).
+    privileges.addPrivilegeMappingEntry({
+        category: 'additional_permissions',
+        parent: null,
+        key: 'sw6oidc_session_activity',
+        roles: {
             // Ends a customer's session, or all sessions of an admin.
             force_logout: {
-                privileges: ['sw6oidc_session_activity:force_logout'],
-                dependencies: ['sw6oidc_session_activity.viewer'],
+                privileges: ['sw6oidc_session_activity:read', 'sw6oidc_session_activity:force_logout', 'user:read', 'customer:read'],
+                dependencies: [],
             },
         },
     });
 }
+
+function registerWhenReady(attemptsLeft = 100) {
+    const privileges = Shopware.Service('privileges');
+
+    if (privileges) {
+        registerPrivileges(privileges);
+
+        return;
+    }
+
+    if (attemptsLeft <= 0) {
+        // eslint-disable-next-line no-console
+        console.error('sw6oidc: the privileges service never became ready, role privileges not registered');
+
+        return;
+    }
+
+    setTimeout(() => registerWhenReady(attemptsLeft - 1), 50);
+}
+
+registerWhenReady();

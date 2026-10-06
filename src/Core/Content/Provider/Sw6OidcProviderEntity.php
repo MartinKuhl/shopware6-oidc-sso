@@ -18,7 +18,7 @@ class Sw6OidcProviderEntity extends Entity
     protected string $appName;
     protected ?string $displayName = null;
     protected string $clientId;
-    protected string $clientSecret;
+    protected ?string $clientSecret = null;
     protected ?string $authorizeEndpoint = null;
     protected ?string $accessTokenEndpoint = null;
     protected ?string $userInfoEndpoint = null;
@@ -119,12 +119,12 @@ class Sw6OidcProviderEntity extends Entity
         $this->clientId = $clientId;
     }
 
-    public function getClientSecret(): string
+    public function getClientSecret(): ?string
     {
         return $this->clientSecret;
     }
 
-    public function setClientSecret(string $clientSecret): void
+    public function setClientSecret(?string $clientSecret): void
     {
         $this->clientSecret = $clientSecret;
     }
@@ -670,6 +670,8 @@ class Sw6OidcProviderEntity extends Entity
      */
     public function getUsableClientSecret(): ?string
     {
-        return $this->clientSecret === '' || Sw6OidcEncryptor::isEnvelope($this->clientSecret) ? null : $this->clientSecret;
+        return $this->clientSecret === null || $this->clientSecret === '' || Sw6OidcEncryptor::isEnvelope($this->clientSecret)
+            ? null
+            : $this->clientSecret;
     }
 }

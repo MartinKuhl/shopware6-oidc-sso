@@ -1,6 +1,7 @@
 import template from './sw6oidc-user-provider-info.html.twig';
 import './sw6oidc-user-provider-info.scss';
 import { fetchUserProviderBindings, unlinkUserProvider } from '../../service/user-provider-api';
+import Sw6oidcApiService from '../../service/sw6oidc-api.service';
 
 const { Component, Mixin } = Shopware;
 
@@ -18,6 +19,8 @@ Component.register('sw6oidc-user-provider-info', () => Promise.resolve({
     inject: ['acl'],
 
     mixins: [Mixin.getByName('notification')],
+
+    emits: ['unlinked'],
 
     props: {
         userType: {
@@ -41,6 +44,8 @@ Component.register('sw6oidc-user-provider-info', () => Promise.resolve({
             isLoading: true,
             isUnlinking: false,
             showUnlinkConfirm: false,
+            /** Unlinking an admin needs a fresh re-authentication (R3-H7). */
+            showVerify: false,
         };
     },
 
@@ -101,8 +106,24 @@ Component.register('sw6oidc-user-provider-info', () => Promise.resolve({
             this.showUnlinkConfirm = false;
         },
 
-        async onConfirmUnlink() {
+        onConfirmUnlink() {
             this.showUnlinkConfirm = false;
+
+            if (this.userType === 'admin') {
+                this.showVerify = true;
+
+                return;
+            }
+
+            this.unlink();
+        },
+
+        onVerified() {
+            this.showVerify = false;
+            this.unlink();
+        },
+
+        async unlink() {
             this.isUnlinking = true;
 
             try {
@@ -113,7 +134,11 @@ Component.register('sw6oidc-user-provider-info', () => Promise.resolve({
             } catch (exception) {
                 // eslint-disable-next-line no-console
                 console.error('sw6oidc: failed to unlink OIDC provider', exception);
-                this.createNotificationError({ message: this.$tc('sw6oidc.userProvider.unlinkError') });
+                this.createNotificationError({
+                    message: this.$tc(Sw6oidcApiService.errorCode(exception) === 'last_sso_admin'
+                        ? 'sw6oidc.userProvider.unlinkLastSsoAdmin'
+                        : 'sw6oidc.userProvider.unlinkError'),
+                });
             } finally {
                 this.isUnlinking = false;
             }

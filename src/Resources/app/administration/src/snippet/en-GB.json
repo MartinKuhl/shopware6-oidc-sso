@@ -324,7 +324,8 @@
                 "frontchannelAdminLogoutHelp": "Front-channel logout requests are unauthenticated (only iss and sid). Administration sessions can only be ended all at once, so they are left alone by default; back-channel logout (signed) always ends them. Enable only if your IdP supports nothing but front-channel logout.",
                 "revokeSuperadminOnSso": "Role sync may revoke superadmin",
                 "revokeSuperadminOnSsoHelp": "With admin role sync on: when a login's groups no longer grant superadmin, the superadmin flag is removed (the mapped ACL role remains). Never applied to the last active superadmin.",
-                "readOnlyHint": "You can view this provider but not change it (missing editor permission).",
+                "superadminRequiredHint": "Only a superadmin can create providers or change their security-relevant settings: endpoints, issuer, client ID, scope, public client, login type, claim handling, account linking, admin auto-creation, the default and superadmin role mappings, and the email/username mappings and access rules of providers that serve the Administration. You can change everything else.",
+            "readOnlyHint": "You can view this provider but not change it (missing editor permission).",
                 "removeWebhook": "Remove webhook",
                 "webhookRemovedOnSave": "The stored webhook URL will be removed when you save.",
                 "loadError": "The provider could not be loaded.",
@@ -340,6 +341,7 @@
             "unlinkConfirmCustomer": "Are you sure you want to unlink this customer from their OIDC provider? They will be able to link to a different provider on next SSO login.",
             "unlinkSuccess": "The account has been unlinked from its OIDC provider.",
             "unlinkError": "The account could not be unlinked from its OIDC provider.",
+            "unlinkLastSsoAdmin": "Administration password login is disabled and this is the last admin who can log in through single sign-on, so the account can't be unlinked.",
             "connectIntro": "Connect your account to single sign-on to log in through your identity provider.",
             "connectButton": "Connect {name}",
             "connectSuccess": "Single sign-on has been connected to your account.",
@@ -419,6 +421,25 @@
             "sso": "Single sign-on",
             "passkey": "Passkey",
             "error": "The confirmation failed or was cancelled. Please try again."
+        }
+    },
+    "sw-privileges": {
+        "permissions": {
+            "sw6oidc_provider": {
+                "label": "OIDC providers (security-relevant settings need a superadmin)"
+            },
+            "sw6oidc_passkey_credential": {
+                "label": "Passkeys"
+            },
+            "sw6oidc_session_activity": {
+                "label": "SSO session activity"
+            }
+        },
+        "additional_permissions": {
+            "sw6oidc_session_activity": {
+                "label": "SSO session activity",
+                "force_logout": "Force logout"
+            }
         }
     },
     "sw-login": {

@@ -8,6 +8,7 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -93,14 +94,14 @@ class UserProviderBindingService
         }
 
         try {
-            $this->userProviderRepository->create([[
+            $this->asSystem($context, fn (Context $systemContext): EntityWrittenContainerEvent => $this->userProviderRepository->create([[
                 'id' => Uuid::randomHex(),
                 'userType' => $userType,
                 'userId' => $userId,
                 'providerId' => $identity->providerId,
                 'issuer' => $identity->issuer,
                 'sub' => $identity->subject,
-            ]], $context);
+            ]], $systemContext));
         } catch (UniqueConstraintViolationException $exception) {
             $binding = $this->getBinding($userType, $userId, $context);
 
@@ -120,11 +121,11 @@ class UserProviderBindingService
      */
     public function backfillSubject(Sw6OidcUserProviderEntity $binding, ExternalIdentity $identity, Context $context): void
     {
-        $this->userProviderRepository->update([[
+        $this->asSystem($context, fn (Context $systemContext): EntityWrittenContainerEvent => $this->userProviderRepository->update([[
             'id' => $binding->getId(),
             'issuer' => $identity->issuer,
             'sub' => $identity->subject,
-        ]], $context);
+        ]], $systemContext));
     }
 
     public function unbind(string $userType, string $userId, Context $context): void
@@ -137,10 +138,21 @@ class UserProviderBindingService
             return;
         }
 
-        $this->userProviderRepository->delete(
+        $this->asSystem($context, fn (Context $systemContext): EntityWrittenContainerEvent => $this->userProviderRepository->delete(
             array_map(static fn (string $id): array => ['id' => $id], $ids),
-            $context,
-        );
+            $systemContext,
+        ));
+    }
+
+    /**
+     * Bindings are writable in system scope only (R3-H3); this service is
+     * their one writer, whatever context its caller holds.
+     *
+     * @param callable(Context): mixed $write
+     */
+    private function asSystem(Context $context, callable $write): void
+    {
+        $context->scope(Context::SYSTEM_SCOPE, $write);
     }
 
     private function userCriteria(string $userType, string $userId): Criteria

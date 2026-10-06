@@ -19,6 +19,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\CascadeDelete;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Choice;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\PrimaryKey;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Required;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ResetOnClone;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\WriteProtected;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IdField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IntField;
@@ -73,8 +74,11 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new StringField('display_name', 'displayName'))->addFlags(new ApiAware()),
             (new StringField('client_id', 'clientId'))->addFlags(new ApiAware(), new Required()),
             // Encrypted at rest and write-only over the API: no ApiAware flag, so
-            // Admin API reads never return it (writes still accept it).
-            (new Sw6OidcEncryptedField('client_secret', 'clientSecret', 1024))->addFlags(new Required(), new AllowHtml(false)),
+            // Admin API reads never return it (writes still accept it). Optional,
+            // because public clients have none; the write guard requires it for
+            // confidential clients (R3-M23). Never copied by a clone: a clone
+            // with new endpoints would otherwise send the stored secret there (R3-M4).
+            (new Sw6OidcEncryptedField('client_secret', 'clientSecret', 1024))->addFlags(new AllowHtml(false), new ResetOnClone()),
             (new StringField('authorize_endpoint', 'authorizeEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('access_token_endpoint', 'accessTokenEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('user_info_endpoint', 'userInfoEndpoint', 1024))->addFlags(new ApiAware()),
@@ -117,7 +121,7 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             // Health alerting: the webhook URL usually embeds a token, so it is
             // encrypted and write-only like the client secret. The runtime
             // state is owned by HealthCheckAlertTaskHandler (written via DBAL).
-            (new Sw6OidcEncryptedField('health_alert_webhook_url', 'healthAlertWebhookUrl', 1024))->addFlags(new AllowHtml(false)),
+            (new Sw6OidcEncryptedField('health_alert_webhook_url', 'healthAlertWebhookUrl', 1024))->addFlags(new AllowHtml(false), new ResetOnClone()),
             (new IntField('health_alert_failure_threshold', 'healthAlertFailureThreshold', 0, 1000))->addFlags(new ApiAware()),
             (new BoolField('health_alert_notify_on_recovery', 'healthAlertNotifyOnRecovery'))->addFlags(new ApiAware()),
             (new IntField('health_alert_consecutive_failures', 'healthAlertConsecutiveFailures'))->addFlags(new ApiAware(), new WriteProtected()),

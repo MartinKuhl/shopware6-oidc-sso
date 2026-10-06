@@ -3,15 +3,18 @@
 namespace MartinKuhl\Sw6Oidc\Subscriber;
 
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore;
-use MartinKuhl\Sw6Oidc\Service\Security\LockoutGuard;
-use MartinKuhl\Sw6Oidc\Service\Security\PasswordSessionRevoker;
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
+use MartinKuhl\Sw6Oidc\Service\Security\Message\PasswordSessionRevocationMessage;
+use MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant;
 use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
+use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\DeleteCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\InsertCommand;
@@ -20,8 +23,10 @@ use Shopware\Core\Framework\DataAbstractionLayer\Write\Command\WriteCommand;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Validation\PreWriteValidationEvent;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\Framework\Validation\WriteConstraintViolationException;
-use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Validator\ConstraintViolation;
 use Symfony\Component\Validator\ConstraintViolationList;
 use Symfony\Contracts\Service\ResetInterface;
@@ -41,22 +46,25 @@ use Symfony\Contracts\Service\ResetInterface;
  *  - Redirect URLs the browser is sent to (post_logout_url) must be absolute
  *    http(s) URLs — never fetched server-side, so no SSRF check, but no
  *    javascript:/data: or relative values either.
- *  - Lockout guard: disable_non_oidc_{admin,customer}_login can only be
- *    switched on once at least one account of that type is bound to *this*
- *    provider — otherwise enabling it would lock every user of that type out
- *    of password login with no working OIDC account to fall back on. For
- *    admins, switching it on while other active admins have no SSO binding
- *    at all needs an explicit confirmation (LockoutConfirmationStore, set via
- *    the confirm-lockout API action; CLI writes count as confirmed), and a
- *    provider can't be deactivated,
- *    re-scoped or deleted while SSO-only mode stays on if that leaves no
- *    admin able to log in (see LockoutGuard). The break-glass
- *    SW6OIDC_ALLOW_PASSWORD_LOGIN=1 always remains.
- *  - The flag can only be switched on where the login page still shows an
- *    SSO button (this provider's or another's).
- *  - When a flag flips on, sessions that were started with a password by
- *    accounts without any SSO binding are ended (refresh tokens/contexts),
- *    so they don't keep renewing under SSO-only mode.
+ *  - Client secret: required for confidential clients (R3-M23); changing a
+ *    URL the secret is sent to, or turning a public client confidential,
+ *    requires entering it again in the same save (N-M12, R3-M4). Decided on
+ *    the *stored* `public_client`, so a two-step save can't skip it.
+ *  - SSO-only mode (R3-H7): the result of the write is checked, whatever
+ *    field changed (flag, `is_active`, `login_type`, delete) — see
+ *    SsoOnlyInvariant. It must leave an active admin able to log in through
+ *    SSO, an SSO button visible, and when it turns Administration password
+ *    login on for admins without a binding, an explicit confirmation by the
+ *    acting admin (LockoutConfirmationStore; CLI counts as confirmed).
+ *    Customer password login can only be turned off once this provider has
+ *    a bound customer. The break-glass SW6OIDC_ALLOW_PASSWORD_LOGIN=1
+ *    always remains.
+ *  - When the effective policy goes from off to on, sessions that were
+ *    started with a password by accounts without any SSO binding are ended,
+ *    after commit and from the message queue.
+ *
+ * Who may change trust-relevant fields is checked separately
+ * (ProviderTrustGuardSubscriber).
  *
  * Violations are reported against the camelCase property path, so the admin
  * form can show them on the right field.
@@ -69,6 +77,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     public const CODE_LOCKOUT_UNBOUND_USERS = 'SW6OIDC_LOCKOUT_UNBOUND_USERS';
     public const CODE_NO_VISIBLE_LOGIN = 'SW6OIDC_NO_VISIBLE_LOGIN';
     public const CODE_SECRET_REQUIRED = 'SW6OIDC_SECRET_REQUIRED_FOR_ENDPOINT_CHANGE';
+    public const CODE_CLIENT_SECRET_REQUIRED = 'SW6OIDC_CLIENT_SECRET_REQUIRED';
 
     /**
      * URLs the client secret (or tokens) are sent to: changing one on an
@@ -84,14 +93,21 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         'well_known_config_url' => 'wellKnownConfigUrl',
     ];
 
-    /** storage name => SSO button visibility column for the flag's login type */
-    private const LOCKOUT_FLAG_VISIBILITY = [
-        'disable_non_oidc_admin_login' => 'show_admin_link',
-        'disable_non_oidc_customer_login' => 'show_customer_link',
+    /** Columns that decide the SSO-only policy, with their database defaults for inserts. */
+    private const POLICY_COLUMNS = [
+        'is_active' => 1,
+        'login_type' => 'both',
+        'disable_non_oidc_admin_login' => 0,
+        'disable_non_oidc_customer_login' => 0,
+        'show_admin_link' => 1,
+        'show_customer_link' => 1,
     ];
 
-    /** @var array<string, list<string>> provider id (hex) => user types whose flag just flipped on */
-    private array $pendingRevocations = [];
+    /** login type => [flag column, flag property] */
+    private const LOCKOUT_FLAGS = [
+        'admin' => ['disable_non_oidc_admin_login', 'disableNonOidcAdminLogin'],
+        'customer' => ['disable_non_oidc_customer_login', 'disableNonOidcCustomerLogin'],
+    ];
 
     /** storage name => property name */
     private const REDIRECT_URL_FIELDS = [
@@ -109,27 +125,26 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         'revocation_endpoint' => 'revocationEndpoint',
     ];
 
-    /** storage name => [property name, bound user type] */
-    private const LOCKOUT_FLAGS = [
-        'disable_non_oidc_admin_login' => ['disableNonOidcAdminLogin', Sw6OidcUserProviderEntity::USER_TYPE_ADMIN],
-        'disable_non_oidc_customer_login' => ['disableNonOidcCustomerLogin', Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER],
-    ];
-
     /** Encrypted fetched URLs: storage name => property name */
     private const ENCRYPTED_FETCHED_URL_FIELDS = [
         'health_alert_webhook_url' => 'healthAlertWebhookUrl',
     ];
 
+    /** @var array<string, true> user types whose password login a pending write turns off */
+    private array $pendingRevocations = [];
+
+    /** @var array<string, true> provider ids (hex) of that pending write */
+    private array $pendingProviderIds = [];
+
     public function __construct(
         private readonly SsrfUrlValidator $urlValidator,
         private readonly Connection $connection,
         private readonly Sw6OidcEncryptor $encryptor,
-        private readonly LockoutGuard $lockoutGuard,
-        private readonly PasswordSessionRevoker $sessionRevoker,
+        private readonly SsoOnlyInvariant $invariant,
+        private readonly MessageBusInterface $messageBus,
         private readonly RequestStack $requestStack,
         private readonly LockoutConfirmationStore $confirmationStore,
-        private readonly bool $breakGlassAllowPasswordLogin = false,
-        private readonly ?LoggerInterface $logger = null,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -138,46 +153,95 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         return [
             PreWriteValidationEvent::class => 'validate',
             Sw6OidcProviderDefinition::ENTITY_NAME . '.written' => 'onProviderWritten',
+            Sw6OidcProviderDefinition::ENTITY_NAME . '.deleted' => 'onProviderWritten',
         ];
     }
 
     public function reset(): void
     {
         $this->pendingRevocations = [];
+        $this->pendingProviderIds = [];
     }
 
     public function validate(PreWriteValidationEvent $event): void
     {
-        foreach ($event->getCommandsForEntity(Sw6OidcProviderDefinition::ENTITY_NAME) as $command) {
-            $violations = new ConstraintViolationList();
+        $commands = $event->getCommandsForEntity(Sw6OidcProviderDefinition::ENTITY_NAME);
 
-            if ($command instanceof DeleteCommand) {
-                $this->validateRemovalKeepsAdminAccess($command, null, $violations);
+        if ($commands === []) {
+            return;
+        }
+
+        // A previous write that failed after validation must not leave its revocation behind.
+        $this->reset();
+
+        /** @var array<string, array<string, mixed>|null> $changes provider id => policy columns after the write, null = deleted */
+        $changes = [];
+        /** @var array<string, WriteCommand> $commandsById */
+        $commandsById = [];
+        /** @var array<string, ConstraintViolationList> $violations */
+        $violations = [];
+
+        foreach ($commands as $command) {
+            $idBytes = $command->getPrimaryKey()['id'] ?? null;
+
+            if (!\is_string($idBytes)) {
+                continue;
             }
 
-            if (!$command instanceof InsertCommand && !$command instanceof UpdateCommand) {
-                if ($violations->count() > 0) {
-                    $event->getExceptions()->add(new WriteConstraintViolationException($violations, $command->getPath()));
-                }
+            $id = Uuid::fromBytesToHex($idBytes);
+            $commandsById[$id] = $command;
+            $violations[$id] = new ConstraintViolationList();
+
+            if ($command instanceof DeleteCommand) {
+                $changes[$id] = null;
 
                 continue;
             }
 
-            $current = $command instanceof UpdateCommand ? $this->currentRow($command) : null;
-
-            $this->validateUrls($command, $violations);
-            $this->validateRedirectUrls($command, $violations);
-            $this->validateLockout($command, $current, $violations);
-
-            if ($command instanceof UpdateCommand) {
-                $this->validateRemovalKeepsAdminAccess($command, $current, $violations);
-                $this->validateCredentialUrlChanges($command, $current, $violations, $event);
+            if (!$command instanceof InsertCommand && !$command instanceof UpdateCommand) {
+                continue;
             }
 
-            if ($violations->count() > 0) {
-                $event->getExceptions()->add(new WriteConstraintViolationException($violations, $command->getPath()));
+            $current = $command instanceof UpdateCommand ? $this->currentRow($idBytes) : null;
+
+            $this->validateUrls($command, $violations[$id]);
+            $this->validateRedirectUrls($command, $violations[$id]);
+            $this->validateClientSecret($command, $current, $violations[$id]);
+            $this->validateCustomerLockout($command, $idBytes, $current, $violations[$id]);
+
+            $changes[$id] = $this->policyColumnsAfter($command, $current);
+        }
+
+        $this->validateSsoOnlyMode($changes, $commandsById, $violations, $event->getContext());
+
+        foreach ($violations as $id => $list) {
+            if ($list->count() > 0) {
+                $event->getExceptions()->add(new WriteConstraintViolationException($list, $commandsById[$id]->getPath()));
             }
         }
+    }
+
+    /**
+     * Ends password-started sessions of unbound accounts once the write that
+     * turned password login off has actually been committed.
+     */
+    public function onProviderWritten(EntityWrittenEvent $event): void
+    {
+        if ($this->pendingRevocations === []) {
+            return;
+        }
+
+        $written = array_filter($event->getIds(), fn (mixed $id): bool => \is_string($id) && isset($this->pendingProviderIds[strtolower($id)]));
+
+        if ($written === []) {
+            return;
+        }
+
+        foreach (array_keys($this->pendingRevocations) as $userType) {
+            $this->messageBus->dispatch(new PasswordSessionRevocationMessage($userType));
+        }
+
+        $this->reset();
     }
 
     private function validateUrls(WriteCommand $command, ConstraintViolationList $violations): void
@@ -229,52 +293,104 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     }
 
     /**
-     * Ends password-started sessions of unbound accounts once the write that
-     * flipped a flag on has actually been committed.
+     * @param array<string, mixed>|null $current the stored row (update) or null (insert)
      */
-    public function onProviderWritten(EntityWrittenEvent $event): void
+    private function validateClientSecret(WriteCommand $command, ?array $current, ConstraintViolationList $violations): void
     {
-        foreach ($event->getIds() as $id) {
-            if (!\is_string($id) || !isset($this->pendingRevocations[$id])) {
-                continue;
-            }
+        $payload = $command->getPayload();
+        $secretEntered = \is_string($payload['client_secret'] ?? null) && $payload['client_secret'] !== '';
 
-            foreach ($this->pendingRevocations[$id] as $userType) {
-                $userType === Sw6OidcUserProviderEntity::USER_TYPE_ADMIN
-                    ? $this->sessionRevoker->revokeUnboundAdminSessions()
-                    : $this->sessionRevoker->revokeUnboundCustomerSessions();
-            }
+        if ($secretEntered) {
+            return;
+        }
 
-            unset($this->pendingRevocations[$id]);
+        $storedPublic = (bool) ($current['public_client'] ?? false);
+        $publicAfter = \array_key_exists('public_client', $payload) ? (bool) $payload['public_client'] : $storedPublic;
+        $storedSecret = (string) ($current['client_secret'] ?? '');
+
+        if (!$publicAfter && ($current === null || $storedSecret === '' || $storedPublic)) {
+            // A new confidential client, one without a stored secret, or a
+            // public client turned confidential: the secret must be entered
+            // now, never inherited from an earlier public-client save (R3-M4).
+            $violations->add($this->violation('A confidential client needs its client secret.', 'clientSecret', null, self::CODE_CLIENT_SECRET_REQUIRED));
+
+            return;
+        }
+
+        if ($current === null || $storedPublic || $storedSecret === '') {
+            return;
+        }
+
+        foreach (self::CREDENTIAL_URL_FIELDS as $storageName => $propertyName) {
+            if (\array_key_exists($storageName, $payload) && (string) $payload[$storageName] !== (string) ($current[$storageName] ?? '')) {
+                $violations->add($this->violation(
+                    'Changing this URL requires entering the client secret again.',
+                    $propertyName,
+                    $payload[$storageName],
+                    self::CODE_SECRET_REQUIRED,
+                ));
+            }
         }
     }
 
     /**
-     * @param array<string, mixed>|null $current the stored row (update) or null (insert)
+     * Customer password login can only be switched off once at least one
+     * customer is bound to this provider — otherwise nobody could log in.
+     *
+     * @param array<string, mixed>|null $current
      */
-    private function validateLockout(WriteCommand $command, ?array $current, ConstraintViolationList $violations): void
+    private function validateCustomerLockout(WriteCommand $command, string $providerIdBytes, ?array $current, ConstraintViolationList $violations): void
     {
+        [$column, $property] = self::LOCKOUT_FLAGS['customer'];
         $payload = $command->getPayload();
-        $providerId = $command->getPrimaryKey()['id'] ?? null;
 
-        foreach (self::LOCKOUT_FLAGS as $storageName => [$propertyName, $userType]) {
-            if (!\array_key_exists($storageName, $payload) || !$payload[$storageName]) {
+        if (!(bool) ($payload[$column] ?? false) || (bool) ($current[$column] ?? false)) {
+            return;
+        }
+
+        $hasBoundCustomer = $this->connection->fetchOne(
+            'SELECT 1 FROM `sw6oidc_user_provider` WHERE `provider_id` = :providerId AND `user_type` = :userType LIMIT 1',
+            ['providerId' => $providerIdBytes, 'userType' => Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER],
+            ['providerId' => ParameterType::BINARY],
+        ) !== false;
+
+        if (!$hasBoundCustomer) {
+            $violations->add($this->violation(
+                'Password login for customer accounts can only be disabled once at least one customer account has signed in through this provider — otherwise nobody could log in.',
+                $property,
+                true,
+                self::CODE_LOCKOUT_GUARD,
+            ));
+        }
+    }
+
+    /**
+     * Checks the SSO-only policy *after* all provider changes of this write
+     * against the state before it (R3-H7). A write is refused only when it
+     * makes things worse, so an already inconsistent state can be repaired.
+     *
+     * @param array<string, array<string, mixed>|null> $changes
+     * @param array<string, WriteCommand>              $commandsById
+     * @param array<string, ConstraintViolationList>   $violations
+     */
+    private function validateSsoOnlyMode(array $changes, array $commandsById, array $violations, Context $context): void
+    {
+        if ($changes === []) {
+            return;
+        }
+
+        foreach (self::LOCKOUT_FLAGS as $userType => [$column, $property]) {
+            if (!$this->invariant->passwordLoginDisabled($userType, $changes)) {
                 continue;
             }
 
-            $flipsOn = !(bool) ($current[$storageName] ?? false);
+            $disabledBefore = $this->invariant->passwordLoginDisabled($userType);
+            $affected = $this->affectedCommands($changes, $commandsById);
 
-            if (!$flipsOn) {
-                continue;
-            }
-
-            $showColumn = self::LOCKOUT_FLAG_VISIBILITY[$storageName];
-            $showsButton = (bool) ($payload[$showColumn] ?? $current[$showColumn] ?? true);
-
-            if (!$showsButton && \is_string($providerId) && !$this->lockoutGuard->otherVisibleProviderExists(Uuid::fromBytesToHex($providerId), $userType)) {
-                $violations->add($this->violation(
+            if (!$this->invariant->loginButtonVisible($userType, $changes) && (!$disabledBefore || $this->invariant->loginButtonVisible($userType))) {
+                $this->addToAll($violations, $affected, $this->violation(
                     'Password login can only be disabled while the login page shows at least one SSO button for these accounts.',
-                    $propertyName,
+                    $property,
                     true,
                     self::CODE_NO_VISIBLE_LOGIN,
                 ));
@@ -282,168 +398,138 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
                 continue;
             }
 
-            $hasBoundAccount = \is_string($providerId) && $this->connection->fetchOne(
-                'SELECT 1 FROM `sw6oidc_user_provider` WHERE `provider_id` = :providerId AND `user_type` = :userType LIMIT 1',
-                ['providerId' => $providerId, 'userType' => $userType],
-            ) !== false;
-
-            if (!$hasBoundAccount) {
-                $violations->add($this->violation(
-                    sprintf(
-                        'Password login for %s accounts can only be disabled once at least one %s account has signed in through this provider — otherwise nobody could log in.',
-                        $userType,
-                        $userType,
-                    ),
-                    $propertyName,
-                    true,
-                    self::CODE_LOCKOUT_GUARD,
-                ));
-
-                continue;
-            }
-
-            // $hasBoundAccount implies a string id from here on.
-            if ($userType === Sw6OidcUserProviderEntity::USER_TYPE_ADMIN) {
-                $unbound = \count($this->lockoutGuard->unboundActiveAdminIds([Uuid::fromBytesToHex($providerId)]));
-
-                if ($unbound > 0 && !$this->lockoutConfirmed(Uuid::fromBytesToHex($providerId))) {
-                    $violations->add($this->violation(
-                        sprintf(
-                            '%d active admin account(s) have no single sign-on binding and would be locked out. Confirm to disable password login anyway.',
-                            $unbound,
-                        ),
-                        $propertyName,
+            if ($userType === LoginType::Admin->value) {
+                if (!$this->invariant->adminAccessPossible($changes) && $this->invariant->holds()) {
+                    $this->addToAll($violations, $affected, $this->violation(
+                        'Administration password login is disabled and no active admin could log in through an active provider after this change.',
+                        $property,
                         true,
-                        self::CODE_LOCKOUT_UNBOUND_USERS,
+                        self::CODE_LOCKOUT_GUARD,
                     ));
 
                     continue;
                 }
+
+                if (!$disabledBefore) {
+                    $unbound = \count($this->invariant->unboundActiveAdminIds($changes));
+
+                    if ($unbound > 0 && !$this->lockoutConfirmed(array_keys($affected), $context)) {
+                        $this->addToAll($violations, $affected, $this->violation(
+                            \sprintf(
+                                '%d active admin account(s) have no single sign-on binding and would be locked out. Confirm to disable password login anyway.',
+                                $unbound,
+                            ),
+                            $property,
+                            true,
+                            self::CODE_LOCKOUT_UNBOUND_USERS,
+                        ));
+
+                        continue;
+                    }
+                }
             }
 
-            $this->pendingRevocations[Uuid::fromBytesToHex($providerId)][] = $userType;
+            if (!$disabledBefore) {
+                $this->pendingRevocations[$userType] = true;
+
+                foreach (array_keys($changes) as $id) {
+                    $this->pendingProviderIds[$id] = true;
+                }
+            }
         }
     }
 
     /**
-     * Deleting, deactivating or re-scoping (to customers only) a provider
-     * must not leave SSO-only mode on with no admin able to log in.
+     * The commands that touch the policy columns (or delete a provider):
+     * the violation belongs to them.
      *
-     * @param array<string, mixed>|null $current
+     * @param array<string, array<string, mixed>|null> $changes
+     * @param array<string, WriteCommand>              $commandsById
+     *
+     * @return array<string, WriteCommand>
      */
-    private function validateRemovalKeepsAdminAccess(WriteCommand $command, ?array $current, ConstraintViolationList $violations): void
+    private function affectedCommands(array $changes, array $commandsById): array
     {
-        $providerId = $command->getPrimaryKey()['id'] ?? null;
+        $affected = array_filter(
+            $commandsById,
+            static fn (WriteCommand $command): bool => $command instanceof DeleteCommand
+                || array_intersect_key($command->getPayload(), self::POLICY_COLUMNS) !== [],
+        );
 
-        if (!\is_string($providerId) || $this->breakGlassAllowPasswordLogin) {
-            return;
+        // Fall back to every command, so a violation is never lost.
+        return $affected !== [] ? $affected : array_intersect_key($commandsById, $changes);
+    }
+
+    /**
+     * @param array<string, ConstraintViolationList> $violations
+     * @param array<string, WriteCommand>            $affected
+     */
+    private function addToAll(array $violations, array $affected, ConstraintViolation $violation): void
+    {
+        foreach (array_keys($affected) as $id) {
+            $violations[$id]->add($violation);
         }
-
-        if ($command instanceof UpdateCommand) {
-            $payload = $command->getPayload();
-            $deactivates = \array_key_exists('is_active', $payload) && !$payload['is_active'] && (bool) ($current['is_active'] ?? false);
-            $leavesAdmin = \array_key_exists('login_type', $payload) && $payload['login_type'] === 'customer'
-                && \in_array($current['login_type'] ?? null, ['admin', 'both'], true);
-
-            if (!$deactivates && !$leavesAdmin) {
-                return;
-            }
-        }
-
-        $hexId = Uuid::fromBytesToHex($providerId);
-
-        if (!$this->adminPolicyStaysOnWithout($providerId) || $this->lockoutGuard->adminLoginRemainsPossible(excludedProviderIds: [$hexId])) {
-            return;
-        }
-
-        $violations->add($this->violation(
-            'Administration password login is disabled and no other admin could log in through an active provider after this change.',
-            'isActive',
-            false,
-            self::CODE_LOCKOUT_GUARD,
-        ));
     }
 
     /**
      * @param array<string, mixed>|null $current
+     *
+     * @return array<string, mixed>
      */
-    private function validateCredentialUrlChanges(UpdateCommand $command, ?array $current, ConstraintViolationList $violations, PreWriteValidationEvent $event): void
+    private function policyColumnsAfter(WriteCommand $command, ?array $current): array
     {
-        if ($current === null) {
-            return;
-        }
-
+        $columns = [];
         $payload = $command->getPayload();
-        $changed = [];
 
-        foreach (self::CREDENTIAL_URL_FIELDS as $storageName => $propertyName) {
-            if (\array_key_exists($storageName, $payload) && (string) $payload[$storageName] !== (string) ($current[$storageName] ?? '')) {
-                $changed[$storageName] = $propertyName;
-            }
+        foreach (self::POLICY_COLUMNS as $column => $default) {
+            $columns[$column] = \array_key_exists($column, $payload) ? $payload[$column] : ($current[$column] ?? $default);
         }
 
-        if ($changed === []) {
-            return;
-        }
-
-        $source = $event->getContext()->getSource();
-        $this->logger?->warning('sw6oidc: provider endpoint URLs changed.', [
-            'providerId' => \is_string($command->getPrimaryKey()['id'] ?? null) ? Uuid::fromBytesToHex($command->getPrimaryKey()['id']) : null,
-            'fields' => array_values($changed),
-            'adminUserId' => $source instanceof AdminApiSource ? $source->getUserId() : null,
-        ]);
-
-        $isPublicClient = (bool) ($payload['public_client'] ?? $current['public_client'] ?? false);
-        $secretReentered = \is_string($payload['client_secret'] ?? null) && $payload['client_secret'] !== '';
-
-        if ($isPublicClient || $secretReentered || (string) ($current['client_secret'] ?? '') === '') {
-            return;
-        }
-
-        foreach ($changed as $propertyName) {
-            $violations->add($this->violation(
-                'Changing this URL requires entering the client secret again.',
-                $propertyName,
-                $payload[array_search($propertyName, self::CREDENTIAL_URL_FIELDS, true)] ?? null,
-                self::CODE_SECRET_REQUIRED,
-            ));
-        }
+        return $columns;
     }
 
     /**
-     * Whether another active admin-serving provider keeps SSO-only mode on.
+     * @param list<string> $providerIds
      */
-    private function adminPolicyStaysOnWithout(string $providerIdBytes): bool
-    {
-        return $this->connection->fetchOne(
-            'SELECT 1 FROM `sw6oidc_provider` WHERE `is_active` = 1 AND `login_type` IN (\'admin\', \'both\') AND `disable_non_oidc_admin_login` = 1 AND `id` <> :id LIMIT 1',
-            ['id' => $providerIdBytes],
-        ) !== false;
-    }
-
-    private function lockoutConfirmed(string $providerId): bool
+    private function lockoutConfirmed(array $providerIds, Context $context): bool
     {
         // CLI (config import) runs without a request: the operator is explicit.
-        return !$this->requestStack->getMainRequest() instanceof \Symfony\Component\HttpFoundation\Request
-            || $this->confirmationStore->consume($providerId);
+        if (!$this->requestStack->getMainRequest() instanceof Request) {
+            return true;
+        }
+
+        $source = $context->getSource();
+        $userId = $source instanceof AdminApiSource ? $source->getUserId() : null;
+
+        if ($userId === null) {
+            return false;
+        }
+
+        foreach ($providerIds as $providerId) {
+            if ($this->confirmationStore->consume($providerId, $userId)) {
+                $this->logger->warning('sw6oidc: Administration password login disabled despite admins without SSO binding (confirmed).', [
+                    'providerId' => $providerId,
+                    'adminUserId' => $userId,
+                ]);
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    private function currentRow(UpdateCommand $command): ?array
+    private function currentRow(string $providerIdBytes): ?array
     {
-        $providerId = $command->getPrimaryKey()['id'] ?? null;
-
-        if (!\is_string($providerId)) {
-            return null;
-        }
-
         $row = $this->connection->fetchAssociative(
             'SELECT `is_active`, `login_type`, `disable_non_oidc_admin_login`, `disable_non_oidc_customer_login`, `show_admin_link`, `show_customer_link`,
                     `public_client`, `client_secret`, `access_token_endpoint`, `revocation_endpoint`, `user_info_endpoint`, `well_known_config_url`
              FROM `sw6oidc_provider` WHERE `id` = :id',
-            ['id' => $providerId],
+            ['id' => $providerIdBytes],
+            ['id' => ParameterType::BINARY],
         );
 
         return $row === false ? null : $row;
