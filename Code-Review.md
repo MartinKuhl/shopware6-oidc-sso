@@ -2,608 +2,188 @@
 
 | | |
 |---|---|
-| **Revision** | 4 (status check of revision 3, plus a fresh pass) |
-| **Review date** | 2026-10-05 (revision 3: 2026-10-01, revision 2: 2026-09-30, revision 1: 2026-09-29) |
-| **Reviewed commit** | `58b232a` on `fix/code-review-rev2`. Its `src/`, `tests/`, CI and `composer.json` are **byte-identical** to `88a19fc` (the commit revision 3 reviewed). The only change since then is this file. |
+| **Revision** | 6: open findings only. Every finding fixed and verified up to this revision has been removed from this file. |
+| **Review date** | 2026-10-06 (revision 5: 2026-10-06 fix round, revision 4: 2026-10-05, revision 3: 2026-10-01, revision 2: 2026-09-30, revision 1: 2026-09-29) |
+| **Reviewed commit** | `f635fb4` on `fix/code-review-rev2` |
 | **Scope** | Everything under `src/`: PHP, DI config, migrations, admin and storefront JS and Twig. Also `composer.json`, CI and tooling config, the committed bundles. |
-| **Verified against** | Shopware 6.7 core and administration, Symfony 7.4, League OAuth2 9.4, DBAL 4, webauthn-lib 5.3, as installed in `/var/www/html/vendor`, plus a fresh `composer install` of the plugin's own dependencies |
+| **Verified against** | Shopware 6.7 core and administration, Symfony 7.4, League OAuth2 9.4, DBAL 4, webauthn-lib 5.3 (`/var/www/html/vendor` plus a fresh `composer install` of the plugin) |
 | **Reviewer stance** | Harsh on purpose. Assume every finding reaches production unless it is fixed. |
 
-Backend paths are relative to `src/`. Frontend paths are relative to `src/Resources/`. Admin JS paths start at `app/administration/src/`. Line numbers point to `58b232a`, which equals `88a19fc` for all code.
+Backend paths are relative to `src/`. Frontend paths are relative to `src/Resources/`. Admin JS paths start at `app/administration/src/`.
 
-**How to read this revision**
-- [Revision 5 status](#revision-5-status-2026-10-06) lists what the fix round of 2026-10-06 closed.
-- [Revision 4: status](#revision-4-status) gives the per-finding result for revision 3. In short, **nothing has been fixed, because no code has changed.**
-- [Revision 4: new findings](#revision-4-new-findings) lists the defects found in this pass. They are numbered `R4-*`.
-- Two revision 3 findings are corrected in place: R3-M15 (narrower trigger than stated) and R3-L10 (wider than stated).
-- Everything from [High](#high) down is the revision 3 text. It is still accurate and is kept as the description of the open work.
+**Line numbers:** finding IDs and file names are stable. Line numbers in the R3 rows come from revision 3 (`88a19fc`), and many of those files changed in the fix round, so **search by the symbol named in the row**. R4 and R6 rows point to `f635fb4`.
 
----
+The way to fix what is left is in `Code-Review_implementation_plan.md` (phases Q0–Q10).
 
-## Revision 5 status (2026-10-06)
-
-Fix round on `fix/code-review-rev2` for every Critical (there were none), High and Medium finding of revision 4. The finding texts below are unchanged. What is still open is listed in `Code-Review_implementation_plan.md`.
-
-| Commit | Fixed |
-|---|---|
-| `b020e3e` | **R3-H1**, **R3-F1**, **R3-F4**, **R3-F5**; R3-F6; Unused: `AdminTokenIssuer` request mutation; R4-L7 partly (`AdminTokenIssuerTest` with a real League server) |
-| `f3487b0` | **R3-H2**, **R3-H3**, **R3-H4**, **R3-H7**, **R3-M4**, **R3-M21**, **R3-M22**, **R3-M23**, **R3-F2**; R3-L43 partly (`user_type`/`mapping_type` Choice, binding `UpdatedAtField`); Hygiene 3 (`emits`) |
-| `116e22b` | **R3-H6**, **R3-M5**, **R3-M6**, **R3-M7**, **R3-M8**, **R3-F3**; R3-F17 partly (storefront dialog `aria-labelledby`); `AdminPasskeyLoginTokenTracker` removed |
-| `ece912e` | **R3-H5**, **R3-M1**, **R3-M17**, **R3-M18**, **R3-M19** |
-| `8021261` | **R3-M2**, **R3-M3**, **R3-M15**, **R3-M20**, **R3-M24** |
-| `08352cb` | **R3-M9**, **R3-M10**, **R3-M11**, **R3-M12**, **R3-M13**, **R3-M14**, **R3-M16**; R3-L23; R3-L24 partly (no email in the admin denial message); Unused: `PLACEHOLDER_ADDRESS_FIELD` and `UserProvider.issuer` are now read |
-| `e80de78` | Rebuilt Administration and Storefront bundles |
-
-| | Critical | High | Medium |
-|---|---|---|---|
-| Backend, open after revision 5 | 0 | 0 | 0 |
-| Frontend, open after revision 5 | 0 | 0 | 0 |
-
-How the fixes were checked:
-- Unit suite: 794 tests (699 at revision 4); PHPCS, PHPStan (level 5), Psalm and Rector clean.
-- Against the dev shop's MySQL (scripts in rolled-back transactions): real token issuance, the R3-H2/H3/H4 write attempts, migrations 13–18, the registry prune, the binding key and scopes, `AdminRoleStore`, the passkey session terminator and the placeholder flag.
-- **Not run:** the integration and E2E suites (they need a dedicated shop plus Dex). E2E spec `04` gained the R3-F3 case.
-
-Decisions taken with the plan's defaults (Q1–Q5, Q7 were unanswered): trust fields are superadmin-only (Q1); role sync is multi-valued and managed-only, with a seed (Q2); registry liveness comes from core's tables (Q3); an issuer change suspends bindings until a superadmin re-binds or disconnects them (Q4); `AccountSsoLinkedEvent` ships as a Flow Builder trigger without a default flow or mail template (Q5).
 ---
 
 ## Summary
 
 ### Verdict
 
-**Not production-ready. Nothing has changed since revision 3.**
-- Since `88a19fc` the branch has one commit, `58b232a` "update review", and it only touches `Code-Review.md`. **All 7 High, 24 Medium and 52 Low backend findings and all 17 frontend findings of revision 3 are still open.**
-- I re-checked every High against the code:
-  - R3-H1 was reproduced again with a script. The JSON request loses `grant_type` and `client_id` in `PsrHttpFactory`.
-  - Every other High is confirmed as described.
-  - The release blockers from revision 3 still apply unchanged: **R3-H1 to R3-H7, R3-F1 to R3-F3, R3-M4 and R3-M9 to R3-M11.**
-- Two revision 3 findings needed correcting. Neither changes the verdict:
-  - **R3-M15** is narrower than stated. The email check is `strcasecmp()` after `trim()`, so a lowercase transform does *not* break it. Regex, prefix and concat transforms still lock everyone out.
-  - **R3-L10** is wider than stated. It isn't 5 exceptions but **17 of the 18** domain exceptions that extend `\RuntimeException` instead of Shopware's `HttpException`.
-- The fresh pass found **no new Critical, High or Medium**. It found 7 new Low findings: the JWT edge cases (R4-L1 to R4-L3), log flooding through the callbacks (R4-L4), a reimplementation of a core API (R4-L5), the dependency declaration (R4-L6) and test coverage (R4-L7).
-- **Process finding:** the CI gaps named in revision 3 (R3-L51) are unchanged. `e2e` and `assets` are still `continue-on-error: true` (`.github/workflows/ci.yml:200, 270`), so the branch can't turn red for R3-H1 or R3-F1.
-  - Only 9 of 77 unit test files touch controllers, and none of them runs a real `AuthorizationServer` (R4-L7).
-  - **Fix the test gate before fixing the findings,** or the fixes can't be proven.
+**Every Critical, High and Medium finding is fixed and verified. What is left is Low.** The release gate is not met yet, for two reasons:
+1. **The test gate is still not real** (R3-L51, R4-L7).
+   - `assets` and `e2e` are still `continue-on-error: true` (`.github/workflows/ci.yml:200, 270`).
+   - The integration and E2E suites were **not run** for the fix round, and no admin smoke spec exists.
+   - The fix round changed the identity key, the SSO-only invariant, session liveness and the admin token path, and none of that has been exercised against a real shop plus Dex. Until it has, the "fixed" status of the Highs rests on unit tests and scripted DB checks only.
+2. **Two follow-up defects of the fix round** are open:
+   - **R6-L1:** the SSO-only confirmation and the password-session revocation ignore the issuer, so they disagree with the invariant itself.
+   - **R6-L2:** the ACL registration gives up silently after 5 s.
+
+   Both are Low, but they sit in security-relevant paths.
+
+### What was verified for this revision
+
+I checked every fix claimed by the revision 5 status table against the code at `f635fb4`. Each one listed below is fixed as described.
+
+| Commit | Verified fixed (removed from this file) |
+|---|---|
+| `b020e3e` | **R3-H1**: fresh PSR request in `AdminTokenIssuer::issue()`; the client's request is never converted. **R3-F1**: `diagnostics?.infrastructure`. **R3-F4**: `me?.data?.username`. **R3-F5**: no 401 from the anonymous/redeem endpoints. **R3-F6**. Unused: the `AdminTokenIssuer` request mutation. |
+| `f3487b0` | **R3-H2** and **R3-H3**: `WriteProtected(SYSTEM_SCOPE)` plus `TrustEntityWriteGuardSubscriber`. **R3-H4**: `ProviderTrustGuardSubscriber`, superadmin only. **R3-H7**: `SsoOnlyInvariant`, checked on the result of every relevant write. **R3-M4**: stored `public_client`, `ResetOnClone` on the secret. **R3-M21**: guests excluded, batches of 500, message queue. **R3-M22**: atomic store keyed by provider plus admin, `user-verified`. **R3-M23**: `Required` dropped, nullable column. **R3-F2**: deferred registration, snippets, `force_logout` under `additional_permissions`. Hygiene row `emits`. |
+| `116e22b` | **R3-H6** and **R3-M5**: `SessionAuthenticationClock`, `AuthTimeValidator`. **R3-M6**: `PasskeySessionTerminator` plus `PasskeyDeletionSubscriber`. **R3-M7**: ceremony purpose. **R3-M8**: `passkeyRpIdAdmin` plus validator. **R3-F3**: one dialog per row. `AdminPasskeyLoginTokenTracker` removed. |
+| `ece912e` | **R3-H5**: registry liveness from `refresh_token` / `sales_channel_api_context`. **R3-M1**: `MAX_KID_LENGTH`, endpoint-only logout cooldown, `isBlocked()` before verifying. **R3-M17**: batched prune, hourly task, `rel="nofollow"`. **R3-M18**: `setex()` result checked, `getLastError()`. **R3-M19**: destroy before remove, jti marker deleted on failure. |
+| `8021261` | **R3-M2**: `max_redirects: 0` on the outer client. **R3-M3**: `logout_style`, `client_id` always sent. **R3-M15**: save-time refusal (`SW6OIDC_EMAIL_TRANSFORM_UNVERIFIABLE`). **R3-M20**: `PasswordLoginGuardClientRepository` decorating core's `ClientRepository`. **R3-M24**: merged-row validation. |
+| `08352cb` | **R3-M9** (`issuer_hash`, `utf8mb4_bin`), **R3-M10**, **R3-M11** (`AdminRoleStore`, `FOR UPDATE`), **R3-M12** (create plus bind in one transaction, re-resolve), **R3-M13**, **R3-M14** (`binding_scope`), **R3-M16** (`PlaceholderAddressSubscriber`). **R3-L23**. Unused: `PLACEHOLDER_ADDRESS_FIELD` and `UserProvider.issuer` are now read. |
+| `f8c1195` | Issuer-aware `SsoOnlyInvariant::adminAccessPossible()` (except R6-L1). Docs and changelog. |
+
+The status tables of revisions 3–5, the revision 2 re-verification and every fixed finding text are in git history: `git show 6a52dce:Code-Review.md` (revision 4 text) and `git show f8c1195:Code-Review.md` (with the revision 5 table).
+
+**Partly fixed, so kept below with the remaining part only:** R3-L24 (no email in messages anymore; customer denials are still counted), R3-L43 (`user_type`/`mapping_type` `Choice` and the binding `UpdatedAtField` are done), R3-F17 (storefront dialog `aria-labelledby` is done), R4-L7 (`AdminTokenIssuerTest` with a real League server is done).
 
 ### Numbers
 
 | | Critical | High | Medium | Low |
 |---|---|---|---|---|
-| Revision 3, backend: **still open** | 0 | 7 | 24 | 52 |
-| Revision 3, frontend: **still open** | 0 | 3 | 2 | 12 (+3 unnumbered hygiene rows) |
-| Revision 3: fixed since | 0 | 0 | 0 | 0 |
-| **New in revision 4** | 0 | 0 | 0 | 7 |
+| Open, backend | 0 | 0 | 0 | 51 R3 Lows (2 of them partial) + 7 R4 + 1 R6 |
+| Open, frontend | 0 | 0 | 0 | 11 R3-F Lows (1 partial) + 2 hygiene rows + 1 R6 |
+| Unused-code rows open | | | | 15 |
+| Fixed since revision 4 (removed) | 0 | 10 | 26 | R3-L23, R3-F6, 1 hygiene row, 3 unused-code rows |
 
-### Tooling (run for this revision, on a clean `git archive` of `58b232a` with a fresh `composer install`)
+### Tooling (run on a clean `git archive` of `f635fb4`)
 
 | Tool | Result |
 |---|---|
-| PHPUnit (unit) | **OK**, 699 tests, 1743 assertions (unchanged) |
+| PHPUnit (unit) | **OK**, 795 tests, 2006 assertions (699 at revision 4) |
 | PHPCS | clean |
 | PHPStan level 5 (configured) | no errors |
-| PHPStan level 8 (not configured) | **52 errors**, identical to revision 3: 31 `missingType.generics` (DAL `EntityRepository<…>`), 10 `argument.type`, 8 `missingType.iterableValue`, 2 `cast.string`, 1 `method.nonObject` (`Sw6Oidc.php:34`). The real nullability issues are `RpInitiatedLogoutService.php:134` (`parse_url()` may return `false`), `OidcCallbackProcessor.php:118` and `OidcLiveLoginTestService.php:144` (unvalidated array into `decodeGroups()`), and `PasskeyRelyingPartyResolver.php:66`. |
+| PHPStan level 8 (not configured) | **52 errors**: 31 `missingType.generics`, 8 `argument.type`, 8 `missingType.iterableValue`, 3 `cast.string`, 1 `method.nonObject` (`Sw6Oidc.php`), 1 `argument.templateType`. |
 | Psalm (errorLevel 4) | no errors |
 | Rector (dry-run) | clean |
-| `composer audit` | no advisories |
-| Integration / E2E | not run (needs a shop plus Dex). R3-H1 and R3-F1 are both reproducible without it. |
+| Integration / E2E | **not run.** They need a dedicated shop plus Dex. This is the main open risk (see the verdict). |
 
 ---
 
-## Revision 4: status
-
-The code is unchanged, so each revision 3 finding is either still open or was wrong to begin with. The table says how far each group was re-checked in this pass.
-
-| Group | Status | How it was checked in revision 4 |
-|---|---|---|
-| **R3-H1** (step-up / passkey admin login dead) | **Open, reproduced** | Script: a Symfony JSON request `{"nonce":"abc"}` with `grant_type` and `client_id` set on `->request` converts to the PSR parsed body `['nonce' => 'abc']` (`PsrHttpFactory.php:90-91`). The code is unchanged at `Service/AdminAuth/AdminTokenIssuer.php:34-45`. |
-| **R3-H2** (passkey credential writable) | **Open, confirmed** | `Sw6OidcPasskeyCredentialDefinition.php:44-55`: no `WriteProtected` on any field, and `userId` is `ApiAware`. |
-| **R3-H3** (binding writable) | **Open, confirmed** | `Sw6OidcUserProviderDefinition.php:45-54`: same as R3-H2, and `user_type` has no `Choice`. |
-| **R3-H4** (provider editor ≈ superadmin) | **Open, confirmed** | The write guard has no `isAdmin()` or dedicated privilege check for trust fields. |
-| **R3-H5** (registry expires early) | **Open, confirmed** | `expires_at` is written only in `register()` (`:90`) and `activate()` (`:174`), and filtered in `fetch()` (`:239`). |
-| **R3-H6** (storefront link without fresh login) | **Open, confirmed** | `SendAuthorizationRequestController.php:88-117`: `_loginRequired` only. |
-| **R3-H7** (re-activation skips lockout) | **Open, confirmed** | `validateLockout()` (`Sw6OidcProviderWriteGuardSubscriber.php:261`) skips any payload without the flag key. The bound-account check (`:285-288`) doesn't check `user.active`. |
-| **R3-F1** (provider detail crash) | **Open, confirmed** | `sw6oidc-provider-detail.html.twig:792`: `<template v-if="diagnostics.infrastructure">` sits after the closing `</ul>` of `v-if="diagnostics"`, and `diagnostics` starts as `null` (`index.js:109`). |
-| **R3-F2** (ACL never registers) | Open, not re-observed | Code unchanged (`acl/index.js:7`). Confidence stays medium-high, as in revision 3. |
-| **R3-F3** (wrong passkey deleted) | **Open, confirmed** | One shared `<dialog id="sw6oidc-passkey-delete-dialog">` (`index.html.twig:70`), and every row's plugin listens for its `close` event (`passkey-delete-confirm.plugin.js:15, 30-32`). |
-| **R3-M2** (redirects followed) | **Open, confirmed** | `NoPrivateNetworkHttpClient::withOptions()` / `request()` keep their own `max_redirects` default (20) and follow redirects themselves. The inner `max_redirects: 0` is ignored. |
-| **R3-M3** (Keycloak taken for Authelia) | **Open, confirmed** | `RpInitiatedLogoutService.php:130-135`: a Keycloak `/realms/x/protocol/openid-connect/logout` path matches. |
-| **R3-M4** (secret re-entry bypass) | **Open, confirmed** | `:396` reads `public_client` from the payload before the stored row. The check runs for `UpdateCommand` only. |
-| **R3-M15** (email transform) | **Open, corrected** | See the corrected text under R3-M15. |
-| **R3-M18** (Redis error read as replay) | **Open, confirmed** | `RedisAtomicCache.php:66` ignores the `setex()` result. `:111` maps `false` from `set(…, ['nx'])` to "already present". |
-| **R3-M20** (SWUA bypass) | **Open, confirmed** | League `AbstractGrant::parseParam()` trims and falls back from `''` to the Basic-auth user. The guard (`AdminPasswordLoginGuardSubscriber.php:95-97`) does neither. |
-| **R3-M23** (`Required` client secret) | **Open, confirmed** | `Sw6OidcProviderDefinition.php:77`. |
-| **R3-L10** (exception base class) | **Open, corrected** | See the corrected row. |
-| All other R3-M\*, R3-L\*, R3-F\*, Unused code | **Open** | Carried forward. Their code is byte-identical to `88a19fc`, and nothing seen in this pass contradicts them. |
-| Revision 2 "Incomplete" and "Regressed" items | **Unchanged** | See [Revision 2 findings: re-verification](#revision-2-findings-re-verification). |
-
----
-
-## Revision 4: new findings
-
-The fresh pass covered the OIDC and JWT core, both callback controllers, the admin token endpoint, the Twig login integration, the passwordless customer login, the admin JS message and popup handling, the one-time-token store, uninstall, `composer.json` and CI.
+## Revision 6: new findings
 
 | # | Severity | Where | What's wrong | Fix |
 |---|---|---|---|---|
-| R4-L1 | Low | `Service/Jwt/JwtVerifier.php:160-163, 251-260` | The `crit` header is never inspected. RFC 7515 §4.1.11 says a token whose `crit` lists an extension the verifier doesn't understand **must** be rejected. It's harmless with today's IdPs, but it's a spec violation in the one class that decides who is logged in. | Reject any token whose protected header has `crit`, or use jwt-framework's `HeaderCheckerManager` with an empty `crit` allow-list. |
-| R4-L2 | Low | `JwtVerifier.php:291` | `nbf` is cast with `(int)` without an `is_numeric()` check, while `exp` and `iat` have one. A non-numeric `nbf` (`"soon"`, `[]`) becomes `0` and passes. | Treat a present non-numeric `nbf` (and `iat`) as invalid, the same as `exp`. |
-| R4-L3 | Low | `JwtVerifier.php:253-255`, `candidateKeys()` (`:193`) | Only `RS256`/`RS384`/`RS512` with `kty=RSA` are accepted. IdPs configured for `ES256` or `PS256` (Keycloak, Authentik, Okta custom servers and Zitadel can all do this) fail at the **first login** with a generic error. Neither discovery (`id_token_signing_alg_values_supported`) nor the connection test warns. | Add `ES256/384` and `PS256` (the library already ships them). Until then, have discovery and the connection test fail with a clear message when the IdP advertises no RS\* algorithm. |
-| R4-L4 | Low | `Storefront/Controller/OidcCallbackController.php:75-84`, `Controller/Api/OidcAdminAuthController.php:216-220` | Both callbacks log the query parameters `error` and `error_description` at **warning** level, verbatim and with no length cap, *before* any state check. This branch also never calls `recordFailure()`. Anyone can loop `GET /sw6oidc/callback?error=x&error_description=<8 KB>` and fill `var/log/sw6oidc-*.log` (14 daily files kept) without ever being rate limited. | Truncate both values (for example to 200 chars). Log at `notice`, or log only after the `state` has been consumed and is valid. Count the branch as a failure when `state` is unknown. |
-| R4-L5 | Low | `Storefront/Service/OidcCustomerLoginRoute.php:60-89` | `loginByCustomerId()` reimplements core's public `AccountService::loginById()`: the same event order, `CartRestorer`, `lastLogin` update and `CustomerLoginEvent`. The copy has already drifted. Core sorts duplicate matches by `createdAt` and filters `active` in `fetchCustomer()`; the copy loads by id and adds its own sales-channel check. Every core change to the login sequence has to be ported by hand. This compounds the unused `AbstractLoginRoute` inheritance listed under [Unused code](#unused-code). | Call `AccountService::loginById($customerId, $context)`, keep `CustomerSalesChannelBinding::allows()` as a pre-check, and delete the class. |
-| R4-L6 | Low | `composer.json` `require` | The plugin requires `league/oauth2-server`, `symfony/psr-http-message-bridge` and `nyholm/psr7` directly. All three are already `shopware/core` dependencies, so a plugin constraint can only block or diverge from the shop's versions on a core update. It also pulls the whole `web-token/jwt-framework` (bundle, console and encryption) where `web-token/jwt-library` is enough, with a wide `^3.4 \|\| ^4.0` range across a major API change. | Drop the core-provided packages, or mirror core's exact ranges. Depend on `web-token/jwt-library` with one major version. |
-| R4-L7 | Low (process) | `tests/Unit` (77 files, 9 under `Controller/`), `.github/workflows/ci.yml:200, 270` | There is no test that runs the real `AuthorizationServer` with a JSON body, no admin page smoke test, and E2E and assets can't fail CI. That's exactly why R3-H1 and R3-F1 shipped and are still unnoticed four days later. This is R3-L51 restated as a gate, because it blocks verifying every other fix. | Do this first: add `AdminTokenIssuerTest` with a real League server and `Content-Type: application/json`, add an E2E "open every plugin page, zero console errors" spec, and remove `continue-on-error` from `e2e` and `assets`. |
-
-Checked in this pass and found **sound** (no finding):
-- `PostLogoutState` (HMAC, `hash_equals`).
-- `BrowserBinding::matches()` and the health-token check (`hash_equals`).
-- The rate-limiter key derivation (IPv6 /64 via `IpUtils::anonymize`).
-- The JWT `aud`/`azp`/`iss`/`exp` handling, and JWKS caching with its breaker (apart from R3-M1).
-- Escaping in the live-test popup: claims via `escapeForDisplay`, the script payload via `JSON_HEX_*`, and `postMessage` to `window.location.origin`.
-- `postMessage` origin and source checks in `sw-verify-user-modal` and the provider detail page.
-- The step-up token hand-off, which mirrors core's `onSubmitConfirmPassword()`.
-- Storefront login button labels (auto-escaped).
-- `DatabaseAtomicCache::getAndDelete()` atomicity.
-- Uninstall table order.
+| R6-L1 | Low | `Service/Security/SsoOnlyInvariant.php` `unboundActiveAdminIds()` | `adminAccessPossible()` only counts bindings whose `issuer_hash` matches the provider's current issuer (`f8c1195`). `unboundActiveAdminIds()` still counts **any** binding to a serving provider. After an issuer change that left bindings disconnected, those admins count as "bound" here but as "unbound" in the invariant. The result: the lockout confirmation (`SW6OIDC_LOCKOUT_UNBOUND_USERS`) isn't asked for them, and `PasswordSessionRevoker` doesn't end their password sessions when SSO-only mode turns on. They then hold a live password session the policy should have ended. | Apply the same `issuer_hash` filter as `adminAccessPossible()`, and share the subquery between both methods. Test: a provider whose issuer changed with "disconnect", then SSO-only turned on → the admin is in the unbound list, and their sessions are revoked. |
+| R6-L2 | Low | `app/administration/src/acl/index.js` `registerWhenReady()` | It gives up after 100 × 50 ms = **5 s** and only logs `console.error`. On a slow connection the `main` chunk that registers `privileges` can take longer, so the plugin's privileges are again missing from the role editor (the R3-F2 symptom), silently and only sometimes. There's also a duplicated, unreachable `return;` in the success branch. | Wait for core's ready signal instead of polling (the same mechanism `defer-module-register.js` uses), or poll without a hard limit. Remove the dead `return;`. |
 
 ---
 
-# Revision 3 findings (all still open)
+## Open findings
 
-The sections below are the revision 3 text, unchanged except for the corrections to R3-M15 and R3-L10. Line numbers are still valid, because the code has not changed.
-
-## High
-
-### R3-H1. Admin passkey login, the inactivity passkey and both step-up methods always fail with `unsupported_grant_type`
-- **Where:**
-  - `Service/AdminAuth/AdminTokenIssuer.php:34-45`
-  - callers `Controller/Api/StepUpController.php:87, 129, 143` and `Controller/Api/PasskeyAdminController.php:226`
-- **What's wrong:**
-  - `issue()` writes `grant_type` and `client_id` into `$request->request`, then converts the Symfony request with `PsrHttpFactory::createRequest()`.
-  - For a JSON body, the bridge builds the PSR parsed body from the raw `getContent()` (`PsrHttpFactory.php:90-91`) and ignores the parameter bag.
-  - The Administration posts JSON without `grant_type`: `sw-verify-user-modal/index.js:94, 107`, `sw-login/index.js:175`, `sw-inactivity-login/index.js:107`.
-  - League therefore finds no grant that can respond and throws `unsupportedGrantType`.
-- **Reproduced:** a Symfony JSON request `{"nonce":"abc"}` with `grant_type` and `client_id` set on `->request` converts to the parsed body `['nonce' => 'abc']`.
-  - `/admin/token` only works because its JS sends `grant_type` and `client_id` itself (`sw-login/index.js:221`). So the token endpoint trusts client-supplied `grant_type`, `client_id` and `scope`. That is not exploitable today, but it is fragile.
-- **Impact:**
-  - Passkey admin login and step-up are dead.
-  - Each attempt still consumes the assertion and counts a rate-limit failure.
-  - In SSO-only mode the password confirmation is gone too, so **no `user-verified` action is possible at all**: core user and role management, Connect SSO and passkey registration.
-  - E2E spec `05-admin-step-up-and-passkey` should be failing. The `e2e` job is `continue-on-error: true` (`ci.yml:270`), so nobody noticed.
-- **Fix:** don't forward the client's request. Build a fresh PSR request, the way core's `OAuthAuthorizeController` does:
-  ```php
-  $psrRequest = $this->psr17->createServerRequest('POST', '/api/oauth/token')
-      ->withParsedBody(['grant_type' => AdminOidcGrant::GRANT_IDENTIFIER, 'client_id' => 'administration', 'scope' => $scope])
-      ->withAttribute(AdminOidcGrant::REQUEST_ATTRIBUTE_USER_ID, $userId)
-      ->withAttribute(AdminOidcGrant::REQUEST_ATTRIBUTE_STEP_UP, $stepUp);
-  ```
-  Use it for `/admin/token` as well. Add a controller-level integration test with a real `AuthorizationServer` and `Content-Type: application/json`. Make the `e2e` job blocking.
-
-### R3-H2. The passkey credential entity is writable through the Admin API, so a write privilege becomes impersonation of any account
-- **Where:**
-  - `Core/Content/PasskeyCredential/Sw6OidcPasskeyCredentialDefinition.php:44-53`
-  - `Service/Passkey/PasskeyAuthenticationService.php:148`
-- **What's wrong:**
-  - No field is `WriteProtected`, and no write guard exists (unlike session activity, N-M8).
-  - The account a passkey login resolves to comes from the `user_id` column. The library only checks the user handle inside the `public_key` JSON.
-- **Attack:**
-  1. A role or integration with `sw6oidc_passkey_credential:update` (grantable in the detailed privilege grid, and part of any "all privileges" integration) sends `PATCH /api/sw6oidc-passkey-credential/{ownKeyId}` with `{"userId":"<superadmin id>"}`.
-  2. Its next passkey login returns a superadmin token.
-
-  With `:create`, it can plant a credential with its own public key for any admin or customer.
-- **Fix:** mark every field except `nickname` `WriteProtected(Context::SYSTEM_SCOPE)`. The repository already writes in system scope. Add a `PreWriteValidationEvent` guard that refuses create and update outside system scope, and add `user_type` `Choice`.
-
-### R3-H3. The account binding (`sw6oidc_user_provider`) is writable through the Admin API and sync
-- **Where:** `Core/Content/UserProvider/Sw6OidcUserProviderDefinition.php` (all fields)
-- **What's wrong:** same class as R3-H2. A principal with `sw6oidc_user_provider:update` PATCHes a superadmin's binding to a `sub` it controls at the IdP and logs in as that superadmin. `:create` does the same for unbound accounts. `user_type` has no `Choice`.
-- **Fix:** `WriteProtected(Context::SYSTEM_SCOPE)` on every field. All in-plugin writers (`bind`, `backfillSubject`, `unbind`) already run in system scope.
-
-### R3-H4. The provider "editor" privilege is equivalent to superadmin, and nothing says so
-- **Where:**
-  - `Core/Content/Provider/Sw6OidcProviderDefinition.php:78-113`
-  - `Core/Content/RoleMapping/Sw6OidcRoleMappingDefinition.php`
-  - `acl/index.js` (editor role)
-- **What's wrong:** a role with `sw6oidc_provider.editor` can take over any account, in either of two ways:
-  - Set `scope` without `openid`, point the token and userinfo endpoints at its own host, and type in any secret (re-entering it satisfies N-M12). Its fake userinfo returns the `sub` of any bound admin.
-  - Set `allowSuperadminGroupMapping` plus a `superadmin` mapping row plus `autoCreateAdmin`, which mints a new superadmin.
-
-  The ACL UI presents "editor" as an ordinary settings role.
-- **Fix:**
-  - Require `AdminApiSource::isAdmin()`, or a dedicated `sw6oidc_provider:security` privilege, in the write guard for trust-relevant columns: endpoints, issuer, JWKS, scope, `public_client`, `allow_superadmin_group_mapping`, and `superadmin` mapping rows.
-  - Write those changes to an audit trail.
-  - At minimum, label the role as "equivalent to superadmin" in the role editor and the docs.
-
-### R3-H5. Session registry rows expire before the sessions they track, so IdP logout still silently misses active users (N-H3 residue)
-- **Where:** `Service/Session/Sw6OidcSessionRegistry.php:74-90` (`register`), `:171-181` (`activate`), `:211, 239` (prune/fetch filter on `expires_at`)
-- **What's wrong:**
-  - `expires_at` is set once and never extended.
-  - Every admin refresh mints a new refresh token valid for the full `refresh_token_ttl` *from now* (League `AbstractGrant::issueRefreshToken`).
-  - Customer context tokens also slide with activity.
-- **Scenario:**
-  1. An admin who uses the Administration daily is still logged in on day 8.
-  2. The IdP disables them and sends a valid back-channel logout token.
-  3. `fetch()` filters `expires_at > now`, finds nothing, answers **200** and logs `sessionsEnded: 0`.
-
-  The failure is silent, exactly as in rev 2, just after 7 days instead of 24 h. CLAUDE.md's "kept for the real session lifetime" is wrong.
-- **Fix:**
-  - Admins: treat a row as alive while core's `refresh_token` table still has an unexpired row for that user, or push `expires_at` forward from a decorated refresh grant.
-  - Customers: extend on context use, or prune by joining `sales_channel_api_context.updated_at`.
-
-### R3-H6. Storefront "Connect SSO" needs no fresh login, so a stolen session can attach the attacker's IdP account permanently
-- **Where:** `Storefront/Controller/SendAuthorizationRequestController.php:88-117`, `Storefront/Controller/OidcCallbackController.php:191-204`
-- **What's wrong:**
-  - `POST /sw6oidc/link` only has `_loginRequired`.
-  - A hijacked customer session can bind the attacker's own IdP subject, giving a login that survives password changes and works in SSO-only mode.
-  - This is the H7 class. It was fixed for passkey registration (600 s window) and for admin linking (`user-verified`), but not here.
-- **Fix:** require the same recent-authentication proof as passkey registration (see R3-M5: per session, not per account) before starting the link. Notify the customer by mail or a Flow Builder trigger when a binding is created.
-
-### R3-H7. Re-activating or re-scoping a provider that already has the admin flag turns SSO-only mode on with no lockout check and no session revocation (H8.3–H8.6 residue)
-- **Where:** `Subscriber/Sw6OidcProviderWriteGuardSubscriber.php:255-330`
-- **What's wrong:** the three lockout checks and `PasswordSessionRevoker` only run when the flag key is in the payload and flips on. `validateRemovalKeepsAdminAccess` only looks at deactivation.
-- **Scenario:**
-  1. Provider P has `disable_non_oidc_admin_login` and is deactivated, so the policy is off.
-  2. Meanwhile the bound admins are deactivated and others log in with passwords. `AdminLockoutGuardSubscriber` doesn't act, because the policy is off.
-  3. P is re-activated with a payload of `is_active` only, or its `login_type` changes from `customer` to `both`.
-
-  SSO-only mode is back on with possibly **zero** admins able to log in, and the password sessions from step 2 stay alive.
-- **Related gaps:**
-  - The bound-account check counts inactive users (`:285-290, 307`). With the only bound admin inactive, one click on "confirm" locks everyone out, and the revoker then ends all sessions, including the acting admin's.
-  - Unlink (`OidcUserProviderAdminController.php:98-124`) runs no lockout check at all. It needs only `user:update`, while core requires a `user-verified` token for any user change. A hijacked session of an admin with `user:update` can unbind every admin.
-- **Fix:** write one "SSO-only invariant" check: at least one **active** admin is bound to an **active** admin-serving provider whenever the effective policy is on. Run it from every write that can change the result: provider insert/update/delete, `user` update/delete and binding delete. Trigger revocation whenever the effective policy goes from off to on. Require `UserVerifiedScope::isPresent()` for admin unlinks.
-
----
-
-## Medium
-
-### OIDC protocol, HTTP, JWKS
-
-#### R3-M1. Anonymous logout tokens can force unlimited outbound JWKS fetches (N-H2 regression)
-- **Where:** `Service/Jwt/JwtVerifier.php:169, 223-239`; `Controller/Oidc/BackChannelLogoutController.php:74-92`
-- **What's wrong:**
-  - The logout-scope cooldown key is `sha256(endpoint . "\0" . kid)`, and `kid` is chosen by the attacker. A logout token with the real `iss` and `aud` (both public) and a fresh random `kid` passes the cooldown every time and forces a JWKS GET.
-  - The per-provider `isBlocked()` is only consulted in the `catch`, after the fetch.
-  - If the IdP throttles and a fetch fails, the shared `sw6oidc_jwks_fail_<endpoint>` breaker (60 s) also blocks logins that need a refetch.
-  - Each random `kid` writes a `cache.app` item.
-- **Fix:**
-  - Logout scope: key the cooldown on the endpoint only, or add a global per-endpoint cap.
-  - Check `isBlocked()` before calling `verifyLogoutToken()`.
-  - Reject a `kid` longer than 256 bytes.
-
-#### R3-M2. "max_redirects 0" (M12 residue) has no effect in production, so up to 20 redirects are followed
-- **Where:** `Service/Http/Sw6OidcHttpClientFactory.php:25-27`
-- **What's wrong:**
-  - `withOptions(['max_redirects' => 0])` is applied to the *inner* client before it is wrapped in `NoPrivateNetworkHttpClient`.
-  - The wrapper keeps its own defaults (`max_redirects: 20`) and follows redirects itself via `redirect_url`.
-  - So only insecure dev mode (no wrapper) actually has redirects off.
-  - A 307/308 from the token or revocation endpoint re-POSTs `code`, `code_verifier` or the token being revoked to another public host, including an https→http downgrade.
-- **Fix:**
-  ```php
-  $client = $allowInsecure ? $inner : new NoPrivateNetworkHttpClient($inner);
-  return $client->withOptions(['max_redirects' => 0]);
-  ```
-  `AvatarFetcher`'s per-request `max_redirects: 3` still overrides this. Add a `MockHttpClient` test that returns a 302.
-
-#### R3-M3. Keycloak (and Auth0 `/v2/logout`) are detected as Authelia, so RP-initiated logout breaks
-- **Where:** `Service/Oidc/RpInitiatedLogoutService.php:130-135`, used at `:40-49`
-- **What's wrong:**
-  - Keycloak's `…/protocol/openid-connect/logout` ends in `/logout` and contains neither `/oauth2/` nor `/oidc/`, so it takes the Authelia `?rd=` branch.
-  - That branch sends no `id_token_hint`, `post_logout_redirect_uri` or `state`. Keycloak 18+ ignores `rd`, and the user never returns to the shop.
-  - Separately, the admin fallback path (no id_token) never sends `client_id`, which Keycloak requires without a hint.
-- **Fix:** detect Authelia explicitly (a provider flag or the discovered issuer), not by URL shape. Always send `client_id`.
-
-#### R3-M4. The secret re-entry rule (N-M12) can be bypassed in two ways
-- **Where:** `Subscriber/Sw6OidcProviderWriteGuardSubscriber.php:171-174, 396-401`
-- **What's wrong:**
-  - **Public-client toggle:** `$isPublicClient` reads the **payload** before the stored row.
-    1. Save `{publicClient:true, accessTokenEndpoint:"https://evil/token"}`. It passes.
-    2. Save `{publicClient:false}`. It passes, because no URL changed.
-
-    The next login sends `Basic client_id:secret` to `evil`.
-  - **Clone:** the check only runs for `UpdateCommand`. `POST /api/_action/clone/sw6oidc-provider/{id}` with an overwritten endpoint is an insert. Core's clone carries the stored secret along, so a holder of only `sw6oidc_provider:create` gets the secret sent to their host.
-- **Fix:**
-  - Use the **stored** `public_client`, and require the secret when it flips to `false`.
-  - Run the URL-change rule on inserts that carry an existing secret, or add `CloneProtection` to the definition.
-  - Keep the decrypted secret out of `jsonSerialize()`; better, decrypt lazily (see the roadmap).
-
-### Passkeys
-
-#### R3-M5. The storefront registration window is per account, not per session (H7 incomplete)
-- **Where:** `Storefront/Controller/PasskeyController.php:83, 243-248`; `SendAuthorizationRequestController.php:138-148` (`/sw6oidc/reauth`)
-- **What's wrong:**
-  - The check reads `customer.lastLogin`. An attacker with a stolen session polls `registration-options`. The moment the victim logs in anywhere, the window opens for the attacker's session too, and a permanent passkey gets planted.
-  - `/sw6oidc/reauth` sends `prompt=login&max_age=0` but never checks `auth_time` (only `StepUpService` does), so an IdP that ignores `max_age` satisfies it silently.
-- **Fix:** store a per-session "authenticated at" timestamp at every login (password, OIDC, passkey and reauth) and check that. Verify `auth_time` on the reauth callback.
-
-#### R3-M6. Deleting a passkey does not end the sessions it created
-- **Where:**
-  - `Controller/Api/PasskeyAdminController.php:163-177`
-  - `extension/sw-profile/page/sw6oidc-profile-passkey/index.js:122-124`
-  - `Storefront/Controller/AccountPasskeyController.php:87-95`
-  - the admin grid's generic DAL delete
-- **What's wrong:** "force logout" only fires when the *current tab* was authenticated by that key. Core's `loginService.logout()` revokes nothing on the server, so the refresh token stays valid. A user who deletes a stolen key leaves the attacker's sessions running.
-- **Fix:** on delete of a key with logins, call `Sw6OidcSessionDestructionService::destroyAllForUser()` (admins: revoke refresh tokens). Better: record the credential id on `sw6oidc_session_activity` and end exactly those sessions.
-
-#### R3-M7. Login ceremonies are not bound to their purpose or surface
-- **Where:** `Service/Passkey/PasskeyAuthenticationService.php:27, 51-67, 81`
-- **What's wrong:**
-  - Storefront login, admin login and admin step-up share the `sw6oidc_passkey_auth_` prefix and carry no purpose field.
-  - With a `passkeyRpId` covering both hosts, a storefront ceremony can be redeemed at `/api/sw6oidc/admin/passkey/login-verify`, and its storefront origins pass. That undoes the exact-origin protection of N-M1 for the admin.
-  - Step-up ceremonies are also not bound to the requesting admin.
-- **Fix:** store `purpose` (`storefront-login:{salesChannelId}`, `admin-login`, `admin-stepup:{userId}`) and check it in `verifyAssertion()`.
-
-#### R3-M8. `passkeyRpId` is one value for the admin and every sales channel, and is never validated
-- **Where:** `Service/Passkey/PasskeyConfig.php:146-151`, `PasskeyRelyingPartyResolver.php:46, 74`
-- **What's wrong:**
-  - If the admin and the sales channels sit on different registrable domains, setting the value breaks every surface outside it: the origin list empties, and the resolver throws.
-  - It is never checked to be a registrable suffix of the host.
-- **Fix:** read it per sales channel, add a separate admin key, and validate it on save.
-
-### Identity and provisioning
-
-#### R3-M9. Subject binding ignores the issuer and compares `sub` case- and accent-insensitively (C2 residue)
-- **Where:** `Service/Provisioning/UserProviderBindingService.php:45-57`; `Migration1730000001CreateOidcSchema.php:125` (`utf8mb4_unicode_ci`); unique key in `Migration1790800005…:47`
-- **What's wrong:**
-  - `issuer` is written but never compared. CLAUDE.md and rev 2 claim binding by `(provider, iss, sub)`.
-  - Repointing a provider row at another tenant (staging → prod, realm migration) logs colliding `sub` values into the old accounts.
-  - Under `unicode_ci`, `René`, `rene` and `RENE` are one subject. That matters for IdPs whose `sub` is a username.
-- **Fix:** filter on `issuer` too. Make `sub` and `issuer` `utf8mb4_bin` or `VARBINARY`. When a provider's issuer changes, suspend its bindings until an admin confirms.
-
-#### R3-M10. The legacy-binding upgrade skips the superadmin guard and the link opt-in
-- **Where:** `Service/Provisioning/IdentityResolver.php:68-100` (runs before the `$emailMatchIsPrivileged` / `link_existing_accounts` check at `:102`)
-- **What's wrong:** a legacy (pre-`sub`) binding of a **superadmin** is upgraded automatically for whoever holds that verified email at the IdP *today*. If the address has been recycled, the new owner gets the superadmin account.
-- **Fix:** for legacy bindings of privileged accounts, require `linkExplicitly()` instead of the automatic upgrade. Log every upgrade at warning level.
-
-#### R3-M11. Role and group sync is single-valued and overwrites manual assignments (H3 incomplete)
-- **Where:** `Service/Provisioning/GroupMappingResolver.php:33-46, 84-92`; `AdminProvisioningService.php:259-323`; `CustomerProvisioningService.php:293-299`
-- **What's wrong:**
-  - `resolve()` returns the **first** matching role only. A user in several mapped groups keeps one role, and roles granted by hand in Shopware are deleted on every login.
-  - The provider **default** counts as "resolved". With sync on, a customer the merchant moved to a B2B group is reset to the default group at the next login.
-  - When nothing resolves, the method returns before the revoke step. With `revoke_superadmin_on_sso`, a superadmin removed from every IdP group stays superadmin (unless a default role is set).
-  - The "last superadmin" check is a count followed by an update, with no lock. Two of the last superadmins logging in at the same time can both be revoked. The role delete and insert are separate writes.
-- **Fix:**
-  - Map every matching group.
-  - Add or remove only roles the plugin manages (track them).
-  - Don't apply defaults during sync.
-  - Run the revoke in a transaction with `SELECT … FOR UPDATE` on the superadmin rows.
-
-#### R3-M12. First-login race still leaves duplicate customers (M21 incomplete)
-- **Where:** `CustomerProvisioningService.php:105-106`; `AdminProvisioningService.php:216-231`
-- **What's wrong:**
-  - Customers: `create()` then `bind()` run without a transaction. Two simultaneous first logins create two customers. The loser's `bind()` throws and leaves an **orphan customer with the same email**. Core's `AccountService::fetchCustomer()` returns the newest match, so password login and recovery then hit the orphan.
-  - Admins: the retry also catches the `uniq.user.email` violation. It retries with new usernames, fails the same way twice, then throws a raw DBAL exception, and it never re-resolves.
-- **Fix:** wrap create + bind in `Connection::transactional()`. On a unique violation, roll back and re-run `resolve()`.
-
-#### R3-M13. JIT customers ignore Shopware's sales-channel binding, which can lock existing customers out of password login
-- **Where:** `CustomerProvisioningService.php:186-203` (compare core `RegisterRoute.php:184, 531-560`)
-- **What's wrong:**
-  - Core sets `boundSalesChannelId` when the config is on, *or* when a bound account with that email already exists. The plugin never does.
-  - Scenario: customer X is bound to channel A. SSO login happens in channel B, so an **unbound** duplicate is created. In channel A, `fetchCustomer()` now returns the newer duplicate. X's password stops working and recovery targets the duplicate.
-- **Fix:** reuse core's rule when creating the customer.
-
-#### R3-M14. With sales-channel binding on, SSO only ever works in the first channel
-- **Where:** `CustomerProvisioningService.php:85-91` plus the unique key `(provider_id, user_type, sub)`
-- **What's wrong:**
-  - The subject resolves to the customer bound to channel A, and channel B refuses the login.
-  - A second account can't be bound, because the subject is already taken.
-  - The refusal lands in the generic `\Throwable` path and counts against the callback rate limit.
-- **Fix:** include the sales channel in the binding key, or document "one provider per channel when binding is on". Catch `CustomerProvisioningDeniedException` as a policy denial that isn't counted.
-
-#### R3-M15. A rewriting email transform locks out every user while `require_email_verified` is on (the default)
-- **Where:** `Service/Oidc/OidcCallbackResult.php:81-89`, `IdentityResolver.php:54`
-- **What's wrong:** `emailVerified` is only true when the mapped email equals the raw claim, compared with `strcasecmp()` after `trim()`. A regex, prefix or concat transform added after go-live (for example, rewriting `@corp.example` to `@shop.example`) makes it false for **everyone**, bound accounts included. In SSO-only mode that locks out every admin.
-- **Correction in revision 4:** revision 3 named a lowercase transform as an example. That one is harmless, because the comparison ignores case. The finding stands for every transform that changes more than case or whitespace.
-- **Fix:** check verification against the raw claim and apply the transform afterwards, or refuse that combination at save time.
-
-#### R3-M16. Placeholder addresses are flagged but the flag is never read (M16 incomplete)
-- **Where:** `CustomerProvisioningService.php:182-184`; address sync `:334-377`
-- **What's wrong:** `customFields.sw6oidc_placeholder_address` is written, and nothing in PHP, Twig or JS reads or clears it. Orders go out with street and city set to `-`.
-- **Fix:** add a checkout-confirm subscriber that sends flagged addresses to the edit form. Clear the flag when address sync or the customer fills in real values.
-
-### State, sessions, logout
-
-#### R3-M17. The one-time-token table grows without bound in the default (no Redis) setup
-- **Where:** `Service/Cache/DatabaseAtomicCache.php:84-87` (`LIMIT 10000`), one `prune()` per day in `SessionActivityCleanupTaskHandler`, the anonymous `GET /sw6oidc/login`, and `login.html.twig:61` (a plain link with no `rel="nofollow"`)
-- **What's wrong:**
-  - Every flow start and passkey-options call inserts an encrypted row. The rate limit allows about 43k rows per day per IP (/64) per scope, and crawlers follow the login link.
-  - Prune deletes at most 10k expired rows per day, so the backlog never shrinks, and each prune locks a bigger range.
-- **Fix:** prune in a loop, hourly. Add `rel="nofollow"`, or start the flow with a POST.
-
-#### R3-M18. Redis error replies are treated as "already seen", so valid back-channel logouts are dropped
-- **Where:** `Service/Cache/RedisAtomicCache.php:66, 111`
-- **What's wrong:**
-  - phpredis returns `false` (it doesn't throw) for server error replies: `OOM` under `noeviction`, `READONLY` after a failover, `MISCONF`.
-  - `addIfAbsent()` then reports a replay, and the controller answers 200 without ending anything. That fails open on a security path.
-  - A failed `setex()` is ignored, so the flow state is lost and the login fails.
-- **Fix:** check the return values plus `getLastError()`, and fall back to the database store. Document that this Redis must not evict keys.
-
-#### R3-M19. A failure halfway through IdP logout leaves the session alive and impossible to target again
-- **Where:** `Controller/Oidc/BackChannelLogoutController.php:94-105`; `Service/Session/Sw6OidcIdpLogoutHandler.php:63, 73, 84`
-- **What's wrong:**
-  - The `jti` marker is set before any work.
-  - Registry rows are removed **before** `destroy()` runs.
-  - If `destroy()` throws (lock wait or deadlock), the response is a 500, the IdP's retry is treated as a replay, and a fresh token for the same `sid` finds no row. The session survives.
-- **Fix:** destroy first, then remove. Set the `jti` marker on success, or delete it in the `catch`.
-
-### Admin auth and password policy
-
-#### R3-M20. The user-access-key (SWUA…) block in SSO-only mode is bypassable
-- **Where:** `Subscriber/AdminPasswordLoginGuardSubscriber.php:95-97`
-- **What's wrong:** the guard checks `str_starts_with($body['client_id'] ?? $request->getUser(), 'SWUA')`. League trims `client_id`, treats an empty value as missing and falls back to the Basic-auth user. Both of these get through:
-  - `"client_id":" SWUA…"` (leading space);
-  - `"client_id":""` plus `Authorization: Basic SWUA…:secret`.
-
-  No decorator backs this path, unlike passwords (N-H1).
-- **Fix:** decorate `ClientRepository::validateClient()` / `getClientEntity()` to refuse `user`-origin keys while the policy is on, the same pattern as `PasswordLoginGuardUserRepository`.
-
-#### R3-M21. `PasswordSessionRevoker` logs out guests and runs one unbounded UPDATE inside a provider save
-- **Where:** `Service/Security/PasswordSessionRevoker.php:40-56`
-- **What's wrong:**
-  - `customer_id NOT IN (bound customers)` also matches guest checkouts in progress, which are explicitly allowed to continue.
-  - It is a single full-table `UPDATE … NOT IN (subquery)` on `sales_channel_api_context`, run inside the admin's HTTP request.
-- **Fix:** join `customer` with `guest = 0`. Batch it, or dispatch it to the message queue.
-
-#### R3-M22. Lockout confirmation is weak
-- **Where:** `Service/Security/LockoutConfirmationStore.php`; `Controller/Api/ProviderLockoutConfirmationController.php`
-- **What's wrong:**
-  - It lives on `cache.app`: per node, and wiped by `cache:clear`.
-  - It is keyed per provider, not per confirming admin, so another admin's save can consume it.
-  - It needs only `sw6oidc_provider:update`, although it can lock out superadmins and end their sessions.
-- **Fix:** move it to `AtomicCacheInterface`, key it by provider plus user, and require `user-verified`.
-
-### DAL and configuration
-
-#### R3-M23. A public client can't be created without a dummy secret, and importing one always fails
-- **Where:** `Sw6OidcProviderDefinition.php:77` (`Required` on `client_secret`); `OidcConfigTransfer.php:261, 450`
-- **What's wrong:**
-  - Core turns a missing `Required` field on insert into a null value, and NotBlank rejects it.
-  - The export omits the secret for public clients, so the import fails with "This value should not be blank".
-  - The admin form forces a junk secret.
-- **Fix:** drop `Required`, and enforce "secret required unless public" in the write guard.
-
-#### R3-M24. Write-guard bypass on partial updates of attribute mappings (F-N16 residue)
-- **Where:** `Subscriber/AttributeMappingWriteGuardSubscriber.php:44`
-- **What's wrong:** an `UpdateCommand` only carries changed columns. Changing only `transform_params` of an existing `regex_replace` row, or only `transform_function` to `regex_replace`, skips pattern validation. The broken pattern then fails at login, and for email or username that fails **every** login (N-L7).
-- **Fix:** for updates, load the stored row and validate the merged state.
-
----
-
-## Frontend
-
-### High
-
-#### R3-F1. The provider detail page crashes on every open
-- **Where:** `module/sw6oidc-provider/page/sw6oidc-provider-detail/sw6oidc-provider-detail.html.twig:792`; `index.js:109`
-- **What's wrong:**
-  - `<template v-if="diagnostics.infrastructure">` sits *outside* the `<ul v-if="diagnostics">` (`:757-758`).
-  - `diagnostics` starts as `null`, and the card is inside `<sw-card-view v-if="provider">`. As soon as the provider loads, the render throws a TypeError, and the page stays blank or broken.
-  - It was introduced in `0d8f457` and is in the shipped bundle. No E2E spec opens the page.
-- **Fix:** use `v-if="diagnostics?.infrastructure"`, or move it inside the `<ul>`. Rebuild, and add an E2E smoke test that opens every plugin page without console errors.
-
-#### R3-F2. The ACL privilege mappings most likely never register (F-H5 / F-N7 ineffective)
-- **Where:** `acl/index.js:7-9`; `views/administration/index.html.twig:45-46` (loaded in `administration_login_scripts`)
-- **What's wrong:**
-  - The plugin bundle runs right after core's entry module. Core registers the `privileges` service later, in the dynamically imported `main` chunk (`main.ts`).
-  - So `Shopware.Service('privileges')` is `undefined`, and the `if (privileges)` guard silently skips everything. The browser's module cache then stops `loadPlugins()` from re-running the same URL.
-  - The plugin already works around exactly this timing for modules (`defer-module-register.js`), but not for ACL.
-  - In addition:
-    - `sw-privileges.permissions.sw6oidc_*.label` snippets are missing in both locales.
-    - `force_logout` is declared under category `permissions`, whose grid only renders viewer/editor/creator/deleter. It needs `additional_permissions` (see core `sw-order/acl`).
-- **Confidence:** medium-high. The load order is read from core, not observed in a browser.
-- **Fix:** defer the registration the way `registerModuleWhenReady` does. Add the snippets, move `force_logout` to `additional_permissions`, and add an E2E test that grants a non-admin role.
-
-#### R3-F3. Storefront: deleting one passkey can delete a different one
-- **Where:** `app/storefront/src/passkey/passkey-delete-confirm.plugin.js:14-16, 29-33`; `views/storefront/page/account/passkey/index.html.twig:58-59, 70`
-- **What's wrong:**
-  - Every row's form shares one `<dialog id="sw6oidc-passkey-delete-dialog">`, and every row's plugin listens for its `close` event.
-  - Confirming the delete for row A makes **every** form call `requestSubmit()`. The last navigation wins, so typically the last key is deleted.
-  - A user removing a lost or compromised key can delete their good key and keep the bad one.
-- **Fix:** remember which form opened the dialog and submit only that one, or render one dialog per row.
-
-### Medium
+### Frontend
 
 | # | Where | Issue | Fix |
 |---|---|---|---|
-| **R3-F4** (F-N1 regressed) | `extension/sw-login/index.js:116-118` | The same-admin check reads `me.data.attributes.username` or `me.username`. With `Accept: application/json`, core returns `{data:{username}}`, so the check is always false. After an inactivity SSO re-login the admin always lands on the dashboard, `lastKnownUser` stays behind, and other tabs stay on the modal. It fails safe, but the feature is dead. | Compare `me?.data?.username`, or use core's `userService.getUser()`. |
-| **R3-F5** | `extension/sw-login/index.js:175-186`, `extension/sw-inactivity-login/index.js:107-122`; server `PasskeyAdminController.php:230` | **A failed passkey login hangs forever.** The 401 hits core's `refreshTokenInterceptor`. With no refresh token it rejects without notifying subscribers, and the request never settles. The button spins and no error shows, including for the F-H6 "different admin" refusal. In step-up (`StepUpController.php:126`), each 401 is refreshed and replayed, so failures count twice. | Answer 400/403 from the anonymous and redeem endpoints, or skip the interceptor for `anonymous` calls. |
+| R3-F7 | `extension/sw-profile/page/sw6oidc-profile-passkey/…html.twig` | `mt-label` isn't a registered component in 6.7.14, so the "disabled" badge renders as plain text. | Use `mt-badge`. |
+| R3-F8 | `extension/sw-profile-index-general/…html.twig` | In 6.7.14, `sw_profile_index_general_image` sits inside the info card's grid, so the plugin's `mt-card` lands in a grid cell. | Extend `sw_profile_index_general_information` with `{% parent %}` plus a sibling card. |
+| R3-F9 | `extension/sw-verify-user-modal/index.js` (`sw6oidcStepUpWithSso`) | If the admin closes the IdP popup, no message arrives and `sw6oidcStepUpBusy` stays true, leaving both buttons disabled. The popup isn't closed on unmount. Backend side: step-up pipeline errors take the normal login-redirect path, so no `postMessage` is sent (`OidcAdminAuthController::callback`). | Poll `popup.closed`. Always render the `postMessage` page for `step_up` flows, `{error}` included. |
+| R3-F10 | `extension/sw-login/sw-login.html.twig` | Password-disabled mode hides the whole form, including "Keep me logged in", so SSO logins always run with `rememberMe = false` (F-M1 gap). The comment "no narrower block" is wrong: `sw_login_login_user_field`, `_password_field` and `_submit` exist. | Override the field and submit blocks only. |
+| R3-F11 | `provider-list/index.js`, `passkey-list/index.js` | The listing mixin's `created()` plus the component's own call fetch twice. In the passkey list, `ownerNames` is written before the request-id check. | Drop the own `created()` call, and move the write behind the check. |
+| R3-F12 | `provider-detail/index.js` `loadEntity()` / `loadFormContext()` (F-M10 residue) | No request counter, so fast A→B navigation can apply A's data to B. | Add a request id. |
+| R3-F13 | sessions list `index.js` (F-N3 residue) | "Only active" still returns rows labelled expired, and "Force logout" stays enabled on them. | Filter them out, and disable the action. |
+| R3-F14 | provider detail `<fieldset :disabled>` (F-N8 residue) | It only disables native inputs. Selects, tag fields and grid context menus (rendered in popovers) stay interactive for viewers. Saving is blocked, so the impact is cosmetic. Since R3-H4 the same applies to non-superadmin editors and the trust fields (plan F-2). | Pass `:disabled` to each component. |
+| R3-F15 | passkey-list (`variant="danger"`), sessions-list (`success`) | Probably not Meteor `mt-badge` variants (`critical` / `positive`). | Use the Meteor names. |
+| R3-F16 | provider detail `atomicStore.${…}`, `infrastructureWarning.${…}`, `testMessage.${…}` | Snippet lookups without a fallback, so a new backend code shows a raw key. | Use `snippetOr`. |
+| R3-F17 (partial) | admin error containers | No `role="alert"`/`aria-live` on any admin error container (0 in the templates). The storefront dialog part is fixed. | Add them. |
+| Hygiene 1 | provider detail and other templates | 76 deprecated `sw-*` form, card and button components (`@deprecated tag:v6.8.0`) and 240 `$tc(` calls are still there. Decision: migrate everything now. | Migrate to `mt-*` and `$t` (plan Q7). Add a CI grep that blocks new uses. |
+| Hygiene 2 | `component/sw6oidc-rp-id-field/index.js`; `views/administration/index.html.twig` | Both RP ID fields (`passkeyRpId` per channel, `passkeyRpIdAdmin`) show the admin host as placeholder. Three "VERIFICATION NEEDED" comments shipped. | A `scope` prop with the right placeholder per field; remove the comments (plan F-5). |
 
-### Low
-
-| # | Where | Issue | Fix |
-|---|---|---|---|
-| R3-F6 | `extension/sw-inactivity-login/index.js:68-69` + twig `:69, 76` | Uses `sw6oidc.login.*` keys. Before login, core only serves the `sw-login` and `global` snippet namespaces, so a reload on `#/inactivity/login/…` shows raw keys. | Use `sw-login.sw6oidc.login.*`, as `sw-login` already does. |
-| R3-F7 | `extension/sw-profile/page/sw6oidc-profile-passkey/…html.twig:42-48` | `mt-label` isn't a registered component in 6.7.14, so the "disabled" badge renders as plain text. | Use `mt-badge`. |
-| R3-F8 | `extension/sw-profile-index-general/…html.twig:1-20` | In 6.7.14, `sw_profile_index_general_image` sits inside the info card's grid, so the plugin's `mt-card` lands in a grid cell. | Extend `sw_profile_index_general_information` with `{% parent %}` plus a sibling card. |
-| R3-F9 | `extension/sw-verify-user-modal/index.js:54-75` | If the admin closes the IdP popup, no message arrives and `sw6oidcStepUpBusy` stays true, leaving both buttons disabled. The popup isn't closed on unmount. Backend side: step-up pipeline errors take the normal login-redirect path, so no `postMessage` is sent at all (`OidcAdminAuthController.php:240-241, 281-333`). | Poll `popup.closed`. Always render the `postMessage` page for `step_up` flows, `{error}` included. |
-| R3-F10 | `extension/sw-login/sw-login.html.twig:12-14` | Password-disabled mode hides the whole form, including "Keep me logged in", so SSO logins always run with `rememberMe = false` (F-M1 gap). The comment "no narrower block" is wrong: `sw_login_login_user_field`, `_password_field` and `_submit` exist. | Override the field and submit blocks only. |
-| R3-F11 | `provider-list/index.js:54-56`, `passkey-list/index.js:69-71` | The listing mixin's `created()` plus the component's own call fetch twice. In the passkey list, `ownerNames` is written before the request-id check. | Drop the own `created()` call, and move the write behind the check. |
-| R3-F12 | `provider-detail/index.js:399-440` (F-M10 residue) | `loadEntity()` and `loadFormContext()` have no request counter, so fast A→B navigation can apply A's data to B. | Add a request id. |
-| R3-F13 | sessions list `index.js:119-121` (F-N3 residue) | "Only active" still returns rows labelled expired, and "Force logout" stays enabled on them. | Filter them out, and disable the action. |
-| R3-F14 | provider detail `<fieldset :disabled>` (F-N8 residue) | It only disables native inputs. `sw-single-select`, `sw-entity-single-select`, `sw-multi-tag-select` and grid context menus (rendered in popovers) stay interactive for viewers. Saving is blocked, so the impact is cosmetic. | Pass `:disabled="!canEdit"` to each component. |
-| R3-F15 | passkey-list (`variant="danger"`), sessions-list (`success`) | These are probably not Meteor `mt-badge` variants (`critical` / `positive`). | Use the Meteor names. |
-| R3-F16 | provider detail `atomicStore.${…}`, `infrastructureWarning.${…}`, `index.js:351` `testMessage.${…}` | Snippet lookups without a fallback, so a new backend code shows a raw key. | Use `snippetOr`. |
-| R3-F17 | admin error containers, storefront `<dialog>` | No `role="alert"`/`aria-live` on the errors, and no `aria-labelledby` on the dialog. | Add them. |
-| — | `provider-detail.html.twig` (~30 uses), `rp-id-field` | `sw-text-field`, `sw-switch-field`, `sw-number-field`, `sw-card`, `sw-button`, `sw-button-process` and `sw-password-field` are all `@deprecated tag:v6.8.0`. `$tc` (239 uses) is deprecated in core's Vue adapter. | Migrate to `mt-*` and `$t`. |
-| — | `component/sw6oidc-rp-id-field/index.js:56-66`; `views/administration/index.html.twig:27-33` | The placeholder shows the admin host, which is wrong for storefronts. Two "VERIFICATION NEEDED" comments shipped. | Fix the placeholder, and remove the comments. |
-| — | `sw6oidc-user-provider-info` | `$emit('unlinked')` has no `emits` declaration and no listener. | Declare it, or remove it. |
-
----
-
-## Low (backend)
-
-### OIDC core, HTTP, security helpers
+### Backend: OIDC core, HTTP, security helpers
 
 | # | Where | Issue | Fix |
 |---|---|---|---|
-| R3-L1 | `Service/Provider/ProviderResolver.php:33` | `?providerId=` (empty) or a non-UUID reaches `new Criteria([$id])`, which throws `InvalidCriteriaIdsException` or `InvalidUuidException`. That is a 500 or JSON error page instead of the "provider unavailable" flash or redirect on storefront login, link, admin login and step-up. | Check `Uuid::isValid()` first and throw `ProviderNotFoundException`. |
-| R3-L2 | `Service/Security/RelayStateValidator.php:25` | No `D` modifier, so `$` matches before a trailing `\n`. `redirectTo=/foo%0A` passes, then `header()` rejects the `Location` and the user gets a 302 with no target. | Use `'#^/(?![/\\\\])[^\x00-\x20\x7f\\\\]*$#D'`. |
-| R3-L3 | `Service/Security/BrowserBinding.php:40-56, 77-98` | A reused cookie is never re-issued, so its 30-minute lifetime isn't extended. A retry 28 minutes after an earlier attempt, plus 2 minutes of MFA, fails as "different browser" and counts against the rate limit. | Re-issue the cookie on every flow start. |
-| R3-L4 | `Service/Oidc/OidcLiveLoginTestService.php:128-141` | The live test passes a provider with no `sub`, while every real login fails (L5 parity gap). | Move the `sub`-required check into `ClaimsMerger`. |
-| R3-L5 | `OidcSecurityHelper.php:22` (`?BrowserBinding = null`), `OidcLiveLoginTestService.php:36` | Optional dependencies exist only for tests. A wiring mistake silently disables M1. | Make them required, and use test doubles. |
-| R3-L6 | `ClaimsNormalizer.php:61-68` vs `flattenRecursive`, `Sw6OidcAccessControlEvaluator::members()` | With `base64_claims` on an object-shaped group claim, group mapping sees decoded keys while access rules see encoded ones. | Decode object keys in `flattenRecursive`, or document the limitation. |
-| R3-L7 | `JwtVerifier::verify()` `:57, 269-273` | `$expectedNonce` is nullable, and the "nonce skipped" branch fails open. Both callers always pass a string. | Make it `string` and delete the branch. |
-| R3-L8 | `BackChannelLogoutController.php:62` | The global `backchannel_logout` failure budget is written but never read by `isBlocked()`. | Read it, or delete it. |
-| R3-L9 | `FrontChannelLogoutController.php:57` | `isBlocked()` runs first, so ten malformed requests from one office NAT drop every real front-channel logout from that IP for 60 s. | Don't let the malformed budget block well-formed `iss`/`sid` requests. |
-| R3-L10 | **17 of the 18** domain exceptions: every class under `Service/*/Exception/` except `PasswordLoginDisabledException`. That is `InvalidStateException` and `UnknownStateException`, `ProviderNotFoundException`, `InvalidJwtException`, `ClaimsTooComplexException`, `OidcHttpException`, `PasskeyCeremonyException`, `AccessControlDeniedException`, `ClientSecretUnavailableException`, plus all 8 in `Service/Provisioning/Exception/`. *(Revision 4: revision 3 listed only 5.)* | Plain `\RuntimeException`. The Shopware ≥6.5 convention is `HttpException` with error codes, so anything that escapes becomes an anonymous 500, and API clients get no stable error code. | Extend `HttpException` (404/400/403 with `SW6OIDC_*` codes), with static factories in one `Sw6OidcException` class the way core does it (`CustomerException::…`). |
-| R3-L11 | `OidcCallbackProcessor.php:35-45`, `ClaimsNormalizer.php:17-26, 70-75`, `RpInitiatedLogoutService.php:63-70` | Two consecutive docblocks per method. Only the last attaches, so `@throws`/`@param` in the first are invisible to PHPStan, Psalm and IDEs. | Merge them. |
-| R3-L12 | `OidcProviderAdminController.php:205, 247`, `AuthorizationFlowContext::LOGIN_TYPES` | Magic `'test'` login type outside the `LoginType` enum. The live test smuggles the locale through `relayState`. | Use an enum case and a typed field. |
+| R3-L1 | `Service/Provider/ProviderResolver.php` `getActiveById()` | `?providerId=` (empty) or a non-UUID reaches `new Criteria([$id])`, which throws `InvalidCriteriaIdsException` or `InvalidUuidException`. That is a 500 or JSON error page instead of the "provider unavailable" flash or redirect on storefront login, link, admin login and step-up. | Check `Uuid::isValid()` first and throw `ProviderNotFoundException`. |
+| R3-L2 | `Service/Security/RelayStateValidator.php` | No `D` modifier, so `$` matches before a trailing `\n`. `redirectTo=/foo%0A` passes, then `header()` rejects the `Location` and the user gets a 302 with no target. | Use `'#^/(?![/\\\\])[^\x00-\x20\x7f\\\\]*$#D'`. |
+| R3-L3 | `Service/Security/BrowserBinding.php` `bindCurrentBrowser()` | A reused cookie is never re-issued, so its 30-minute lifetime isn't extended. A retry 28 minutes after an earlier attempt, plus 2 minutes of MFA, fails as "different browser" and counts against the rate limit. | Re-issue the cookie on every flow start. |
+| R3-L4 | `Service/Oidc/OidcLiveLoginTestService.php` | The live test passes a provider with no `sub`, while every real login fails (L5 parity gap). | Move the `sub`-required check into `ClaimsMerger`. |
+| R3-L5 | `OidcSecurityHelper.php:22` (`?BrowserBinding = null`), `OidcLiveLoginTestService` | Optional dependencies exist only for tests. A wiring mistake silently disables M1. | Make them required, and use test doubles. |
+| R3-L6 | `ClaimsNormalizer` `decodeGroups()` vs `flattenRecursive()`, `Sw6OidcAccessControlEvaluator::members()` | With `base64_claims` on an object-shaped group claim, group mapping sees decoded keys while access rules see encoded ones. | Decode object keys in `flattenRecursive`, or document the limitation. |
+| R3-L7 | `JwtVerifier::verify()` | `$expectedNonce` is nullable, and the "nonce skipped" branch fails open. Both callers always pass a string. | Make it `string` and delete the branch. |
+| R3-L8 | `BackChannelLogoutController` | The global `backchannel_logout` failure budget is written (unresolvable tokens) but never read by `isBlocked()`; only the per-provider budget is read. | Read it, or delete it. |
+| R3-L9 | `FrontChannelLogoutController` | `isBlocked()` runs first, so ten malformed requests from one office NAT drop every real front-channel logout from that IP for 60 s. | Don't let the malformed budget block well-formed `iss`/`sid` requests. |
+| R3-L10 | **16** domain exceptions under `Service/*/Exception/` (all except `PasswordLoginDisabledException`) | Plain `\RuntimeException`. The Shopware ≥6.5 convention is `HttpException` with error codes, so anything that escapes becomes an anonymous 500, and API clients get no stable error code. | Extend `HttpException` (404/400/403 with `SW6OIDC_*` codes), with static factories in one `Sw6OidcException` class, as core does (`CustomerException::…`). |
+| R3-L11 | `OidcCallbackProcessor`, `ClaimsNormalizer`, `RpInitiatedLogoutService` | Two consecutive docblocks per method. Only the last attaches, so `@throws`/`@param` in the first are invisible to PHPStan, Psalm and IDEs. | Merge them. |
+| R3-L12 | `OidcProviderAdminController` (`build($provider, 'test', $locale, …)`, `loginType !== 'test'`), `AuthorizationFlowContext` | Magic `'test'` login type outside the `LoginType` enum. The live test smuggles the locale through `relayState`. | Use an enum case and a typed field. |
+| R4-L1 | `Service/Jwt/JwtVerifier.php` `verifySignedPayload()` | The `crit` header is never inspected. RFC 7515 §4.1.11 says a token whose `crit` lists an extension the verifier doesn't understand **must** be rejected. | Reject any token whose protected header has `crit`. |
+| R4-L2 | `JwtVerifier.php:309` | `nbf` is cast with `(int)` without an `is_numeric()` check, while `exp` and `iat` have one. A non-numeric `nbf` becomes `0` and passes. | Treat a present non-numeric `nbf` as invalid. |
+| R4-L3 | `JwtVerifier.php:182` (`AlgorithmManager`), `candidateKeys()` | Only `RS256`/`RS384`/`RS512` with `kty=RSA`. IdPs configured for `ES256` or `PS256` (Keycloak, Authentik, Okta custom servers, Zitadel) fail at the **first login** with a generic error. Neither discovery (`id_token_signing_alg_values_supported`) nor the connection test warns. | Add `ES256/384` and `PS256`. Until then, have discovery and the connection test fail clearly when the IdP advertises no RS\* algorithm. |
+| R4-L4 | `Storefront/Controller/OidcCallbackController.php:86`, `Controller/Api/OidcAdminAuthController.php:225` | Both callbacks log the query parameters `error` and `error_description` at **warning** level, verbatim and uncapped, *before* any state check, and never call `recordFailure()`. Anyone can loop `GET /sw6oidc/callback?error=x&error_description=<8 KB>` and fill `var/log/sw6oidc-*.log` without being rate limited. | Truncate both (for example to 200 chars), log at `notice`, and count the branch as a failure when `state` is unknown. |
 
-### Passkeys
+### Backend: passkeys
 
 | # | Where | Issue | Fix |
 |---|---|---|---|
-| R3-L13 | `Storefront/Controller/PasskeyController.php:71-143`; `PasskeyRegistrationService.php:194-207` | `registration-options` is not rate limited. Each call stores a 300 s ceremony and deserializes every key. There is no cap on credentials per account. | Use a `consume()` budget per customer. Cap at about 20 keys. |
-| R3-L14 | `PasskeyController.php:173-241` | Login CSRF: Shopware 6.7 has no CSRF token, and SameSite=Lax doesn't stop a top-level POST. An attacker signs an assertion with their own software authenticator and logs the victim into the attacker's account. | Require `Origin` / `Sec-Fetch-Site: same-origin` on the four ceremony POSTs. |
-| R3-L15 | `PasskeyCredentialRepository.php:272-290` | Counter update is read-check-write with an unconditional write. Concurrent assertions can lower the counter. The entity is loaded three times per login. | Use `UPDATE … WHERE sign_count < :new`, and pass the entity id along. |
-| R3-L16 | `PasskeyAdminController.php:141, 166`, `AccountPasskeyController.php:69` | Integration tokens (`userId = null`) and non-hex ids cause a 500. | Return 403 for non-user sources, and check `Uuid::isValid()`. |
+| R3-L13 | `Storefront/Controller/PasskeyController` registration options; `PasskeyRegistrationService` | `registration-options` is not rate limited (only login options consume a budget). Each call stores a 300 s ceremony and deserializes every key. There is no cap on credentials per account. | Use a `consume()` budget per customer. Cap at about 20 keys. |
+| R3-L14 | `PasskeyController` ceremony POSTs | Login CSRF: Shopware 6.7 has no CSRF token, and SameSite=Lax doesn't stop a top-level POST. An attacker signs an assertion with their own software authenticator and logs the victim into the attacker's account. | Require `Origin` / `Sec-Fetch-Site: same-origin` on the four ceremony POSTs. |
+| R3-L15 | `PasskeyCredentialRepository::updateAfterAssertion()` | The counter update is read-check-write with an unconditional write. Concurrent assertions can lower the counter. The entity is loaded three times per login. | Use `UPDATE … WHERE sign_count < :new`, and pass the entity along. |
+| R3-L16 | `PasskeyAdminController` (`my-credentials`, `delete`), `AccountPasskeyController` | Integration tokens (`userId = null`) and non-hex ids cause a 500. | Return 403 for non-user sources, and check `Uuid::isValid()`. |
 | R3-L17 | both `webauthn-codec.js` | `response.getTransports()` is dropped, so step-up's `allowCredentials` has no transport hints and browsers show a worse picker. | Send `transports` and `clientExtensionResults`. |
-| R3-L18 | `views/storefront/page/account/passkey/index.html.twig:51-66` | Keys disabled by clone detection look normal on the storefront. The page is a single big block. | Add a badge and sub-blocks. |
-| R3-L19 | `PasskeyRelyingPartyResolver.php:56-59`; `passkey-list/index.js:78-82` | A raw DBAL domain query when the context already has the domains loaded. The full `publicKey` JSON is fetched per grid row. | Use the context, and `criteria.addIncludes`. |
+| R3-L18 | `views/storefront/page/account/passkey/index.html.twig` | Keys disabled by clone detection look normal on the storefront. The page is one big block. | Add a badge and sub-blocks. |
+| R3-L19 | `PasskeyRelyingPartyResolver` (`fetchFirstColumn` domain query); `passkey-list/index.js` | A raw DBAL domain query when the context already has the domains loaded. The full `publicKey` JSON is fetched per grid row. | Use the context, and `criteria.addIncludes`. |
 
-### Identity and provisioning
-
-| # | Where | Issue | Fix |
-|---|---|---|---|
-| R3-L20 | `AttributeMapper.php:81, 124` | `FILTER_VALIDATE_EMAIL` without the Unicode flag rejects `user@bücher.de`. Core stores punycode (`EmailIdnConverter`), so lookups wouldn't match anyway. | Apply `EmailIdnConverter::encode()` before validating and looking up. |
-| R3-L21 | `CustomerProvisioningService.php:166-224, 269-275`; `AdminProvisioningService.php:135-137, 343-348` | No length caps. A `given_name` longer than the DAL limit causes a `WriteException`, and with sync on, every login of that user fails. | Truncate with `mb_substr` to the field limits. |
-| R3-L22 | `AvatarFetcher.php:44-58` | `timeout` is an idle timeout, so a slow-drip server stalls admin login. The MIME type comes from the header, and the file becomes public media. | Add `max_duration: 10`, and sniff the bytes (`getimagesizefromstring`). |
-| R3-L23 | `AdminProvisioningService.php:62` | Only `admin = 1` counts as privileged. An admin with an all-powerful ACL role can be email-linked when the opt-in is on. | Treat every admin as privileged. |
-| R3-L24 | `CustomerProvisioningService.php:99-102`, `AdminProvisioningDeniedException::autoCreateDisabled($email)`, `OidcCallbackController.php:173-179` | The full email is logged at warning level. Provisioning denials count as callback failures, so ten denied users behind one NAT block SSO for that IP. | Treat them as policy denials (not counted), and drop the email from the message. |
-| R3-L25 | `AdminProvisioningService.php:448-461` | Unbounded username probe: one query per suffix. | Use a single `LIKE` query, or a random suffix after three tries. |
-| R3-L26 | `CustomerProvisioningService.php:120-137` | Email lookup has no sort and ignores `active`. Core sorts by `createdAt DESC`. | Sort like core, and skip inactive accounts. |
-| R3-L27 | `OidcCallbackController.php:107-144` | If `register()` or `recordLogin()` throws after the context swap, the user is logged in but sees "login failed", a failure is counted, and the session is missing from the registry. | Register before swapping, or swallow and log registry errors. |
-| R3-L28 | `OidcAdminAuthController.php:248-269` (H1 residue) | For an inactive admin, the callback still syncs, writes `rememberForAdmin`, registers a pending session and mints a nonce. Only the token exchange fails. | Check `active` before any side effect. |
-| R3-L29 | `CustomerProvisioningService` / `AdminProvisioningService`; `OidcCustomerLoginRoute.php:62` | Find-by-email, reload-after-create, fallback names and partial-sync payloads are duplicated. `loginByCustomerId()` reloads a customer the caller already holds. Sync issues an `update` on every login even when nothing changed, which fires `*.written`, indexers and the cleanup subscriber. | Extract a shared resolution step. Pass the entity in. Skip no-op updates. |
-
-### State, sessions, logout, health, migrations
+### Backend: identity and provisioning
 
 | # | Where | Issue | Fix |
 |---|---|---|---|
-| R3-L30 | `Sw6OidcSessionDestructionService.php:42, 64` | After core rotates a customer context token (for example on a password change), the registry holds the old one, `delete()` hits 0 rows, and the new token survives. | On 0 rows, fall back to `revokeAllCustomerTokens()`. |
-| R3-L31 | `Sw6OidcSessionActivityRecorder.php:84-97, 130-137` | Matching loads up to 200 open rows into PHP and gives up beyond that. The `session_key_hash` and `registry_session_id` indexes are never used. | Query with an OR filter, and close rows with one DBAL `UPDATE`. |
-| R3-L32 | `HealthCheckAlertTaskHandler.php:26`, `NodeHeartbeat` | The worker container records its own heartbeat, so one web node plus one worker shows `multi_node_without_redis` permanently. Rolling deploys trigger it too. | Record heartbeats from web requests only. |
-| R3-L33 | `RpInitiatedLogoutService.php:71-75, 110` | "Fire-and-forget" revocation is two synchronous calls with the provider's `http_timeout` (default 30 s), so logout can hang 60 s while the IdP is down. | Use a short fixed timeout, or an async message. |
-| R3-L34 | `Migration1790800006CreateStateTables.php:32-53` | `sw6oidc_session` has no FK to the provider. After a provider is deleted, encrypted IdP tokens stay for up to 30 days. | Add `ON DELETE CASCADE`, or a deleted-event listener. |
-| R3-L35 | `RedisAtomicCache.php:66, 111` | Values (PKCE verifiers, user ids) are stored in Redis in plaintext, while the DB store encrypts them. | Encrypt in both. |
-| R3-L36 | `HealthCheckController.php:125-131` | Without `SW6OIDC_HEALTH_TOKEN` (the default), anyone sees IdP failures, node count and Redis misconfiguration. | Without a token, return `status` only. |
-| R3-L37 | `SessionActivityController.php:96-102` | Any role with `force_logout` can repeatedly end all of a superadmin's sessions. | Refuse admin targets unless the caller is an admin. |
+| R3-L20 | `AttributeMapper` email validation | `FILTER_VALIDATE_EMAIL` without the Unicode flag rejects `user@bücher.de`. Core stores punycode (`EmailIdnConverter`), so lookups wouldn't match anyway. | Apply `EmailIdnConverter::encode()` before validating and looking up. |
+| R3-L21 | `CustomerProvisioningService`, `AdminProvisioningService` create and sync payloads | No length caps (only the fallback name is truncated). A `given_name` longer than the DAL limit causes a `WriteException`, and with sync on, every login of that user fails. | Truncate with `mb_substr` to the field limits. |
+| R3-L22 | `AvatarFetcher` | `timeout` is an idle timeout, so a slow-drip server stalls admin login. The MIME type comes from the header, and the file becomes public media. | Add `max_duration: 10`, and sniff the bytes (`getimagesizefromstring`). |
+| R3-L24 (partial) | `OidcCallbackController::callback()` catch blocks | `CustomerProvisioningDeniedException` (auto-create off, or the bound customer not available in this channel) still lands in the generic `\Throwable` branch and counts against the callback budget. Ten denied users behind one NAT block SSO for that IP for 60 s. The email part is fixed. | Catch it with the other policy denials (not counted), with its own flash message. |
+| R3-L25 | `AdminProvisioningService` username dedup | Unbounded username probe: one query per suffix. | Use a single `LIKE` query, or a random suffix after three tries. |
+| R3-L26 | `CustomerProvisioningService::findByEmail()` | The email lookup has no sort and ignores `active`. Core sorts by `createdAt DESC`. | Sort like core, and skip inactive accounts. |
+| R3-L27 | `OidcCallbackController::callback()` | If `register()` or `recordLogin()` throws after the context swap, the user is logged in but sees "login failed", a failure is counted, and the session is missing from the registry. | Register before swapping, or swallow and log registry errors. |
+| R3-L28 | `OidcAdminAuthController::callback()` (H1 residue) | For an inactive admin, the callback still syncs, writes `rememberForAdmin`, registers a pending session and mints a nonce. Only the token exchange fails. | Check `active` before any side effect. |
+| R3-L29 | `CustomerProvisioningService` / `AdminProvisioningService`; `OidcCustomerLoginRoute` | Find-by-email, reload-after-create, fallback names and partial-sync payloads are duplicated. `loginByCustomerId()` reloads a customer the caller already holds. Sync issues an `update` on every login even when nothing changed, which fires `*.written`, indexers and the cleanup subscriber. | Extract a shared resolution step. Pass the entity in. Skip no-op updates. |
+| R4-L5 | `Storefront/Service/OidcCustomerLoginRoute.php` | `loginByCustomerId()` reimplements core's public `AccountService::loginById()`, and the copy has drifted. Every core change to the login sequence has to be ported by hand. | Call `AccountService::loginById()`, keep `CustomerSalesChannelBinding::allows()` as a pre-check, and delete the class (see Unused code). |
+
+### Backend: state, sessions, logout, health, migrations
+
+| # | Where | Issue | Fix |
+|---|---|---|---|
+| R3-L30 | `Sw6OidcSessionDestructionService::destroyCustomerSession()` | After core rotates a customer context token (for example on a password change), the registry holds the old one, `delete()` hits 0 rows, and the new token survives. | On 0 rows, fall back to `revokeAllCustomerTokens()`. |
+| R3-L31 | `Sw6OidcSessionActivityRecorder` (`setLimit(200)`) | Matching loads up to 200 open rows into PHP and gives up beyond that. The `session_key_hash` and `registry_session_id` indexes are never used. | Query with an OR filter, and close rows with one DBAL `UPDATE`. |
+| R3-L32 | `HealthCheckAlertTaskHandler`, `NodeHeartbeat` | The worker container records its own heartbeat, so one web node plus one worker shows `multi_node_without_redis` permanently. Rolling deploys trigger it too. | Record heartbeats from web requests only. |
+| R3-L33 | `RpInitiatedLogoutService::revokeTokens()` | "Fire-and-forget" revocation is two synchronous calls with the provider's `http_timeout` (default 30 s), so logout can hang 60 s while the IdP is down. | Use a short fixed timeout, or an async message. |
+| R3-L34 | `Migration1790800006CreateStateTables` | `sw6oidc_session` has no FK to the provider. After a provider is deleted, encrypted IdP tokens stay until the hard bound (90 days since R3-H5). | Add `ON DELETE CASCADE`, or a deleted-event listener. |
+| R3-L35 | `RedisAtomicCache` | Values (PKCE verifiers, user ids) are stored in Redis in plaintext, while the DB store encrypts them. | Encrypt in both. |
+| R3-L36 | `HealthCheckController` | Without `SW6OIDC_HEALTH_TOKEN` (the default), anyone sees IdP failures, counts and infrastructure warnings. | Without a token, return `status` only. |
+| R3-L37 | `SessionActivityController::forceLogout()` | Any role with `force_logout` can repeatedly end all of a superadmin's sessions. | Refuse admin targets unless the caller is an admin. |
 | R3-L38 | `Migration1758000001…`, `Migration1789383427…`, `Migration1789390512…` | `ADD COLUMN` with no existence check, unlike the later migrations, so a restore with a stale `migration` table fails. | Add the `SHOW COLUMNS` guard. |
-| R3-L39 | `RedisConnectionFactory.php:101` | The 30 s "Redis is down" marker only works with APCu. Without APCu, every request stalls 1.5 s during an outage (N-L14 residue). | Fall back to a static or file marker. |
-| R3-L40 | `Sw6OidcSessionActivity*` (`sid`, `sub`) | `sid` (a logout capability, N-M5) is stored and never read. | Drop the column, or store a hash. |
+| R3-L39 | `RedisConnectionFactory` (APCu marker) | The 30 s "Redis is down" marker only works with APCu. Without APCu, every request stalls 1.5 s during an outage (N-L14 residue). | Fall back to a static or file marker. |
+| R3-L40 | `sw6oidc_session_activity.sid` | `sid` (a logout capability, N-M5) is stored in clear and never read. | Drop the column, or store a hash. |
 
-### Admin auth, DAL, config, logging, tooling
+### Backend: admin auth, DAL, config, logging, tooling
 
 | # | Where | Issue | Fix |
 |---|---|---|---|
 | R3-L41 | `StepUpController::startOidc`/`passkeyOptions`, `OidcAdminAuthController::startLink` | Authenticated flow starts write one-time-token rows with no `flow_start` budget. | `consume(SCOPE_FLOW_START.':'.$userId, ip)`. |
-| R3-L42 | `Sw6OidcEncryptor.php:80-85` via the field serializer `decode()` | After an `APP_SECRET` change, every provider hydration logs two errors: on every login render, every password attempt and every admin listing. | Log once at the point of use (`getUsableClientSecret`). |
-| R3-L43 | `Sw6OidcProviderDefinition.php:88-113`, RoleMapping, UserProvider | No `Choice` on `pkce_flow`, `login_type`, `mapping_type` or `user_type`; `s256` breaks every login. `claim_encoding` is `Required` but dead. `http_timeout` (SMALLINT) and `jwks_cache_ttl` have no bounds (40000 gives a DB 500, a negative value disables the cache). NOT NULL booleans lack `Required` (null gives a 500). `sw6oidc_user_provider.updated_at` exists but has no `UpdatedAtField`. Provider delete cascades bindings at the DB level with no DAL event or warning. | Add `Choice`/`Range`/`Required`. Move dead fields to defaults. Add the field. Add an association with `RestrictDelete` or a confirmation. |
-| R3-L44 | `OidcProviderAdminController.php:129, 177`; `OidcConnectionTestService.php:246` | `httpTimeout` is uncapped in the test endpoints. A non-string JSON value causes a `TypeError` (500). The test decrypts the secret only to check that it is non-empty. | Clamp 1–30 s, cast inputs, and pass a bool. |
-| R3-L45 | `Service/Logging/SensitiveDataProcessor.php:22-43, 61, 88` | Does not mask: a leading `code=`, JSON bodies, `Bearer`/`Basic` headers, URL-encoded URLs, `;`-separated params, keys like `contextToken`, `sessionKey`, `jwt`, `cookie`, `apiKey`, non-string values, or exception objects. Current callers avoid these cases, so it is latent. | Add the patterns and keys. |
-| R3-L46 | `services.xml:708, 798-809` | Twig extensions are eager: the login-options extension builds the passkey and webauthn graph on every Twig boot, mail rendering included. The write guard on the global `PreWriteValidationEvent` isn't `lazy`. `pendingRevocations` is filled even when the write later fails. `OidcLogger` is a fake FQCN service id. Encryption purpose strings are duplicated as literals. | Use `twig.runtime` and `lazy`, and clear state on write failure. |
-| R3-L47 | `Twig/StorefrontLoginOptionsExtension.php:60-90` | Claimed fixed, but not: three un-memoised lookups (each decrypting two envelopes per provider) on every login render. | Memoise per request. |
-| R3-L48 | `Service/Oidc/TestResultTranslator.php:21` | Reads the **admin source** snippet JSON at runtime, so a package without `Resources/app` shows raw keys. | Ship Symfony translations. |
-| R3-L49 | `services.xml:482-508, 678`; `AdminOidcGrant.php:98` | Relies on core internals: `FakeCryptKey` (`@internal final`); `ClientRepository`, `AccessTokenRepository`, `ScopeRepository`, `RefreshTokenRepository`, `UserRepository` and `OAuth\User\User` (`#[BecomesInternal('v6.8.0')]`); `ScopeRepository::PASSWORD_GRANT`; and `Context::createDefaultContext()` in subscribers and controllers. | Track these for 6.8. Inject interfaces, and pass `Context` down from the callers. |
-| R3-L50 | `OidcAdminAuthController.php:581` / `PasskeyAdminController.php:263`; `AdminPasswordLoginGuardSubscriber.php:32` / `PasswordLoginDisabledException.php:20`; `'admin'` literal in four places | Duplicated `accessTokenJti()`, `ERROR_CODE` and user-type constants. | Share them. |
-| R3-L51 | `composer.json:74-78`; `.github/workflows/ci.yml:200, 270` | `policy.advisories.block: false`. Actions pinned by tag, not SHA, with no `permissions:` block. `assets` and `e2e` are `continue-on-error`, so a stale bundle (F-H1) and R3-H1 never fail CI. Static analysis runs on 8.3 only, at PHPStan level 5, with no Shopware extension and no analysis of `tests/`. | Make both jobs blocking. Pin SHAs. Raise analysis levels. |
-| R3-L52 | `CLAUDE.md` | Out of date: the registry "kept for the real session lifetime" (R3-H5); binding by `(provider, iss, sub)` (R3-M9); "19 attribute types" (the code has 22); "the passkey list links to the owner profile" (it doesn't); `findOneByCredentialId`/`assertNotBoundToDifferentProvider` described as live; L13 deferred "because the container can't be compiled", although CI already compiles it. | Update the file. |
+| R3-L42 | `Sw6OidcEncryptor::decrypt()` via `Sw6OidcEncryptedFieldSerializer::decode()` | After an `APP_SECRET` change, every provider hydration logs two errors: on every login render, every password attempt and every admin listing. | Log once at the point of use (`getUsableClientSecret`), or decrypt lazily. |
+| R3-L43 (partial) | `Sw6OidcProviderDefinition` | No `Choice` on `pkce_flow` (`s256` breaks every login) or `login_type`. `claim_encoding` is `Required` but dead. `http_timeout` (SMALLINT) and `jwks_cache_ttl` have no bounds (40000 gives a DB 500, a negative value disables the cache). NOT NULL booleans lack `Required` (null gives a 500). Provider delete cascades bindings at the DB level with no DAL event or warning. | Add `Choice`/`Range`/`Required`. Drop the dead field. Add a delete confirmation (plan decision Q7). |
+| R3-L44 | `OidcProviderAdminController` (`(int) $request->request->get('httpTimeout', 10)`), `OidcConnectionTestService` | `httpTimeout` is uncapped in the test endpoints. A non-scalar JSON value causes a 500. The test decrypts the secret only to check that it is non-empty. | Clamp 1–30 s, validate input types, and pass a bool. |
+| R3-L45 | `Service/Logging/SensitiveDataProcessor.php` | Does not mask: a leading `code=`, JSON bodies, `Bearer`/`Basic` headers, URL-encoded URLs, `;`-separated params, keys like `contextToken`, `sessionKey`, `jwt`, `cookie`, `apiKey`, non-string values, or exception objects. Current callers avoid these cases, so it is latent. | Add the patterns and keys. |
+| R3-L46 | `services.xml` | Twig extensions are eager (`twig.extension`, no `twig.runtime`): the login-options extension builds the passkey and webauthn graph on every Twig boot, mail rendering included. The write guards on the global `PreWriteValidationEvent` aren't `lazy`. `OidcLogger` is a fake FQCN service id. Encryption purpose strings are duplicated as literals. | Use `twig.runtime` and `lazy`. |
+| R3-L47 | `Twig/StorefrontLoginOptionsExtension.php` | Three un-memoised lookups (each decrypting two envelopes per provider) on every login render. | Memoise per request. |
+| R3-L48 | `Service/Oidc/TestResultTranslator.php` | Reads the **admin source** snippet JSON at runtime, so a package without `Resources/app` shows raw keys. | Ship Symfony translations. |
+| R3-L49 | `services.xml`; `AdminOidcGrant`; `PasswordLoginGuardClientRepository` | Relies on core internals: `FakeCryptKey` (`@internal final`); `ClientRepository`, `AccessTokenRepository`, `ScopeRepository`, `RefreshTokenRepository`, `UserRepository` and `OAuth\User\User` (`#[BecomesInternal('v6.8.0')]`); `ScopeRepository::PASSWORD_GRANT`; and `Context::createDefaultContext()` in subscribers and controllers. The fix round added another decorator of a `BecomesInternal` class. | Track these for 6.8. Concentrate them in one bridge class, inject interfaces, and pass `Context` down from the callers. |
+| R3-L50 | `OidcAdminAuthController::accessTokenJti()` / `PasskeyAdminController::accessTokenJti()`; `ERROR_CODE` duplicates; `'admin'` literals | Duplicated `accessTokenJti()`, `ERROR_CODE` and user-type constants. | Share them (`AdminTokenIssuer`, `LoginType::Admin->value`). |
+| R3-L51 | `composer.json` (`"block": false`); `.github/workflows/ci.yml:200, 270` | `policy.advisories.block: false`. Actions pinned by tag, not SHA, with no `permissions:` block. `assets` and `e2e` are `continue-on-error`. Static analysis runs on 8.3 only, at PHPStan level 5, with no Shopware extension and no analysis of `tests/`. | Make both jobs blocking. Pin SHAs. Add `permissions: contents: read`. Raise analysis levels (52 errors at level 8 today). |
+| R3-L52 | `CLAUDE.md` | Still partly out of date after `f8c1195`: "19 attribute types" (the code has 22); "Unit tests (699 tests)" (795); `findOneByCredentialId()` described as live (tests only); the `sw6oidc_user_provider` row in "Database schema" still says one account per `(provider, user_type, sub)`; "the passkey list links to the owner profile" (it doesn't). | Update the file. |
+| R4-L6 | `composer.json` `require` | Requires `league/oauth2-server`, `symfony/psr-http-message-bridge` and `nyholm/psr7` directly, although all three are `shopware/core` dependencies. Pulls the whole `web-token/jwt-framework` where `web-token/jwt-library` is enough, with a wide `^3.4 \|\| ^4.0` range. Composer-only distribution (decision Q10), so dropping them is safe. | Drop the core-provided packages. Depend on `web-token/jwt-library` with one major version. |
+| R4-L7 (partial) | `tests/E2E/specs`, `.github/workflows/ci.yml` | `AdminTokenIssuerTest` with a real League server is done. Still missing: the admin smoke spec ("open every plugin page, zero console errors", as superadmin and as a viewer role), and blocking `e2e`/`assets`. The integration and E2E suites were never run against the fix round. | Plan Q0. |
 
 ---
 
@@ -612,114 +192,50 @@ The sections below are the revision 3 text, unchanged except for the corrections
 | Symbol | Where | Evidence |
 |---|---|---|
 | `SsrfUrlValidator::isInsecureModeEnabled()` | `Service/Security/SsrfUrlValidator.php:34` | No caller in `src/` or `tests/`. **Delete it.** |
-| `Sw6OidcProviderEntity::getClaimEncoding()` and the `claim_encoding` field | entity / definition `:89` | Never read since M10, but still `Required`, so every client must send a dead field. The admin JS still sets `provider.claimEncoding = 'none'` (`provider-detail/index.js:388`). |
+| `Sw6OidcProviderEntity::getClaimEncoding()` and the `claim_encoding` field | entity / definition `:103` | Never read since M10, but still `Required`, so every client must send a dead field. The admin JS still sets `provider.claimEncoding = 'none'` (`provider-detail/index.js:410`). |
 | `PasskeyCredentialRepository::findOneByCredentialId()` | `:68` | Called from tests only. |
-| `UserProviderBindingService::assertNotBoundToDifferentProvider()` | `:63-73` | Called from tests only. |
-| `Sw6OidcSessionRegistry::resolveByUser()` | `:132` | Called from tests only (12 references). |
-| `OidcCustomerLoginRoute::login(RequestDataBag)` + `AbstractLoginRoute` inheritance + `getDecorated()` | `Storefront/Service/OidcCustomerLoginRoute.php:49-58` | No caller. It is also a hazard: a passwordless "log in as any `customerId`" entry point. Drop the inheritance and keep only `loginByCustomerId()`. |
-| `AdminLoginNonce::$browserBinding` | `Service/AdminAuth/AdminLoginNonce.php:18` | Checked before the DTO is built and never read afterwards. |
-| `AdminTokenIssuer` `$request->request->set(...)` / `$request->attributes->set(...)` | `:34-38` | The first has no effect for JSON (R3-H1). The second duplicates `withAttribute()`. |
-| `sign_count` column, `Sw6OidcPasskeyCredentialEntity::getSignCount()` | definition `:50` | Written, never read. The real counter lives in the `public_key` JSON, so this is a drifting copy. |
-| `PasskeyRegisteredEvent::getUserType()` / `getUserId()` | `Event/` | No callers (public API, acceptable). |
-| `CustomerProvisioningService::PLACEHOLDER_ADDRESS_FIELD` | `:182-184` | Written, never read (R3-M16). |
-| `UserProvider.issuer` | binding table | Written, never compared (R3-M9). |
-| `Sw6OidcSession::$createdAt`, `$salesChannelId`; the registry's `$customerTtlSeconds` constructor parameter | `Service/Session/` | Hydrated but never read; the parameter is never set through DI. |
+| `UserProviderBindingService::assertNotBoundToDifferentProvider()` | `:93` | Called from tests only. |
+| `Sw6OidcSessionRegistry::resolveByUser()` | `:137` | Called from tests only. |
+| `OidcCustomerLoginRoute::login(RequestDataBag)` + `AbstractLoginRoute` inheritance + `getDecorated()` | `Storefront/Service/OidcCustomerLoginRoute.php` | No caller. It is also a hazard: a passwordless "log in as any `customerId`" entry point. Goes away with R4-L5. |
+| `AdminLoginNonce::$browserBinding` | `Service/AdminAuth/AdminLoginNonce.php` | Checked before the DTO is built and never read afterwards. |
+| `sign_count` column, `Sw6OidcPasskeyCredentialEntity::getSignCount()` | definition `:61`, entity `:68` | Written, never read. The real counter lives in the `public_key` JSON, so this is a drifting copy. |
+| `PasskeyRegisteredEvent::getUserType()` / `getUserId()` | `Event/` | No callers (public API, acceptable; keep). |
+| `Sw6OidcSession::$createdAt`, `$salesChannelId`; the registry's `$customerTtlSeconds` constructor parameter | `Service/Session/` | Re-check after R3-H5: liveness no longer uses a customer TTL; delete what is unread. |
 | `sw6oidc_session_activity` indexes `session_key_hash`, `registry_session_id` | `Migration1790800003…` | No query uses them (R3-L31). |
 | Constructor defaults `'PT10M'` (`AdminAuthorizationServerFactory`), `'P1W'` (`AdminOidcGrant`) | | DI always injects real values. The defaults only hide misconfiguration. |
-| Public-but-internal methods | `OidcSecurityHelper::deriveCodeChallenge`, `OidcCallbackResult::subject`, `RpInitiatedLogoutService::revokeToken`, `SsrfUrlValidator::isPublicIp`, `Sw6OidcRateLimiter::clientKey`, `destroyCustomerSession`, `destroyAdminSessions` | Make them `private`. |
-| Admin snippets `sw6oidc.login.{error, errorRoleMissing, errorAutoCreateDisabled, passwordLoginDisabled, errorAccessDenied, errorLinkRequired, errorEmailNotVerified, errorProviderMismatch}` | `app/administration/src/snippet/*` | Duplicates of `sw-login.sw6oidc.login.*`, unused. |
-| Storefront snippet `sw6oidc.passkey.reauthRequired` | | Unused (PHP uses `sw6oidc.account.reauthRequired`). |
-| Stale comments | `GenderMapper` ("SalutationResolver" doesn't exist), `attributeTypeColumnWidth` (`:style` binding gone), `sw-login` ("no narrower block"), `sw-profile-index-general` ("image card"), two "VERIFICATION NEEDED" blocks, `DatabaseAtomicCache` docblock (still mentions id_tokens) | Delete or correct them. |
+| Public-but-internal methods | `OidcSecurityHelper::deriveCodeChallenge`, `OidcCallbackResult::subject`, `RpInitiatedLogoutService::revokeToken`, `SsrfUrlValidator::isPublicIp`, `Sw6OidcRateLimiter::clientKey`, `destroyCustomerSession`, `destroyAdminSessions` | Make them `private` (check new callers from the fix round first). |
+| Admin snippets `sw6oidc.login.{error, errorRoleMissing, errorAutoCreateDisabled, passwordLoginDisabled, errorAccessDenied, errorLinkRequired, errorEmailNotVerified, errorProviderMismatch}`; storefront snippet `sw6oidc.passkey.reauthRequired` | `snippet/*` | Duplicates of `sw-login.sw6oidc.login.*`, or replaced by `sw6oidc.account.reauthRequired`. Unused. |
+| Stale comments | `GenderMapper` ("SalutationResolver" doesn't exist), `attributeTypeColumnWidth`, `sw-login` ("no narrower block"), `sw-profile-index-general` ("image card"), the "VERIFICATION NEEDED" blocks, the `DatabaseAtomicCache` docblock (still mentions id_tokens) | Delete or correct them. |
 
 ---
 
-## Revision 2 findings: re-verification
-
-| Status | IDs |
-|---|---|
-| **Verified fixed** | C1, C2 (core; residue in R3-M9, R3-M10), F-C1, H1 (residue R3-L28), H2, H4 (residue R3-L2), H6, H7 (admin), H9, H10, H11, N-H1, F-H2, F-H3, F-H4, F-H6 (server; client R3-F5), M1 (residue R3-L3), M2, M3, M4, M5, M6, M7, M8, M9, M10 (residue R3-L6), M11, M13, M14, M15, M17, M18, M19, M20, M22, N-M1, N-M2, N-M3, N-M4, N-M5, N-M6, N-M7, N-M8, N-M9, N-M10, N-M11, N-M13, N-M14, N-M15, N-M16, N-M17, F-M1, F-M3–F-M13, F-M15, F-N2, F-N4–F-N6, F-N9–F-N17, N-L1–N-L21 (N-L14 residue R3-L39), L1–L12, L14, L16–L18, most rev-1 frontend Lows |
-| **Regressed** | **N-H2** (the per-`kid` cooldown is now an anonymous fetch amplifier, R3-M1), **F-N1** (the same-admin check never matches, R3-F4) |
-| **Incomplete** | **N-H3** (R3-H5), **H3** (R3-M11), **H7** storefront (R3-M5, R3-H6), **H8.3–H8.6** (R3-H7, R3-M20), **M12** (R3-M2), **M16** (R3-M16), **M21** (R3-M12), **N-M12** (R3-M4), **F-H1** (bundles committed, but the freshness job can't fail CI, R3-L51), **F-H5 / F-N7** (R3-F2), **F-N3** (R3-F13), **F-N8** (R3-F14), **F-M10** (R3-F12), "Twig login-options memoisation" (R3-L47) |
-| **Partial, as stated in rev 2** | F-M2 (full template copy plus re-sync checklist), F-M14 (one bundle plus polling loop) |
-| **Deferred** | L13 (autowiring). The stated reason no longer holds, because CI compiles the container. |
-| **Now verifiable** | L15. PHPCS, PHPStan, Psalm, Rector and 699 unit tests pass in this checkout. |
-
----
-
-## Edge cases that break the plugin today
+## Edge cases that still break the plugin
 
 | Input or situation | Result |
 |---|---|
-| Admin clicks "confirm with passkey" or "confirm with SSO" in core's verify modal | `unsupported_grant_type`. In SSO-only mode no `user-verified` action is possible (R3-H1). |
-| Admin logs in with a passkey | Fails, and the button spins forever on a refusal (R3-H1, R3-F5) |
-| Open any OIDC provider in the Administration | Page crashes (R3-F1) |
-| Role with `sw6oidc_passkey_credential:update` PATCHes `userId` on its own key | Its next passkey login is as that user, superadmins included (R3-H2) |
-| Role with `sw6oidc_user_provider:update` PATCHes a superadmin's `sub` | Logs in as that superadmin (R3-H3) |
-| Provider editor points userinfo at its own host and drops `openid` | Logs in as any bound admin (R3-H4) |
-| Admin active for more than 7 days, IdP sends back-channel logout | 200 OK, session not ended (R3-H5) |
-| Stolen customer session, then `POST /sw6oidc/link` | Attacker's IdP account permanently bound (R3-H6) |
-| Provider with the admin flag re-activated after its only bound admin was deactivated | SSO-only on, nobody can log in (R3-H7) |
-| Logout tokens with random `kid` values, a few per second | Unlimited JWKS fetches against the IdP. The breaker can block logins (R3-M1). |
-| Token endpoint answers 307 to another host | `code` and `code_verifier` re-POSTed there (R3-M2) |
-| Keycloak as IdP, user clicks logout | Stuck on Keycloak's logout page, no return to the shop (R3-M3) |
-| `{publicClient:true, tokenEndpoint:evil}`, then `{publicClient:false}` | Client secret sent to `evil` on the next login (R3-M4) |
-| A regex or prefix transform added on the email mapping (a lowercase transform is harmless) | Every login refused while `require_email_verified` is on (R3-M15) |
-| Two tabs finishing the first SSO login at the same time | Orphan duplicate customer, and password login hits the wrong account (R3-M12) |
-| Customer bound to channel A logs in by SSO in channel B | Unbound duplicate created, password login in A broken (R3-M13) |
-| Redis `READONLY` after a failover, IdP sends back-channel logout | Treated as a replay, 200 OK, nothing ended (R3-M18) |
-| Customer deletes one of three passkeys on the storefront | Usually the last one is deleted, not the chosen one (R3-F3) |
-| `GET /sw6oidc/login?providerId=` | 500 instead of a flash message (R3-L1) |
+| `GET /sw6oidc/login?providerId=` or a non-UUID | 500 instead of a flash message (R3-L1) |
 | `redirectTo=/foo%0A` | Redirect without a `Location` header (R3-L2) |
 | `given_name` of 300 characters with profile sync on | Every login of that user fails (R3-L21) |
 | IdP that signs id_tokens with `ES256` or `PS256` | Discovery and the connection test pass, then every login fails with a generic error (R4-L3) |
 | `GET /sw6oidc/callback?error=x&error_description=<8 KB>` in a loop | Unbounded warning-level log lines, never rate limited (R4-L4) |
+| Ten customers without an account behind one NAT, auto-create off | SSO blocked for that IP for 60 s (R3-L24) |
+| Provider `pkceFlow: "s256"` saved through the API | Every login of that provider fails (R3-L43) |
+| Issuer changed with "disconnect", then SSO-only turned on | Those admins keep their password sessions; no confirmation asked (R6-L1) |
+| Admin opens the role editor on a slow connection | Plugin privileges missing, only a console error (R6-L2) |
 
 ---
 
-## Future improvements (optimisation and hardening roadmap)
+## Future improvements (still open)
 
-Done since revision 2 and dropped from this list: the identity model, DB-backed state, one step-up primitive, grant-level password enforcement, rate-limiter redesign, access-rule semantics, Store API logout URL, admin API client and ACL file, E2E suite.
-
-1. **Make the test suite catch what matters.**
-   - Controller-level integration tests with a real `AuthorizationServer` and JSON bodies for `/admin/token`, `/step-up/*` and `/passkey/login-verify` (R3-H1).
-   - An admin smoke spec that opens every plugin page as viewer and as editor with zero console errors (R3-F1), and grants a non-admin role through the role editor (R3-F2).
-   - Make `assets` and `e2e` **blocking**.
-2. **Protect trust-relevant DAL data by default.** Mark every field of `passkey_credential`, `user_provider` and the trust-relevant provider columns as `WriteProtected(SYSTEM_SCOPE)`, or superadmin-only. Add `CloneProtection`. Audit-log changes to endpoints, scope and superadmin mapping, and optionally email the superadmins when they change (R3-H2, R3-H3, R3-H4, R3-M4).
-3. **Lazy secret decryption.** Keep the envelope in the entity and decrypt only via `Sw6OidcSecretProvider::clientSecret($provider)` at the point of use. Keep secrets out of `jsonSerialize()`. That removes the clone exfiltration, the decrypt-log flood (R3-L42) and the in-memory plaintext copies.
-4. **Tie session state to core's session state.** Derive registry liveness from `refresh_token` and `sales_channel_api_context` instead of a fixed TTL (R3-H5, R3-L30). Process IdP logout as a queued message with retries (R3-M19).
-5. **One SSO-only invariant.** A single check, run from every write that can change the result (provider, user, binding), plus a `ClientRepository` decorator for user access keys (R3-H7, R3-M20).
-6. **A real `(issuer, sub)` key.** Use binary columns, compare `iss` in every lookup, and add an "issuer changed" guard that suspends bindings (R3-M9).
-7. **JIT creation through core's registration rules.** Bound sales channel, IDN encoding, newsletter, and create + bind + events in one transaction with a re-resolve on a unique violation (R3-M12, R3-M13, R3-L20).
-8. **Declarative, multi-valued role sync.** Map every matching group, touch only roles the plugin owns, and lock the superadmin rows while revoking (R3-M11).
-9. **Passkey hardening.**
-   - Purpose-bound ceremonies (R3-M7) and a per-surface RP ID (R3-M8).
-   - Record the credential id on activity rows, so deleting a key ends exactly its sessions (R3-M6).
-   - Conditional mediation (`autocomplete="username webauthn"`).
-   - `PasskeyCredentialDeletedEvent` and a clone-detection Flow Builder trigger.
-   - One shared ceremony service, so the admin and storefront paths stop drifting.
-10. **Bounded HTTP layer.** Response-size caps on token, userinfo and JWKS responses. Keep `error`/`error_description` from 4xx responses for diagnostics. Use separate clients for the IdP (relaxable in dev) and for user content (`picture` URLs, always guarded).
-11. **Protocol defaults.** Enforce `S256` PKCE unless discovery lacks it. Check `typ: logout+jwt` when the IdP sets it. Detect Authelia explicitly (R3-M3).
-12. **Shopware 6.8 readiness.** Remove `@internal` and `BecomesInternal` dependencies (R3-L49). Migrate `sw-*` components to `mt-*` and `$tc` to `$t`. Domain exceptions via `HttpException`. Use `twig.runtime` for the Twig extensions.
-13. **Static analysis.** PHPStan level 8 with `phpstan/phpstan-shopware` and DAL generics (52 errors today). Psalm `findUnusedCode` with a DI-aware baseline, so the [Unused code](#unused-code) list can't grow back.
-14. **Configuration hygiene.** Move the `SW6OIDC_*` env vars into a `config/packages/sw6oidc.yaml` bundle configuration with a real `Configuration` tree. Switch `services.xml` (≈900 lines) to autowiring now that CI compiles the container.
-15. **Frontend architecture.** A small pre-auth bundle for `sw-login` and the inactivity modal, with everything else through `loadPlugins()`. That removes the polling hacks and the early-execution timing class (F-M14, R3-F2). Show the `PublicError` correlation reference in toasts instead of English server text.
-16. **Lean on core instead of copying it (revision 4).**
-    - Use `AccountService::loginById()` for customer login (R4-L5).
-    - Use one `Sw6OidcException` factory class extending `HttpException` (R3-L10).
-    - Don't redeclare core's Composer dependencies (R4-L6).
-    - Each copy of core logic is a drift risk at every 6.7.x patch and a migration task for 6.8.
-17. **Broader JOSE support (revision 4).** Support `ES256/384` and `PS256`, process `crit`, and validate claim types strictly (R4-L1 to R4-L3). Validate the IdP's advertised algorithms at discovery time, so an incompatible IdP fails at configuration, not at the first login.
-
----
+Items 1–8, 12, 13, 16 and 17 of the revision 4 roadmap are done or are covered by open findings above. What remains is optional and comes after release:
+- **9 Passkeys:** conditional mediation (`autocomplete="username webauthn"`), a `PasskeyCredentialDeletedEvent`, a clone-detection Flow Builder trigger, one shared ceremony service for admin and storefront.
+- **10 Bounded HTTP layer:** response-size caps on token, userinfo and JWKS responses; keep `error`/`error_description` from 4xx responses for diagnostics; separate HTTP clients for the IdP and for user content (`picture` URLs).
+- **11 Protocol defaults:** enforce `S256` PKCE unless discovery lacks it; check `typ: logout+jwt` when the IdP sets it.
+- **14 Configuration hygiene:** a `Configuration` tree for the `SW6OIDC_*` env vars; autowiring (rev-2 L13, deferred).
+- **15 Frontend architecture:** a small pre-auth bundle for `sw-login` and the inactivity modal (also closes the rev-2 partials F-M2 and F-M14); show the `PublicError` correlation reference in toasts.
 
 ## Suggested fix order
 
-0. **R4-L7 (revision 4): make the test gate real first.** Add a real-`AuthorizationServer` JSON test and an admin page smoke spec, and make `e2e` and `assets` blocking. Without this, none of the fixes below can be shown to work. No code changed between revision 3 and revision 4, so this is the cheapest way to restart progress.
-1. **R3-H1, R3-F1, R3-F5**: make step-up, passkey admin login and the provider page work. Add the controller and smoke tests, and make `e2e` and `assets` blocking. *Without this, SSO-only mode blocks every action that needs a `user-verified` token.*
-2. **R3-H2, R3-H3, R3-H4, R3-M4**: write-protect trust data. Decide who may edit provider trust fields.
-3. **R3-H6, R3-M5, R3-M6, R3-F3**: fresh-auth proof for storefront link and passkey registration. Deleting a key ends its sessions. Fix the wrong-key delete.
-4. **R3-H7, R3-M20, R3-M22**: one SSO-only invariant, and a client-repository decorator for user access keys.
-5. **R3-H5, R3-M18, R3-M19, R3-M17**: make IdP-initiated logout reliable. Bound the one-time-token table.
-6. **R3-M9 – R3-M16**: identity key with issuer and binary `sub`, legacy upgrade, role sync, first-login transaction, sales-channel binding, email transform, placeholder addresses.
-7. **R3-F2, R3-F4, R3-M1, R3-M2, R3-M3**: ACL registration, inactivity resume, JWKS amplifier, redirects, Keycloak logout.
-8. **R3-M7, R3-M8, R3-M21, R3-M23, R3-M24**: then the Low tables (including R4-L1 to R4-L6), unused code and the roadmap.
+1. **Test gate** (R4-L7, R3-L51): admin smoke spec, run the integration and E2E suites against the fix round, make `e2e`/`assets` blocking. Fix whatever they find first.
+2. **R6-L1, R6-L2**: the follow-ups in security-relevant paths.
+3. The rest in plan order Q2–Q9 (`Code-Review_implementation_plan.md`).

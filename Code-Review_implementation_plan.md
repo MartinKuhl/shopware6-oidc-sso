@@ -53,7 +53,7 @@ New building blocks you will meet in the code:
 | **Q4** | Identity and provisioning Lows | R3-L20–L22, L24 (rest), L25–L29 | M |
 | **Q5** | OIDC protocol, HTTP, JWT Lows | R3-L1–L4, L6, L7, L12, L44, L45, R4-L1–R4-L4 | M |
 | **Q6** | DAL and secrets | R3-L42, R3-L43 (rest), `sign_count` | M |
-| **Q7** | Frontend Lows and hygiene | R3-F7, F8, F10–F17, Hygiene 1 and 2 | L |
+| **Q7** | Frontend Lows and hygiene | R3-F7, F8, F10–F17, R6-L2, Hygiene 1 and 2 | L |
 | **Q8** | Shopware conventions, DI, dependencies | R3-L5, L10, L38, L46–L50, R4-L5, R4-L6 | M |
 | **Q9** | Unused code, comments, docs, static analysis, release | Unused-code table, R3-L11, R3-L52, PHPStan level 8, Psalm unused code, version `0.2.0` | M |
 | Q10 (optional) | Roadmap | Future improvements 9–11, 14, 15; F-M2, F-M14; L13 | — |
@@ -96,7 +96,7 @@ Things revision 5 introduced or deliberately left out.
 | F-6 | Deleting an admin passkey that logged in ends all of that admin's sessions, the current one too | Say so in the "My passkeys" delete confirmation and in the recovery grid. For customers: core keeps one context per customer and sales channel, so ending the key's sessions also ends the customer's own session in that channel. Document both in `TECHNICAL_DOCUMENTATION.md` (Pitfalls). |
 | F-7 | CLI import of an issuer change disconnects bindings silently (logged) | `sw6oidc:config:import --rebind-on-issuer-change`: pass the decision to the guard through a context state, so an operator can keep accounts connected. |
 | F-8 | MySQL-only SQL is unit-tested against SQLite doubles or not at all | See Q0, step 3. |
-| F-9 | `SsoOnlyInvariant::unboundActiveAdminIds()` ignores the issuer | Use the same issuer filter as `adminAccessPossible()`, so the confirmation count and the password-session revocation agree with the invariant. |
+| F-9 (= review **R6-L1**) | `SsoOnlyInvariant::unboundActiveAdminIds()` ignores the issuer | Use the same issuer filter as `adminAccessPossible()`, so the confirmation count and the password-session revocation agree with the invariant. |
 | F-10 | Sibling module and Authelia | Port `logout_style` to `MartinKuhl/magento2-oidc` (`Model/Service/RpInitiatedLogoutService.php`, same Keycloak bug). Check whether your Authelia version advertises a standard `end_session_endpoint`; if so, `standard` is the better long-term style for it. |
 
 ---
@@ -200,6 +200,7 @@ Start with Hygiene 1 as its own commit, so the other fixes land on the migrated 
 | R3-F15 | Meteor badge variants (`critical`, `positive`, …). |
 | R3-F16 | `snippetOr()` for every dynamic key (`atomicStore.*`, `infrastructureWarning.*`, `testMessage.*`). |
 | R3-F17 (rest) | `role="alert"`/`aria-live="polite"` on the admin error containers (the storefront dialog is done). |
+| R6-L2 (review revision 6) | `acl/index.js` `registerWhenReady()`: don't give up after 5 s. Wait for core's ready signal (the `defer-module-register.js` mechanism), or poll without a hard limit. Remove the unreachable duplicate `return;`. |
 
 Rebuild both bundles at the end (ground rule 3); the Q0 smoke spec covers every page.
 
