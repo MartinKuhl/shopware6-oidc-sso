@@ -70,6 +70,10 @@ class BackChannelLogoutController extends AbstractController
         // so someone else's garbage must not block this IdP's real logout
         // tokens (N-M7).
         $failureScope = Sw6OidcRateLimiter::SCOPE_BACKCHANNEL_LOGOUT . ':' . $provider->getId();
+        // Checked before verifying: a blocked caller is verified against the
+        // cached keys only and can't force JWKS fetches (R3-M1); a correctly
+        // signed token still passes.
+        $blocked = $this->rateLimiter->isBlocked($failureScope, $clientIp);
 
         try {
             $claims = $this->jwtVerifier->verifyLogoutToken(
@@ -79,9 +83,9 @@ class BackChannelLogoutController extends AbstractController
                 $provider->getClientId(),
                 $provider->getJwksCacheTtl(),
                 $provider->getHttpTimeout(),
+                allowRefetch: !$blocked,
             );
         } catch (InvalidJwtException $exception) {
-            $blocked = $this->rateLimiter->isBlocked($failureScope, $clientIp);
             $this->rateLimiter->recordFailure($failureScope, $clientIp);
             $this->logger->warning('sw6oidc: back-channel logout token rejected.', [
                 'providerId' => $provider->getId(),
@@ -91,18 +95,33 @@ class BackChannelLogoutController extends AbstractController
             return $this->respond($blocked ? Response::HTTP_TOO_MANY_REQUESTS : Response::HTTP_BAD_REQUEST, !$blocked);
         }
 
-        if ($this->isReplay($claims)) {
+        $replayKey = $this->replayKey($claims);
+
+        if (!$this->replayMarkers->addIfAbsent($replayKey, '1', $this->replayTtl($claims))) {
             $this->logger->info('sw6oidc: back-channel logout token replayed, ignoring.', ['providerId' => $provider->getId()]);
 
             return $this->respond(Response::HTTP_OK);
         }
 
-        $this->logoutHandler->logout(
-            $provider->getId(),
-            \is_string($claims['sub'] ?? null) ? $claims['sub'] : null,
-            \is_string($claims['sid'] ?? null) ? $claims['sid'] : null,
-            Sw6OidcSessionActivityDefinition::LOGOUT_REASON_BACKCHANNEL,
-        );
+        try {
+            $this->logoutHandler->logout(
+                $provider->getId(),
+                \is_string($claims['sub'] ?? null) ? $claims['sub'] : null,
+                \is_string($claims['sid'] ?? null) ? $claims['sid'] : null,
+                Sw6OidcSessionActivityDefinition::LOGOUT_REASON_BACKCHANNEL,
+            );
+        } catch (\Throwable $exception) {
+            // Not done: forget the token, so the IdP's retry is processed
+            // instead of being taken for a replay (R3-M19).
+            $this->replayMarkers->delete($replayKey);
+            $this->logger->error('sw6oidc: back-channel logout failed; the IdP may retry.', [
+                'providerId' => $provider->getId(),
+                'exceptionClass' => $exception::class,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            return $this->respond(Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
 
         return $this->respond(Response::HTTP_OK);
     }
@@ -144,17 +163,23 @@ class BackChannelLogoutController extends AbstractController
 
     /**
      * OIDC Back-Channel Logout §2.6 step 7: a jti seen before is a replay.
-     * An atomic set-if-absent in the shared one-time-token store, remembered
-     * until the token's own `exp` (plus clock leeway).
+     * An atomic set-if-absent in the shared one-time-token store (keyed by
+     * issuer and jti), remembered until the token's own `exp` plus clock
+     * leeway (replayTtl()).
      *
      * @param array<string, mixed> $claims verified; `jti` is guaranteed by the verifier
      */
-    private function isReplay(array $claims): bool
+    private function replayKey(array $claims): string
     {
-        $key = self::JTI_PREFIX . hash('sha256', ($claims['iss'] ?? '') . "\0" . $claims['jti']);
-        $ttl = max(60, min(self::MAX_JTI_TTL_SECONDS, (int) ($claims['exp'] ?? 0) - time() + JwtVerifier::LEEWAY_SECONDS));
+        return self::JTI_PREFIX . hash('sha256', ($claims['iss'] ?? '') . "\0" . $claims['jti']);
+    }
 
-        return !$this->replayMarkers->addIfAbsent($key, '1', $ttl);
+    /**
+     * @param array<string, mixed> $claims
+     */
+    private function replayTtl(array $claims): int
+    {
+        return max(60, min(self::MAX_JTI_TTL_SECONDS, (int) ($claims['exp'] ?? 0) - time() + JwtVerifier::LEEWAY_SECONDS));
     }
 
     /**

@@ -90,6 +90,77 @@ final class JwtVerifierLogoutTokenTest extends TestCase
         $this->verifier->verifyLogoutToken((new JwtTestSigner('other'))->sign(self::claims()), 'https://idp.example/jwks', self::ISSUER, self::AUDIENCE, 60, 5);
     }
 
+    /**
+     * R3-M1: anonymous logout tokens with a fresh random `kid` each must not
+     * force one JWKS fetch each.
+     */
+    public function testRandomKidsCostAtMostOneRefetchPerEndpoint(): void
+    {
+        $signer = $this->signer;
+        $client = new MockHttpClient(static fn (): MockResponse => new MockResponse($signer->jwksJson()));
+        $verifier = new JwtVerifier($client, new ArrayAdapter(), new NullLogger());
+
+        for ($i = 0; $i < 5; ++$i) {
+            try {
+                $verifier->verifyLogoutToken((new JwtTestSigner('random-' . $i))->sign(self::claims()), 'https://idp.example/jwks', self::ISSUER, self::AUDIENCE, 60, 5);
+                self::fail('A token signed by an unknown key must be rejected.');
+            } catch (InvalidJwtException) {
+            }
+        }
+
+        // The initial fetch plus one rotation refetch for the whole flood.
+        self::assertSame(2, $client->getRequestsCount());
+    }
+
+    public function testOversizedKidIsRejectedBeforeAnyFetch(): void
+    {
+        $client = new MockHttpClient(static fn (): MockResponse => new MockResponse('{}'));
+        $verifier = new JwtVerifier($client, new ArrayAdapter(), new NullLogger());
+
+        try {
+            $verifier->verifyLogoutToken((new JwtTestSigner(str_repeat('k', 300)))->sign(self::claims()), 'https://idp.example/jwks', self::ISSUER, self::AUDIENCE, 60, 5);
+            self::fail('An oversized kid must be rejected.');
+        } catch (InvalidJwtException $exception) {
+            self::assertStringContainsString('kid', $exception->getMessage());
+        }
+
+        self::assertSame(0, $client->getRequestsCount());
+    }
+
+    public function testRateLimitedCallersOnlyUseCachedKeys(): void
+    {
+        $signer = $this->signer;
+        $client = new MockHttpClient(static fn (): MockResponse => new MockResponse($signer->jwksJson()));
+        $verifier = new JwtVerifier($client, new ArrayAdapter(), new NullLogger());
+        $verifier->verifyLogoutToken($this->signer->sign(self::claims()), 'https://idp.example/jwks', self::ISSUER, self::AUDIENCE, 60, 5);
+
+        // A correctly signed token still passes from the cache ...
+        $verifier->verifyLogoutToken($this->signer->sign(self::claims()), 'https://idp.example/jwks', self::ISSUER, self::AUDIENCE, 60, 5, allowRefetch: false);
+
+        // ... an unknown kid never triggers a fetch.
+        try {
+            $verifier->verifyLogoutToken((new JwtTestSigner('rotated'))->sign(self::claims()), 'https://idp.example/jwks', self::ISSUER, self::AUDIENCE, 60, 5, allowRefetch: false);
+            self::fail('An unknown key must be rejected.');
+        } catch (InvalidJwtException) {
+        }
+
+        self::assertSame(1, $client->getRequestsCount());
+    }
+
+    public function testAFailingLogoutFetchDoesNotPauseLogins(): void
+    {
+        $cache = new ArrayAdapter();
+        $failing = new JwtVerifier(new MockHttpClient(static fn (): MockResponse => new MockResponse('', ['http_code' => 503])), $cache, new NullLogger());
+
+        try {
+            $failing->verifyLogoutToken($this->signer->sign(self::claims()), 'https://idp.example/jwks', self::ISSUER, self::AUDIENCE, 60, 5);
+        } catch (InvalidJwtException) {
+        }
+
+        self::assertFalse($cache->getItem('sw6oidc_jwks_fail_login_' . hash('sha256', 'https://idp.example/jwks'))->isHit());
+        self::assertTrue($cache->getItem('sw6oidc_jwks_fail_logout_' . hash('sha256', 'https://idp.example/jwks'))->isHit());
+    }
+
     public function testDecodeUnverifiedReadsWithoutChecking(): void
     {
         $token = (new JwtTestSigner('other'))->sign(self::claims(['iss' => 'https://anything.example']));

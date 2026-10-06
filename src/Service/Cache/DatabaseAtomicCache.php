@@ -19,6 +19,8 @@ use Shopware\Core\Defaults;
 class DatabaseAtomicCache implements AtomicCacheInterface
 {
     private const PURPOSE = 'sw6oidc_one_time_token.value';
+    private const PRUNE_BATCH_SIZE = 5000;
+    private const PRUNE_TIME_BUDGET_SECONDS = 30;
 
     public function __construct(
         private readonly Connection $connection,
@@ -78,15 +80,31 @@ class DatabaseAtomicCache implements AtomicCacheInterface
         return true;
     }
 
-    /**
-     * Deletes expired tokens; returns how many.
-     */
-    public function prune(): int
+    public function delete(string $key): void
     {
-        return (int) $this->connection->executeStatement(
-            'DELETE FROM `sw6oidc_one_time_token` WHERE `expires_at` <= :now LIMIT 10000',
-            ['now' => $this->now()],
-        );
+        $this->connection->executeStatement('DELETE FROM `sw6oidc_one_time_token` WHERE `key_hash` = :key', ['key' => $this->hash($key)]);
+    }
+
+    /**
+     * Deletes expired tokens in batches until none are left or the time
+     * budget is spent, so a backlog shrinks instead of growing (R3-M17);
+     * returns how many.
+     */
+    public function prune(int $maxSeconds = self::PRUNE_TIME_BUDGET_SECONDS): int
+    {
+        $deadline = microtime(true) + (float) $maxSeconds;
+        $now = $this->now();
+        $total = 0;
+
+        do {
+            $deleted = (int) $this->connection->executeStatement(
+                'DELETE FROM `sw6oidc_one_time_token` WHERE `expires_at` <= :now LIMIT ' . self::PRUNE_BATCH_SIZE,
+                ['now' => $now],
+            );
+            $total += $deleted;
+        } while ($deleted === self::PRUNE_BATCH_SIZE && microtime(true) < $deadline);
+
+        return $total;
     }
 
     private function hash(string $key): string

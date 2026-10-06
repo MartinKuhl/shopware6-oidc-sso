@@ -51,7 +51,7 @@ final class JwtVerifierCircuitBreakerTest extends TestCase
         } catch (InvalidJwtException) {
         }
 
-        self::assertTrue($cache->getItem('sw6oidc_jwks_fail_' . hash('sha256', self::JWKS))->isHit());
+        self::assertTrue($cache->getItem('sw6oidc_jwks_fail_login_' . hash('sha256', self::JWKS))->isHit());
         self::assertFalse($cache->getItem('sw6oidc_jwks_' . hash('sha256', self::JWKS))->isHit());
     }
 

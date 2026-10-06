@@ -41,6 +41,8 @@ final class BackChannelLogoutControllerTest extends TestCase
 
     private InMemoryAtomicCache $replayMarkers;
 
+    private bool $failNextDestroy = false;
+
     protected function setUp(): void
     {
         $this->signer = new JwtTestSigner();
@@ -107,6 +109,25 @@ final class BackChannelLogoutControllerTest extends TestCase
         self::assertSame(200, $controller->logout($this->request($token))->getStatusCode());
 
         self::assertSame(['ctx-1'], array_map(static fn (Sw6OidcSession $s): string => $s->sessionKey, $this->destroyed));
+    }
+
+    /**
+     * R3-M19: a failure halfway must leave the session targetable and the
+     * token retryable, not "already seen".
+     */
+    public function testAFailedLogoutCanBeRetried(): void
+    {
+        $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'customer', 'c1000000000000000000000000000001', 'ctx-1', '5c000000000000000000000000000001');
+        $token = $this->token(['jti' => 'retried-jti']);
+        $this->failNextDestroy = true;
+
+        self::assertSame(500, $this->post($token)->getStatusCode());
+        self::assertCount(1, $this->registry->resolveBySid('a1000000000000000000000000000001', 'sid-1'));
+        self::assertSame([], $this->destroyed);
+
+        self::assertSame(200, $this->post($token)->getStatusCode());
+        self::assertCount(1, $this->destroyed);
+        self::assertSame([], $this->registry->resolveBySid('a1000000000000000000000000000001', 'sid-1'));
     }
 
     public function testMissingTokenIs400(): void
@@ -216,6 +237,12 @@ final class BackChannelLogoutControllerTest extends TestCase
 
         $destruction = $this->createStub(Sw6OidcSessionDestructionService::class);
         $destruction->method('destroy')->willReturnCallback(function (Sw6OidcSession $session): void {
+            if ($this->failNextDestroy) {
+                $this->failNextDestroy = false;
+
+                throw new \RuntimeException('Lock wait timeout exceeded');
+            }
+
             $this->destroyed[] = $session;
         });
 

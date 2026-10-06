@@ -65,7 +65,7 @@ final class RedisAtomicCacheTest extends TestCase
     public function testUsesRedisWhenConnected(): void
     {
         $redis = $this->createMock(\Redis::class);
-        $redis->expects(self::once())->method('setex')->with(self::stringStartsWith('sw6oidc:'), 60, 'v');
+        $redis->expects(self::once())->method('setex')->with(self::stringStartsWith('sw6oidc:'), 60, 'v')->willReturn(true);
         $redis->expects(self::once())->method('eval')->willReturn('v');
         $fallback = new InMemoryAtomicCache();
 
@@ -100,6 +100,60 @@ final class RedisAtomicCacheTest extends TestCase
         $cache = new RedisAtomicCache($this->factoryReturning($redis), $fallback, new NullLogger());
 
         self::assertSame('v', $cache->getAndDelete('k'));
+    }
+
+    /**
+     * R3-M18: phpredis returns false for error replies (READONLY after a
+     * failover, OOM). That must not read as "already seen" — a valid
+     * back-channel logout would be dropped as a replay.
+     */
+    public function testAnErrorReplyOnSetNxIsNotAReplay(): void
+    {
+        $redis = $this->createMock(\Redis::class);
+        $redis->method('set')->willReturn(false);
+        $redis->method('getLastError')->willReturn("READONLY You can't write against a read only replica.");
+        $redis->expects(self::once())->method('clearLastError');
+        $fallback = new InMemoryAtomicCache();
+
+        $cache = new RedisAtomicCache($this->factoryReturning($redis), $fallback, new NullLogger());
+
+        self::assertTrue($cache->addIfAbsent('jti', '1', 60));
+        self::assertSame(['jti' => '1'], $fallback->items);
+    }
+
+    public function testAnErrorReplyOnSaveFallsBack(): void
+    {
+        $redis = $this->createMock(\Redis::class);
+        $redis->method('setex')->willReturn(false);
+        $redis->method('getLastError')->willReturn('OOM command not allowed');
+        $fallback = new InMemoryAtomicCache();
+
+        (new RedisAtomicCache($this->factoryReturning($redis), $fallback, new NullLogger()))->save('k', 'v', 60);
+
+        self::assertSame(['k' => 'v'], $fallback->items);
+    }
+
+    public function testAnErrorReplyOnReadFallsBack(): void
+    {
+        $redis = $this->createMock(\Redis::class);
+        $redis->method('eval')->willReturn(false);
+        $redis->method('getLastError')->willReturn('MISCONF');
+        $fallback = new InMemoryAtomicCache();
+        $fallback->save('k', 'v', 60);
+
+        self::assertSame('v', (new RedisAtomicCache($this->factoryReturning($redis), $fallback, new NullLogger()))->getAndDelete('k'));
+    }
+
+    public function testDeleteRemovesFromBothStores(): void
+    {
+        $redis = $this->createMock(\Redis::class);
+        $redis->expects(self::once())->method('del')->with(self::stringStartsWith('sw6oidc:'));
+        $fallback = new InMemoryAtomicCache();
+        $fallback->save('k', 'v', 60);
+
+        (new RedisAtomicCache($this->factoryReturning($redis), $fallback, new NullLogger()))->delete('k');
+
+        self::assertSame([], $fallback->items);
     }
 
     public function testConnectsOnlyOnce(): void

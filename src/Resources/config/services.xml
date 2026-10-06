@@ -346,7 +346,7 @@
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
-            <argument>%shopware.api.refresh_token_ttl%</argument>
+            <argument>%shopware.api.store.context_lifetime%</argument>
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService">
@@ -404,6 +404,18 @@
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument>%env(int:SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS)%</argument>
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\DatabaseAtomicCache" />
+            <tag name="messenger.message_handler" />
+        </service>
+
+        <!-- R3-M17: expired one-time tokens are pruned hourly, in batches. -->
+        <service id="MartinKuhl\Sw6Oidc\ScheduledTask\OneTimeTokenCleanupTask">
+            <tag name="shopware.scheduled.task" />
+        </service>
+
+        <service id="MartinKuhl\Sw6Oidc\ScheduledTask\OneTimeTokenCleanupTaskHandler">
+            <argument type="service" id="scheduled_task.repository" />
+            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\DatabaseAtomicCache" />
             <tag name="messenger.message_handler" />
         </service>

@@ -26,4 +26,10 @@ interface AtomicCacheInterface
      * Returns whether this call stored it — false means "already seen".
      */
     public function addIfAbsent(string $key, string $value, int $ttlSeconds): bool;
+
+    /**
+     * Removes the key if present (e.g. a replay marker whose work failed, so
+     * the sender's retry is processed, R3-M19).
+     */
+    public function delete(string $key): void;
 }

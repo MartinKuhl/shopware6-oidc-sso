@@ -15,9 +15,9 @@ use Psr\Log\NullLogger;
  */
 final class SqliteSessionRegistry
 {
-    public static function create(?Connection $connection = null, string $adminSessionLifetime = 'P1W'): Sw6OidcSessionRegistry
+    public static function create(?Connection $connection = null, string $customerContextLifetime = 'P1D'): Sw6OidcSessionRegistry
     {
-        return new Sw6OidcSessionRegistry($connection ?? self::connection(), new Sw6OidcEncryptor('unit-test-app-secret'), new NullLogger(), $adminSessionLifetime);
+        return new Sw6OidcSessionRegistry($connection ?? self::connection(), new Sw6OidcEncryptor('unit-test-app-secret'), new NullLogger(), $customerContextLifetime);
     }
 
     public static function connection(): Connection
@@ -41,6 +41,9 @@ final class SqliteSessionRegistry
                 `expires_at` DATETIME NOT NULL
             )
         SQL);
+        // Core's session state the registry derives liveness from (R3-H5).
+        $connection->executeStatement('CREATE TABLE `refresh_token` (`user_id` BLOB NOT NULL, `expires_at` DATETIME NOT NULL)');
+        $connection->executeStatement('CREATE TABLE `sales_channel_api_context` (`token` VARCHAR(255) NOT NULL, `customer_id` BLOB NULL, `sales_channel_id` BLOB NULL, `updated_at` DATETIME NOT NULL)');
 
         return $connection;
     }

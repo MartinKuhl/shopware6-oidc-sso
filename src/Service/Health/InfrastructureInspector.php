@@ -15,6 +15,10 @@ use MartinKuhl\Sw6Oidc\Service\Cache\RedisConnectionFactory;
  *    in the last 15 minutes and Redis isn't in use. One-time tokens stay
  *    correct (they live in the database), but the rate limiter and the JWKS
  *    cache are per node unless Shopware's cache pools are shared.
+ *  - `redis_may_evict`: the Redis used for one-time tokens may evict keys
+ *    (`maxmemory-policy` other than `noeviction`): evicted flow state fails
+ *    logins, an evicted replay marker lets a logout token be replayed
+ *    (R3-M18).
  *
  * Warnings never make the health check fail: SSO keeps working.
  */
@@ -22,6 +26,7 @@ class InfrastructureInspector
 {
     public const WARNING_REDIS_DSN_UNUSABLE = 'redis_dsn_unusable';
     public const WARNING_MULTI_NODE_WITHOUT_REDIS = 'multi_node_without_redis';
+    public const WARNING_REDIS_MAY_EVICT = 'redis_may_evict';
 
     public function __construct(
         private readonly RedisAtomicCache $atomicCache,
@@ -45,6 +50,12 @@ class InfrastructureInspector
 
         if ($nodes > 1 && $backend !== RedisAtomicCache::BACKEND_REDIS) {
             $warnings[] = self::WARNING_MULTI_NODE_WITHOUT_REDIS;
+        }
+
+        $evictionPolicy = $backend === RedisAtomicCache::BACKEND_REDIS ? $this->atomicCache->evictionPolicy() : null;
+
+        if ($evictionPolicy !== null && $evictionPolicy !== 'noeviction') {
+            $warnings[] = self::WARNING_REDIS_MAY_EVICT;
         }
 
         return ['atomicStore' => $backend, 'nodesSeen' => $nodes, 'warnings' => $warnings];

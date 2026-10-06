@@ -108,6 +108,55 @@ final class Sw6OidcSessionRegistryTest extends TestCase
         self::assertSame(1, $this->registry->prune());
     }
 
+    /**
+     * R3-H5: an admin who keeps refreshing is still logged in on day 8; the
+     * entry must stay targetable for back-channel logout as long as core has
+     * a refresh token for that admin.
+     */
+    public function testAdminEntryLivesAsLongAsARefreshToken(): void
+    {
+        $adminId = Uuid::randomHex();
+        $session = $this->registry->register($this->providerId, 'admin-sub', 'sid-1', 'admin', $adminId, 'jti');
+        $this->age('8 days');
+        $this->connection->insert('refresh_token', ['user_id' => Uuid::fromHexToBytes($adminId), 'expires_at' => $this->at('+6 days')]);
+
+        self::assertSame(0, $this->registry->prune());
+        self::assertSame([$session->id], array_map(static fn (Sw6OidcSession $s): string => $s->id, $this->registry->resolveBySid($this->providerId, 'sid-1')));
+
+        $this->connection->executeStatement('UPDATE `refresh_token` SET `expires_at` = :past', ['past' => $this->at('-1 minute')]);
+
+        self::assertSame(1, $this->registry->prune());
+        self::assertSame([], $this->registry->resolveBySid($this->providerId, 'sid-1'));
+    }
+
+    public function testCustomerEntryLivesAsLongAsItsContextIsUsed(): void
+    {
+        $salesChannelId = Uuid::randomHex();
+        $this->registry->register($this->providerId, 'sub', null, 'customer', $this->customerId, 'ctx', $salesChannelId);
+        $this->age('40 days');
+        $this->connection->insert('sales_channel_api_context', [
+            'token' => 'ctx',
+            'customer_id' => Uuid::fromHexToBytes($this->customerId),
+            'sales_channel_id' => Uuid::fromHexToBytes($salesChannelId),
+            'updated_at' => $this->at('-1 hour'),
+        ]);
+
+        self::assertSame(0, $this->registry->prune());
+        self::assertCount(1, $this->registry->resolve($this->providerId, 'sub'));
+
+        $this->connection->executeStatement('UPDATE `sales_channel_api_context` SET `updated_at` = :stale', ['stale' => $this->at('-2 days')]);
+
+        self::assertSame(1, $this->registry->prune());
+    }
+
+    public function testFreshEntriesAreNeverPrunedForLiveness(): void
+    {
+        // Admin OIDC: registered at the callback, the refresh token only exists after the nonce exchange.
+        $this->registry->register($this->providerId, 'sub', null, 'admin', Uuid::randomHex(), 'pending:x', ttlSeconds: 600);
+
+        self::assertSame(0, $this->registry->prune());
+    }
+
     public function testPendingAdminEntryIsActivatedWithTheJti(): void
     {
         $adminId = Uuid::randomHex();
@@ -126,5 +175,15 @@ final class Sw6OidcSessionRegistryTest extends TestCase
         self::assertNull($this->registry->get('0123456789abcdef0123456789abcdef'));
         self::assertSame([], $this->registry->resolve($this->providerId, 'nobody'));
         self::assertSame([], $this->registry->resolveByUser('admin', Uuid::randomHex()));
+    }
+
+    private function age(string $age): void
+    {
+        $this->connection->executeStatement('UPDATE `sw6oidc_session` SET `created_at` = :createdAt', ['createdAt' => $this->at('-' . $age)]);
+    }
+
+    private function at(string $modifier): string
+    {
+        return (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify($modifier)->format('Y-m-d H:i:s.v');
     }
 }

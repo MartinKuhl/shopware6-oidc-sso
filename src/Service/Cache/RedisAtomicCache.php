@@ -19,6 +19,13 @@ use Psr\Log\LoggerInterface;
  *
  * A value written to the database because Redis failed on save() is still
  * found by getAndDelete(), which consults the database on a Redis miss.
+ *
+ * phpredis answers server error replies (OOM under `noeviction`, READONLY
+ * after a failover, MISCONF) with `false` instead of an exception. `false`
+ * from SET NX means "already present" only when Redis reported no error;
+ * anything else is an error and falls back to the database (R3-M18) — a
+ * back-channel logout must never be mistaken for a replay. This Redis must
+ * not evict keys (`maxmemory-policy noeviction`).
  */
 class RedisAtomicCache implements AtomicCacheInterface
 {
@@ -63,7 +70,9 @@ class RedisAtomicCache implements AtomicCacheInterface
         }
 
         try {
-            $redis->setex($this->prefixedKey($key), max(1, $ttlSeconds), $value);
+            if ($redis->setex($this->prefixedKey($key), max(1, $ttlSeconds), $value) !== true) {
+                throw new \RuntimeException($this->takeLastError($redis) ?? 'SETEX failed');
+            }
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: Redis save failed; using the database store for this token.', [
                 'exceptionClass' => $exception::class,
@@ -82,6 +91,11 @@ class RedisAtomicCache implements AtomicCacheInterface
 
         try {
             $value = $redis->eval(self::GET_AND_DELETE_LUA, [$this->prefixedKey($key)], 1);
+
+            // A miss is `false` too; only a reported error is one.
+            if ($value === false && ($error = $this->takeLastError($redis)) !== null) {
+                throw new \RuntimeException($error);
+            }
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: Redis getAndDelete failed; trying the database store.', [
                 'exceptionClass' => $exception::class,
@@ -108,7 +122,20 @@ class RedisAtomicCache implements AtomicCacheInterface
         }
 
         try {
-            return $redis->set($this->prefixedKey($key), $value, ['nx', 'ex' => max(1, $ttlSeconds)]) === true;
+            $result = $redis->set($this->prefixedKey($key), $value, ['nx', 'ex' => max(1, $ttlSeconds)]);
+
+            if ($result === true) {
+                return true;
+            }
+
+            $error = $this->takeLastError($redis);
+
+            if ($error === null) {
+                // NX refused: the key exists.
+                return false;
+            }
+
+            throw new \RuntimeException($error);
         } catch (\Throwable $exception) {
             $this->logger->warning('sw6oidc: Redis addIfAbsent failed; using the database store.', [
                 'exceptionClass' => $exception::class,
@@ -116,6 +143,63 @@ class RedisAtomicCache implements AtomicCacheInterface
 
             return $this->fallback->addIfAbsent($key, $value, $ttlSeconds);
         }
+    }
+
+    /**
+     * The server's `maxmemory-policy`, or null when Redis isn't in use or
+     * doesn't allow CONFIG GET (managed services often don't).
+     */
+    public function evictionPolicy(): ?string
+    {
+        $redis = $this->redis();
+
+        if (!$redis instanceof \Redis) {
+            return null;
+        }
+
+        try {
+            // phpredis returns ['maxmemory-policy' => value] (its stubs say string).
+            /** @var mixed $config */
+            $config = $redis->config('GET', 'maxmemory-policy');
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $this->takeLastError($redis);
+
+        return \is_array($config) && \is_string($config['maxmemory-policy'] ?? null) ? $config['maxmemory-policy'] : null;
+    }
+
+    public function delete(string $key): void
+    {
+        $redis = $this->redis();
+
+        if ($redis instanceof \Redis) {
+            try {
+                $redis->del($this->prefixedKey($key));
+            } catch (\Throwable $exception) {
+                $this->logger->warning('sw6oidc: Redis delete failed.', ['exceptionClass' => $exception::class]);
+            }
+        }
+
+        // The value may have been stored there during a Redis error.
+        $this->fallback->delete($key);
+    }
+
+    /**
+     * The error of the last command, cleared so the next one starts clean.
+     */
+    private function takeLastError(\Redis $redis): ?string
+    {
+        $error = $redis->getLastError();
+
+        if ($error === null) {
+            return null;
+        }
+
+        $redis->clearLastError();
+
+        return $error;
     }
 
     private function redis(): ?\Redis

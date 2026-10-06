@@ -32,6 +32,9 @@ class JwtVerifier
 
     /** Key-rotation refetch cooldown namespaces: logins vs. anonymous back-channel logout. */
     private const SCOPE_LOGIN = 'login';
+
+    /** Longer `kid` headers are refused before any lookup (R3-M1). */
+    private const MAX_KID_LENGTH = 256;
     private const SCOPE_LOGOUT = 'logout';
 
     /** OIDC Back-Channel Logout 1.0 §2.4: the `events` member identifying a logout token. */
@@ -88,8 +91,10 @@ class JwtVerifier
         string $audience,
         int $jwksCacheTtlSeconds,
         int $httpTimeoutSeconds,
+        /** false while the caller is rate-limited: cached keys only, never a JWKS fetch (R3-M1) */
+        bool $allowRefetch = true,
     ): array {
-        $payload = $this->verifySignedPayload($jwt, $jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, self::SCOPE_LOGOUT);
+        $payload = $this->verifySignedPayload($jwt, $jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, self::SCOPE_LOGOUT, $allowRefetch);
 
         $this->assertStandardClaims($payload, $issuer, $audience);
 
@@ -142,12 +147,13 @@ class JwtVerifier
      * token's) and — when the token names one — `kid` are tried.
      *
      * A forced JWKS refetch happens only when the token's `kid` is not in
-     * the cached set (key rotation), at most once per endpoint, `kid` and
-     * scope per cooldown window. A token signed with a *known* key that
-     * doesn't verify is simply forged — it never costs a refetch, so an
-     * attacker can't use up the rotation refetch (N-H2). Back-channel
-     * logout (anonymous) has its own cooldown namespace and never refetches
-     * for tokens without a `kid`.
+     * the cached set (key rotation), at most once per cooldown window: per
+     * endpoint and `kid` for logins, per endpoint only for back-channel
+     * logout, whose tokens anyone can send with a fresh random `kid` (R3-M1).
+     * A token signed with a *known* key that doesn't verify is simply forged
+     * — it never costs a refetch, so an attacker can't use up the rotation
+     * refetch (N-H2). Logout never refetches for tokens without a `kid`, and
+     * a failing logout fetch never pauses logins (separate breakers).
      *
      * @param string $refreshScope self::SCOPE_LOGIN | self::SCOPE_LOGOUT
      *
@@ -155,18 +161,28 @@ class JwtVerifier
      *
      * @throws InvalidJwtException
      */
-    private function verifySignedPayload(string $jwt, string $jwksEndpoint, int $jwksCacheTtlSeconds, int $httpTimeoutSeconds, string $refreshScope): array
-    {
+    private function verifySignedPayload(
+        string $jwt,
+        string $jwksEndpoint,
+        int $jwksCacheTtlSeconds,
+        int $httpTimeoutSeconds,
+        string $refreshScope,
+        bool $allowRefetch = true,
+    ): array {
         $jws = $this->deserialize($jwt);
         $alg = $this->assertSupportedAlgorithm($jws);
         $signature = $jws->getSignature(0);
         $kid = $signature->hasProtectedHeaderParameter('kid') ? $signature->getProtectedHeaderParameter('kid') : null;
         $kid = \is_string($kid) && $kid !== '' ? $kid : null;
 
+        if ($kid !== null && \strlen($kid) > self::MAX_KID_LENGTH) {
+            throw new InvalidJwtException('JWT "kid" header is too long.');
+        }
+
         $jwsVerifier = new JWSVerifier(new AlgorithmManager([new RS256(), new RS384(), new RS512()]));
 
-        $candidates = $this->candidateKeys($this->getJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, false), $alg, $kid);
-        $mayRefetch = $kid !== null ? $candidates->count() === 0 : $refreshScope === self::SCOPE_LOGIN;
+        $candidates = $this->candidateKeys($this->getJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, false, $refreshScope), $alg, $kid);
+        $mayRefetch = $allowRefetch && ($kid !== null ? $candidates->count() === 0 : $refreshScope === self::SCOPE_LOGIN);
 
         if (($candidates->count() === 0 || !$jwsVerifier->verifyWithKeySet($jws, $candidates, 0)) && $mayRefetch) {
             $this->logger->info('sw6oidc: JWT key not in the cached JWKS; refetching once (key rotation).', ['kid' => $kid]);
@@ -218,14 +234,16 @@ class JwtVerifier
     }
 
     /**
-     * @throws InvalidJwtException when the cooldown for this endpoint/kid/scope is active
+     * @throws InvalidJwtException when the cooldown for this endpoint (and, for logins, kid) is active
      */
     private function refetchJwks(string $jwksEndpoint, int $ttlSeconds, int $httpTimeoutSeconds, string $scope, ?string $kid): JWKSet
     {
+        // Logout tokens are anonymous: an attacker-chosen kid must not open a new window.
+        $cooldownKid = $scope === self::SCOPE_LOGIN ? ($kid ?? '') : '';
         $cooldownItem = $this->cache->getItem(sprintf(
             'sw6oidc_jwks_refreshed_%s_%s',
             $scope,
-            hash('sha256', $jwksEndpoint . "\0" . ($kid ?? '')),
+            hash('sha256', $jwksEndpoint . "\0" . $cooldownKid),
         ));
 
         if ($cooldownItem->isHit()) {
@@ -236,7 +254,7 @@ class JwtVerifier
         $cooldownItem->expiresAfter(self::JWKS_FAILURE_TTL_SECONDS);
         $this->cache->save($cooldownItem);
 
-        return $this->getJwks($jwksEndpoint, $ttlSeconds, $httpTimeoutSeconds, true);
+        return $this->getJwks($jwksEndpoint, $ttlSeconds, $httpTimeoutSeconds, true, $scope);
     }
 
     private function deserialize(string $jwt): \Jose\Component\Signature\JWS
@@ -323,7 +341,7 @@ class JwtVerifier
      *
      * @throws InvalidJwtException
      */
-    private function getJwks(string $jwksEndpoint, int $ttlSeconds, int $httpTimeoutSeconds, bool $forceRefresh): JWKSet
+    private function getJwks(string $jwksEndpoint, int $ttlSeconds, int $httpTimeoutSeconds, bool $forceRefresh, string $scope = self::SCOPE_LOGIN): JWKSet
     {
         $endpointHash = hash('sha256', $jwksEndpoint);
         $item = $this->cache->getItem('sw6oidc_jwks_' . $endpointHash);
@@ -337,7 +355,8 @@ class JwtVerifier
             }
         }
 
-        $failKey = 'sw6oidc_jwks_fail_' . $endpointHash;
+        // Per scope: a logout fetch an attacker made fail must not pause logins (R3-M1).
+        $failKey = 'sw6oidc_jwks_fail_' . $scope . '_' . $endpointHash;
 
         if ($this->cache->getItem($failKey)->isHit()) {
             throw new InvalidJwtException('The provider JWKS endpoint is temporarily unavailable (recent fetch failed); try again shortly.');

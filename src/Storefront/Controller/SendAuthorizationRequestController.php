@@ -84,7 +84,11 @@ class SendAuthorizationRequestController extends StorefrontController
         $redirectUri = $this->generateUrl('frontend.sw6oidc.callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
         $authorizeUrl = $this->requestBuilder->build($provider, LoginType::Customer->value, $relayState, $redirectUri);
 
-        return new RedirectResponse($authorizeUrl);
+        $response = new RedirectResponse($authorizeUrl);
+        // Every flow start stores a one-time token: keep crawlers away (R3-M17).
+        $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
+
+        return $response;
     }
 
     /**

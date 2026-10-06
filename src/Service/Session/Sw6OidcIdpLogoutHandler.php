@@ -59,18 +59,18 @@ class Sw6OidcIdpLogoutHandler
 
         $destroyedAdmins = [];
 
+        // Destroy first, then forget: if destroying fails, the entry stays
+        // and the IdP's retry can still find the session (R3-M19).
         foreach ($sessions as $session) {
-            $this->registry->remove($session);
-
             if ($session->userType === Sw6OidcSession::USER_TYPE_ADMIN) {
                 // Admin destruction is per user anyway; once is enough.
                 if (isset($destroyedAdmins[$session->userId])) {
                     continue;
                 }
 
+                $this->destructionService->destroy($session);
                 $destroyedAdmins[$session->userId] = true;
                 $this->activityRecorder->recordLogoutOfAllSessions($session->userType, $session->userId, $reason);
-                $this->destructionService->destroy($session);
 
                 // Every session of this admin is dead now, not only the
                 // sid-matched ones: drop all their registry entries so later
@@ -80,8 +80,9 @@ class Sw6OidcIdpLogoutHandler
                 continue;
             }
 
-            $this->activityRecorder->recordLogout($session->userType, $session->userId, $reason, $session->sessionKey, $session->id);
             $this->destructionService->destroy($session);
+            $this->activityRecorder->recordLogout($session->userType, $session->userId, $reason, $session->sessionKey, $session->id);
+            $this->registry->remove($session);
         }
 
         $this->logger->info('sw6oidc: IdP-initiated logout processed.', [
