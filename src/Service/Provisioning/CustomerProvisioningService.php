@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
@@ -18,6 +19,7 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
@@ -183,18 +185,28 @@ class CustomerProvisioningService
         $criteria = new Criteria();
         $criteria->addFilter(new EqualsFilter('email', $email));
         $criteria->addFilter(new EqualsFilter('guest', false));
+        // Newest first, like core's AccountService (R3-L26).
+        $criteria->addSorting(new FieldSorting('createdAt', FieldSorting::DESCENDING));
 
-        $customers = $this->customerRepository->search($criteria, $salesChannelContext->getContext())->getEntities();
+        $inactiveMatch = null;
 
-        foreach ($customers as $customer) {
+        foreach ($this->customerRepository->search($criteria, $salesChannelContext->getContext())->getEntities() as $customer) {
             \assert($customer instanceof CustomerEntity);
 
-            if (CustomerSalesChannelBinding::allows($customer, $salesChannelContext->getSalesChannelId())) {
+            if (!CustomerSalesChannelBinding::allows($customer, $salesChannelContext->getSalesChannelId())) {
+                continue;
+            }
+
+            if ($customer->getActive()) {
                 return $customer;
             }
+
+            $inactiveMatch ??= $customer;
         }
 
-        return null;
+        // An inactive account is still returned, never skipped: otherwise SSO
+        // would create a fresh account for a customer the shop deactivated.
+        return $inactiveMatch;
     }
 
     private function create(Sw6OidcProviderEntity $provider, MappedProfile $profile, SalesChannelContext $salesChannelContext, ?string $boundSalesChannelId): string
@@ -382,14 +394,90 @@ class CustomerProvisioningService
                 }
             }
 
+            $addressPayloads = $this->withoutUnchangedAddressFields($addressPayloads);
+
             if ($addressPayloads !== []) {
                 $payload['addresses'] = $addressPayloads;
             }
         }
 
+        // Most logins change nothing: no write, so no *.written events,
+        // indexers or subscribers run for it (R3-L29).
+        $payload = $this->withoutUnchanged($payload, $existing->getVars());
+
         if (\count($payload) > 1) {
             $this->customerRepository->update([$payload], $context);
         }
+    }
+
+    /**
+     * Drops the fields of a write payload that already hold that value.
+     *
+     * @param array<string, mixed> $payload `id` plus fields
+     * @param array<string, mixed> $current field => stored value (missing = unknown, kept)
+     *
+     * @return array<string, mixed>
+     */
+    private function withoutUnchanged(array $payload, array $current): array
+    {
+        foreach ($payload as $field => $value) {
+            if ($field === 'id' || !\array_key_exists($field, $current)) {
+                continue;
+            }
+
+            $stored = $current[$field];
+            $same = match (true) {
+                // Birthdays: a date, whatever the time part.
+                $value instanceof \DateTimeInterface, $stored instanceof \DateTimeInterface => $this->dateOf($value) === $this->dateOf($stored),
+                // Ids: hex in any case.
+                str_ends_with($field, 'Id') => \is_string($value) && \is_string($stored) && strtolower($value) === strtolower($stored),
+                default => $value === $stored,
+            };
+
+            if ($same) {
+                unset($payload[$field]);
+            }
+        }
+
+        return $payload;
+    }
+
+    private function dateOf(mixed $value): mixed
+    {
+        return $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : $value;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $addressPayloads
+     *
+     * @return list<array<string, mixed>> only addresses with a changed field
+     */
+    private function withoutUnchangedAddressFields(array $addressPayloads): array
+    {
+        if ($addressPayloads === []) {
+            return [];
+        }
+
+        $rows = $this->connection->fetchAllAssociative(
+            'SELECT LOWER(HEX(`id`)) AS `id`, `street`, `zipcode`, `city`, `phone_number` AS `phoneNumber`,
+                    LOWER(HEX(`country_id`)) AS `countryId`, LOWER(HEX(`country_state_id`)) AS `countryStateId`
+             FROM `customer_address` WHERE `id` IN (:ids)',
+            ['ids' => array_map(static fn (array $address): string => Uuid::fromHexToBytes((string) $address['id']), $addressPayloads)],
+            ['ids' => ArrayParameterType::BINARY],
+        );
+        $current = array_column($rows, null, 'id');
+
+        $changed = [];
+
+        foreach ($addressPayloads as $address) {
+            $address = $this->withoutUnchanged($address, $current[strtolower((string) $address['id'])] ?? []);
+
+            if (\count($address) > 1) {
+                $changed[] = $address;
+            }
+        }
+
+        return $changed;
     }
 
     /**

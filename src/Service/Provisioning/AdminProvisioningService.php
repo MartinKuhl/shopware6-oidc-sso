@@ -32,6 +32,8 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
  */
 class AdminProvisioningService
 {
+    private const MAX_USERNAME_SUFFIX = 3;
+
     /** user.customFields key: sha256 of the picture URL last imported (M19). */
     public const AVATAR_URL_HASH_FIELD = 'sw6oidc_avatar_url_hash';
 
@@ -75,7 +77,15 @@ class AdminProvisioningService
         );
 
         if ($userId !== null) {
-            return $this->syncExisting($provider, $this->existingAdmin($userId, $emailMatch, $context), $profile, $context);
+            $existing = $this->existingAdmin($userId, $emailMatch, $context);
+
+            // An inactive account can't log in anyway (AdminOidcGrant refuses
+            // it): no sync, registry entry or nonce for it (R3-L28).
+            if (!$existing->getActive()) {
+                throw AdminProvisioningDeniedException::accountInactive();
+            }
+
+            return $this->syncExisting($provider, $existing, $profile, $context);
         }
 
         if (!$provider->isAutoCreateAdmin()) {
@@ -404,6 +414,15 @@ class AdminProvisioningService
             $payload = [...$payload, ...$this->syncAvatar($userId, $profile->picture, $existing, $context)];
         }
 
+        // Most logins change nothing: no write, so no user.written events (R3-L29).
+        $current = $existing->getVars();
+
+        foreach (['firstName', 'lastName', 'localeId', 'timeZone'] as $field) {
+            if (\array_key_exists($field, $payload) && \array_key_exists($field, $current) && $payload[$field] === $current[$field]) {
+                unset($payload[$field]);
+            }
+        }
+
         if (\count($payload) > 1) {
             $this->userRepository->update([$payload], $context);
         }
@@ -490,15 +509,19 @@ class AdminProvisioningService
     {
         $base = $profile->username ?? explode('@', $profile->email)[0];
         $base = preg_replace('/[^a-zA-Z0-9._-]/', '', $base) ?: 'user';
-        $candidate = $base;
-        $suffix = 1;
 
-        while ($this->usernameExists($candidate, $context)) {
-            $candidate = $base . $suffix;
-            ++$suffix;
+        // A few readable candidates, then a random suffix: the number of
+        // queries stays bounded however many "jane"s exist (R3-L25).
+        for ($suffix = 0; $suffix <= self::MAX_USERNAME_SUFFIX; ++$suffix) {
+            $candidate = $suffix === 0 ? $base : $base . $suffix;
+
+            if (!$this->usernameExists($candidate, $context)) {
+                return $candidate;
+            }
         }
 
-        return $candidate;
+        // The create retry (createWithUniqueUsername) covers the unlikely clash.
+        return $base . '-' . bin2hex(random_bytes(2));
     }
 
     private function usernameExists(string $username, Context $context): bool

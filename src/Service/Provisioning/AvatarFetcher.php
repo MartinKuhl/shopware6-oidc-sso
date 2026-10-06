@@ -18,6 +18,8 @@ class AvatarFetcher
     public const MAX_BYTES = 2 * 1024 * 1024;
     private const MAX_REDIRECTS = 3;
     private const TIMEOUT_SECONDS = 5;
+    /** `timeout` is an idle timeout; a slow-drip server must not stall the login (R3-L22). */
+    private const MAX_DURATION_SECONDS = 10;
 
     private const EXTENSIONS = [
         'image/png' => 'png',
@@ -44,6 +46,7 @@ class AvatarFetcher
         $response = $this->httpClient->request('GET', $url, [
             'max_redirects' => self::MAX_REDIRECTS,
             'timeout' => self::TIMEOUT_SECONDS,
+            'max_duration' => self::MAX_DURATION_SECONDS,
             'headers' => ['Accept' => implode(', ', array_keys(self::EXTENSIONS))],
         ]);
 
@@ -84,6 +87,16 @@ class AvatarFetcher
 
         if ($size === 0) {
             throw new \RuntimeException('Avatar is empty.');
+        }
+
+        // The file becomes public media: its type comes from its bytes, not
+        // from a header the remote server chose (R3-L22).
+        $sniffed = @getimagesize($tempFile);
+        $mimeType = \is_array($sniffed) ? strtolower($sniffed['mime']) : '';
+        $extension = self::EXTENSIONS[$mimeType] ?? null;
+
+        if ($extension === null) {
+            throw new \RuntimeException('Avatar content is not a PNG, JPEG, GIF or WebP image.');
         }
 
         return new MediaFile($tempFile, $mimeType, $extension, $size, hash_file('md5', $tempFile) ?: null);

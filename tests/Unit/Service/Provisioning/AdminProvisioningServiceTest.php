@@ -187,6 +187,25 @@ final class AdminProvisioningServiceTest extends TestCase
         self::assertSame([], $this->userCreates);
     }
 
+    public function testAnInactiveBoundAdminIsRefusedBeforeAnySync(): void
+    {
+        $this->existingUser = $this->user('jane');
+        $this->existingUser->setActive(false);
+        $provider = $this->provider();
+        $provider->setSyncAdminProfileOnSso(true);
+        $this->boundProviderId = $provider->getId();
+        $this->boundSub = $this->subject;
+
+        try {
+            $this->findOrCreate($provider, new MappedProfile('jane@example.com', firstName: 'Changed'), $this->context);
+            self::fail('Expected AdminProvisioningDeniedException');
+        } catch (AdminProvisioningDeniedException $exception) {
+            // R3-L28: no sync (or anything else) for an account that can't log in.
+            self::assertSame(AdminProvisioningDeniedException::REASON_ACCOUNT_INACTIVE, $exception->reason);
+            self::assertSame([], $this->userUpdates);
+        }
+    }
+
     public function testNewAdminIsBoundToTheSubject(): void
     {
         $provider = $this->provider();
@@ -796,6 +815,19 @@ final class AdminProvisioningServiceTest extends TestCase
         self::assertSame('jane3', $this->userCreates[0]['username']);
     }
 
+    public function testUsernameProbeIsBoundedAndEndsInARandomSuffix(): void
+    {
+        $provider = $this->provider();
+        $provider->setAutoCreateAdmin(true);
+        $this->resolvedAclRoleId = Uuid::randomHex();
+        $this->takenUsernames = ['jane', 'jane1', 'jane2', 'jane3', 'jane4'];
+
+        $this->findOrCreate($provider, new MappedProfile('someone@example.com', username: 'jane'), $this->context);
+
+        // Not "jane5" after an ever longer loop of queries (R3-L25).
+        self::assertMatchesRegularExpression('/^jane-[0-9a-f]{4}$/', $this->userCreates[0]['username']);
+    }
+
     public function testCreateUsesFallbackUsernameWhenSanitizedBaseIsEmpty(): void
     {
         $provider = $this->provider();
@@ -1025,6 +1057,7 @@ final class AdminProvisioningServiceTest extends TestCase
         $user->setUsername($username);
         $user->setEmail($username . '@example.com');
         $user->setAdmin(false);
+        $user->setActive(true);
 
         return $user;
     }
@@ -1046,6 +1079,7 @@ final class AdminProvisioningServiceTest extends TestCase
                 \assert(\is_string($id));
                 $user = new UserEntity();
                 $user->setId($id);
+                $user->setActive(true);
                 $users = [$user];
             }
 

@@ -7,6 +7,7 @@ class AdminProvisioningDeniedException extends \RuntimeException
     public const REASON_AUTO_CREATE_DISABLED = 'auto_create_disabled';
     public const REASON_NO_ROLE = 'no_role';
     public const REASON_ACCOUNT_MISSING = 'account_missing';
+    public const REASON_ACCOUNT_INACTIVE = 'account_inactive';
 
     private function __construct(string $message, public readonly string $reason)
     {
@@ -30,5 +31,10 @@ class AdminProvisioningDeniedException extends \RuntimeException
     public static function accountMissing(): self
     {
         return new self('The account bound to this identity no longer exists.', self::REASON_ACCOUNT_MISSING);
+    }
+
+    public static function accountInactive(): self
+    {
+        return new self('The admin account bound to this identity is inactive.', self::REASON_ACCOUNT_INACTIVE);
     }
 }

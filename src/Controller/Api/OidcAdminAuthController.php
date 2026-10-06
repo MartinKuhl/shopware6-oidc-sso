@@ -261,6 +261,7 @@ class OidcAdminAuthController extends AbstractController
 
             $adminUser = $this->adminProvisioningService->findOrCreateAdmin($result->provider, $result->profile, $result->identity(), $context);
 
+
             $this->logoutContextStore->rememberForAdmin($adminUser->getId(), $result->provider->getId());
 
             // Registered now (the id_token and IdP tokens are only known here),
@@ -330,9 +331,12 @@ class OidcAdminAuthController extends AbstractController
             ]);
 
             return new RedirectResponse($this->administrationLoginUrl([
-                'sw6oidc_error' => $exception->reason === AdminProvisioningDeniedException::REASON_NO_ROLE
-                    ? 'admin_role_missing'
-                    : 'admin_auto_create_disabled',
+                'sw6oidc_error' => match ($exception->reason) {
+                    AdminProvisioningDeniedException::REASON_NO_ROLE => 'admin_role_missing',
+                    AdminProvisioningDeniedException::REASON_AUTO_CREATE_DISABLED => 'admin_auto_create_disabled',
+                    // Inactive or missing: the generic message, nothing about the account.
+                    default => 'oidc_failed',
+                },
             ]));
         } catch (UnknownStateException $exception) {
             // Expired/reused state or junk: not counted (N-M3).

@@ -9,7 +9,8 @@
             "accessDenied": "Access denied: your account does not meet the requirements for signing in to this shop.",
             "linkRequired": "An account with this email address already exists. Log in with your password and connect single sign-on in your account settings.",
             "emailNotVerified": "Your identity provider has not verified your email address. Please verify it there and try again.",
-            "providerMismatch": "This account is connected to a different single sign-on identity."
+            "providerMismatch": "This account is connected to a different single sign-on identity.",
+            "accountUnavailable": "Single sign-on found no customer account for you in this shop. Please contact the shop."
         },
         "checkout": {
             "completeAddress": "Please complete your address before placing an order: your account was created without one."

@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
 use Shopware\Core\Checkout\Customer\CustomerEntity;
+use Shopware\Core\Checkout\Customer\CustomerException;
 
 /**
  * Shopware's "bind customers to sales channel" setting: a customer with a
@@ -16,5 +17,19 @@ final class CustomerSalesChannelBinding
         $boundSalesChannelId = $customer->getBoundSalesChannelId();
 
         return $boundSalesChannelId === null || $boundSalesChannelId === $salesChannelId;
+    }
+
+    /**
+     * What an SSO or passkey login checks before core's
+     * AccountService::loginById() (which also lets guests in): a real
+     * account that may use this sales channel.
+     *
+     * @throws CustomerException
+     */
+    public static function assertCanLogIn(CustomerEntity $customer, string $salesChannelId): void
+    {
+        if ($customer->getGuest() || !self::allows($customer, $salesChannelId)) {
+            throw CustomerException::badCredentials();
+        }
     }
 }

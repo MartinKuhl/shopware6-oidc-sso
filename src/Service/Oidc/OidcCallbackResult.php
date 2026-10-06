@@ -6,6 +6,7 @@ use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\ExternalIdentity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\MappedProfile;
 use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
+use Shopware\Core\Checkout\Customer\Service\EmailIdnConverter;
 
 final readonly class OidcCallbackResult
 {
@@ -85,7 +86,7 @@ final readonly class OidcCallbackResult
 
         return ($verified === true || $verified === 'true')
             && \is_string($email)
-            && strcasecmp(trim($email), $this->profile->email) === 0;
+            && strcasecmp(EmailIdnConverter::encode(trim($email)), $this->profile->email) === 0;
     }
 
     /**

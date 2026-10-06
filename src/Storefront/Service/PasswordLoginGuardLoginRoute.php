@@ -14,7 +14,7 @@ use Shopware\Core\Framework\Validation\DataBag\RequestDataBag;
  * Decorates core's password LoginRoute (Storefront form + Store API
  * /store-api/account/login) to enforce disable_non_oidc_customer_login.
  * OIDC and Passkey logins don't go through this route at all — they use
- * the plugin's standalone OidcCustomerLoginRoute — so they're unaffected.
+ * core's AccountService::loginById() directly — so they're unaffected.
  */
 class PasswordLoginGuardLoginRoute extends AbstractLoginRoute
 {

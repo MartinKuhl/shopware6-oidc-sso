@@ -9,7 +9,8 @@
             "accessDenied": "Zugriff verweigert: Ihr Konto erfüllt nicht die Voraussetzungen für die Anmeldung in diesem Shop.",
             "linkRequired": "Es gibt bereits ein Konto mit dieser E-Mail-Adresse. Bitte melden Sie sich mit Ihrem Passwort an und verbinden Sie Single Sign-on in Ihren Kontoeinstellungen.",
             "emailNotVerified": "Ihr Identitätsanbieter hat Ihre E-Mail-Adresse nicht bestätigt. Bitte bestätigen Sie sie dort und versuchen Sie es erneut.",
-            "providerMismatch": "Dieses Konto ist mit einer anderen Single-Sign-on-Identität verbunden."
+            "providerMismatch": "Dieses Konto ist mit einer anderen Single-Sign-on-Identität verbunden.",
+            "accountUnavailable": "Für Ihre Single-Sign-On-Anmeldung gibt es in diesem Shop kein Kundenkonto. Bitte wenden Sie sich an den Shop."
         },
         "checkout": {
             "completeAddress": "Bitte vervollständigen Sie Ihre Adresse, bevor Sie bestellen: Ihr Konto wurde ohne Adresse angelegt."

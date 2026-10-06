@@ -8,7 +8,9 @@ use MartinKuhl\Sw6Oidc\Event\AccountSsoLinkedEvent;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthTimeValidator;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackResult;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerSalesChannelBinding;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\CustomerProvisioningDeniedException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AccountLinkingRequiredException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\EmailNotVerifiedException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
@@ -25,8 +27,8 @@ use MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
-use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Checkout\Customer\SalesChannel\AccountService;
 use Shopware\Core\PlatformRequest;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextService;
 use Shopware\Core\System\SalesChannel\Context\SalesChannelContextServiceParameters;
@@ -51,7 +53,7 @@ class OidcCallbackController extends StorefrontController
     public function __construct(
         private readonly OidcCallbackProcessor $callbackProcessor,
         private readonly CustomerProvisioningService $customerProvisioningService,
-        private readonly OidcCustomerLoginRoute $loginRoute,
+        private readonly AccountService $accountService,
         private readonly SalesChannelContextService $salesChannelContextService,
         private readonly LoggerInterface $logger,
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
@@ -124,11 +126,13 @@ class OidcCallbackController extends StorefrontController
 
             $customer = $this->customerProvisioningService->findOrCreateCustomer($result->provider, $result->profile, $result->identity(), $context);
 
-            $tokenResponse = $this->loginRoute->loginByCustomerId($customer->getId(), $context);
+            // Core's own login by id (events, cart restore, lastLogin), not a copy of it (R4-L5).
+            CustomerSalesChannelBinding::assertCanLogIn($customer, $context->getSalesChannelId());
+            $contextToken = $this->accountService->loginById($customer->getId(), $context);
 
             $newContext = $this->salesChannelContextService->get(new SalesChannelContextServiceParameters(
                 $context->getSalesChannelId(),
-                $tokenResponse->getToken(),
+                $contextToken,
                 $context->getLanguageIdChain()[0] ?? $context->getLanguageId(),
                 $context->getCurrencyId(),
                 $context->getDomainId(),
@@ -140,24 +144,35 @@ class OidcCallbackController extends StorefrontController
             // login would — no manual cookie handling needed here.
             $request->attributes->set(PlatformRequest::ATTRIBUTE_SALES_CHANNEL_CONTEXT_OBJECT, $newContext);
 
-            $registrySession = $this->sessionRegistry->register(
-                $result->provider->getId(),
-                $result->identity()->subject,
-                $result->sessionId(),
-                Sw6OidcSession::USER_TYPE_CUSTOMER,
-                $customer->getId(),
-                $tokenResponse->getToken(),
-                $context->getSalesChannelId(),
-                $result->idToken(),
-                $result->idpAccessToken(),
-                $result->idpRefreshToken(),
-            );
+            // The customer is logged in from here on: a bookkeeping failure
+            // must not turn that into "login failed" and a counted failure (R3-L27).
+            try {
+                $registrySession = $this->sessionRegistry->register(
+                    $result->provider->getId(),
+                    $result->identity()->subject,
+                    $result->sessionId(),
+                    Sw6OidcSession::USER_TYPE_CUSTOMER,
+                    $customer->getId(),
+                    $contextToken,
+                    $context->getSalesChannelId(),
+                    $result->idToken(),
+                    $result->idpAccessToken(),
+                    $result->idpRefreshToken(),
+                );
+            } catch (\Throwable $exception) {
+                $registrySession = null;
+                $this->logger->error('sw6oidc: the customer is logged in, but the session could not be registered; IdP-initiated logout won\'t reach it.', [
+                    'customerId' => $customer->getId(),
+                    'exceptionClass' => $exception::class,
+                    'exception' => $exception->getMessage(),
+                ]);
+            }
 
             $this->activityRecorder->recordLogin(
                 Sw6OidcSession::USER_TYPE_CUSTOMER,
                 $customer->getId(),
                 Sw6OidcSessionActivityDefinition::LOGIN_METHOD_OIDC,
-                $tokenResponse->getToken(),
+                $contextToken,
                 $request,
                 $result->provider->getId(),
                 $registrySession,
@@ -182,6 +197,13 @@ class OidcCallbackController extends StorefrontController
                 $exception instanceof EmailNotVerifiedException => 'sw6oidc.login.emailNotVerified',
                 default => 'sw6oidc.login.providerMismatch',
             }));
+
+            return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
+        } catch (CustomerProvisioningDeniedException $exception) {
+            // No account and auto-create off, or the account belongs to another
+            // sales channel: an account policy, not a failure to count (R3-L24).
+            $this->logger->notice('sw6oidc: customer OIDC login refused, no usable account.', ['exception' => $exception->getMessage()]);
+            $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.accountUnavailable'));
 
             return new RedirectResponse($this->generateUrl('frontend.account.login.page'));
         } catch (UnknownStateException $exception) {

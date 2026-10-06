@@ -28,13 +28,29 @@ final class AvatarFetcherTest extends TestCase
 
     public function testDownloadsAnImage(): void
     {
-        $file = $this->fetcher(new MockResponse('PNGDATA', ['response_headers' => ['content-type' => 'image/png; charset=binary']]))
+        $png = self::png();
+        $file = $this->fetcher(new MockResponse($png, ['response_headers' => ['content-type' => 'image/png; charset=binary']]))
             ->fetch('https://idp.example/a.png', $this->tempFile);
 
         self::assertSame('image/png', $file->getMimeType());
         self::assertSame('png', $file->getFileExtension());
-        self::assertSame(7, $file->getFileSize());
-        self::assertSame('PNGDATA', file_get_contents($this->tempFile));
+        self::assertSame(\strlen($png), $file->getFileSize());
+        self::assertSame($png, file_get_contents($this->tempFile));
+    }
+
+    public function testTheTypeComesFromTheBytesNotTheHeader(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('not a PNG, JPEG, GIF or WebP');
+
+        // An HTML page sent as image/png must never become public media (R3-L22).
+        $this->fetcher(new MockResponse('<html><script>x</script></html>', ['response_headers' => ['content-type' => 'image/png']]))
+            ->fetch('https://idp.example/a.png', $this->tempFile);
+    }
+
+    private static function png(): string
+    {
+        return (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', true);
     }
 
     public function testRejectsNonImages(): void

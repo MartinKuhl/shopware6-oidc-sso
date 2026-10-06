@@ -7,6 +7,7 @@ use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingEnti
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Event\AttributeMappingCompletedEvent;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\MissingEmailClaimException;
+use Shopware\Core\Checkout\Customer\Service\EmailIdnConverter;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -76,7 +77,10 @@ class AttributeMapper
             );
         };
 
+        // Core stores international domains as punycode (EmailIdnConverter):
+        // encoded first, `user@bücher.de` validates and matches the account (R3-L20).
         $email = $read(Attr::TYPE_EMAIL);
+        $email = $email !== null ? EmailIdnConverter::encode(trim($email)) : null;
 
         if ($email === null || $email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new MissingEmailClaimException('The OIDC response did not contain a valid email claim.');
@@ -121,11 +125,11 @@ class AttributeMapper
         $profile = $event->getProfile();
 
         // A listener may have replaced the profile — keep the email invariant.
-        if (!filter_var($profile->email, FILTER_VALIDATE_EMAIL)) {
+        if (!filter_var(EmailIdnConverter::encode($profile->email), FILTER_VALIDATE_EMAIL)) {
             throw new MissingEmailClaimException('The mapped profile does not contain a valid email address.');
         }
 
-        return $profile;
+        return $profile->truncatedToFieldLimits();
     }
 
     /**

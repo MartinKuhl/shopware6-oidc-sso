@@ -294,12 +294,6 @@
         </service>
 
         <!-- Storefront -->
-        <service id="MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute">
-            <argument type="service" id="event_dispatcher" />
-            <argument type="service" id="customer.repository" />
-            <argument type="service" id="Shopware\Core\System\SalesChannel\Context\CartRestorer" />
-        </service>
-
         <service id="MartinKuhl\Sw6Oidc\Storefront\Controller\SendAuthorizationRequestController" public="true">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder" />
@@ -327,7 +321,7 @@
         <service id="MartinKuhl\Sw6Oidc\Storefront\Controller\OidcCallbackController" public="true">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute" />
+            <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\AccountService" />
             <argument type="service" id="Shopware\Core\System\SalesChannel\Context\SalesChannelContextService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
@@ -830,7 +824,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="customer.repository" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute" />
+            <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\AccountService" />
             <argument type="service" id="Shopware\Core\System\SalesChannel\Context\SalesChannelContextService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />

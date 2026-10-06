@@ -9,14 +9,15 @@ use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver;
+use MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerSalesChannelBinding;
 use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter;
 use MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
-use MartinKuhl\Sw6Oidc\Storefront\Service\OidcCustomerLoginRoute;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
+use Shopware\Core\Checkout\Customer\SalesChannel\AccountService;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -61,7 +62,7 @@ class PasskeyController extends StorefrontController
         private readonly PasskeyAuthenticationService $authenticationService,
         private readonly PasskeyConfig $passkeyConfig,
         private readonly EntityRepository $customerRepository,
-        private readonly OidcCustomerLoginRoute $loginRoute,
+        private readonly AccountService $accountService,
         private readonly SalesChannelContextService $salesChannelContextService,
         private readonly LoggerInterface $logger,
         private readonly Sw6OidcSessionActivityRecorder $activityRecorder,
@@ -242,7 +243,9 @@ class PasskeyController extends StorefrontController
                 throw new \RuntimeException('The customer for this passkey no longer exists.');
             }
 
-            $tokenResponse = $this->loginRoute->loginByCustomerId($customer->getId(), $context);
+            // Core's own login by id (events, cart restore, lastLogin), not a copy of it (R4-L5).
+            CustomerSalesChannelBinding::assertCanLogIn($customer, $context->getSalesChannelId());
+            $contextToken = $this->accountService->loginById($customer->getId(), $context);
         } catch (\Throwable $exception) {
             $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp());
 
@@ -251,7 +254,7 @@ class PasskeyController extends StorefrontController
 
         $newContext = $this->salesChannelContextService->get(new SalesChannelContextServiceParameters(
             $context->getSalesChannelId(),
-            $tokenResponse->getToken(),
+            $contextToken,
             $context->getLanguageIdChain()[0] ?? $context->getLanguageId(),
             $context->getCurrencyId(),
             $context->getDomainId(),
@@ -264,7 +267,7 @@ class PasskeyController extends StorefrontController
             Sw6OidcSession::USER_TYPE_CUSTOMER,
             $customer->getId(),
             Sw6OidcSessionActivityDefinition::LOGIN_METHOD_PASSKEY,
-            $tokenResponse->getToken(),
+            $contextToken,
             $request,
             passkeyCredentialHash: $resolved['credentialIdHash'],
         );

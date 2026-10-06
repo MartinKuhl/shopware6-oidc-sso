@@ -215,6 +215,21 @@ final class CustomerProvisioningServiceTest extends TestCase
         self::assertSame($existing, $result);
     }
 
+    public function testAnActiveEmailMatchWinsOverAnInactiveOne(): void
+    {
+        $provider = $this->provider();
+        $inactive = $this->customer(Uuid::randomHex(), 'user@example.com');
+        $inactive->setActive(false);
+        $active = $this->customer(Uuid::randomHex(), 'user@example.com');
+        $this->existingCustomers = [$inactive, $active];
+        $this->boundProviderId = $provider->getId();
+
+        $result = $this->createService()->findOrCreateCustomer($provider, new MappedProfile('user@example.com'), $this->identity(), $this->salesChannelContext());
+
+        // R3-L26; an inactive-only match is still returned (and then can't log in), never skipped.
+        self::assertSame($active, $result);
+    }
+
     public function testExistingUnboundCustomerGetsBoundToProvider(): void
     {
         $provider = $this->provider();
@@ -375,6 +390,23 @@ final class CustomerProvisioningServiceTest extends TestCase
         );
 
         self::assertSame(['id' => $existing->getId(), 'lastName' => 'Only-Last'], $payload->value);
+    }
+
+    public function testProfileSyncSkipsTheWriteWhenNothingChanged(): void
+    {
+        $provider = $this->provider();
+        $provider->setSyncCustomerProfileOnSso(true);
+        $existing = $this->customer(Uuid::randomHex(), 'user@example.com');
+        $existing->setFirstName('Jane');
+        $existing->setLastName('Changed');
+        $this->existingCustomers = [$existing];
+
+        $payload = $this->captureUpdatePayload();
+
+        $this->createService()->findOrCreateCustomer($provider, new MappedProfile('user@example.com', firstName: 'Jane', lastName: 'Doe'), $this->identity(), $this->salesChannelContext());
+
+        // Only the changed field; an unchanged login wouldn't write at all (R3-L29).
+        self::assertSame(['id' => $existing->getId(), 'lastName' => 'Doe'], $payload->value);
     }
 
     public function testProfileSyncWithNothingMappedDoesNotUpdate(): void
@@ -974,6 +1006,7 @@ final class CustomerProvisioningServiceTest extends TestCase
         $customer->setEmail($email);
         $customer->setBoundSalesChannelId(null);
         $customer->setGuest(false);
+        $customer->setActive(true);
         $customer->setDefaultBillingAddressId($billingAddressId);
         $customer->setDefaultShippingAddressId($shippingAddressId ?? $billingAddressId);
 
