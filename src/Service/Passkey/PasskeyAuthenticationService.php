@@ -169,7 +169,7 @@ class PasskeyAuthenticationService
             throw new PasskeyCeremonyException($exception->getMessage(), 0, $exception);
         }
 
-        $this->credentialRepository->updateAfterAssertion($record);
+        $this->credentialRepository->updateAfterAssertion($entity, $record);
 
         return [
             'userType' => $entity->getUserType(),

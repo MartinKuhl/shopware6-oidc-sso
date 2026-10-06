@@ -51,9 +51,13 @@ class StepUpController extends AbstractController
     }
 
     #[Route(path: '/api/sw6oidc/admin/step-up/oidc/start', name: 'api.action.sw6oidc.admin.step-up.oidc-start', methods: ['POST'])]
-    public function startOidc(Context $context): JsonResponse
+    public function startOidc(Request $request, Context $context): JsonResponse
     {
         $userId = $this->currentUserId($context);
+
+        if ($userId !== null && !$this->flowStartAllowed($userId, $request)) {
+            return new JsonResponse(['error' => 'too_many_requests'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
         $authorizeUrl = $userId !== null ? $this->stepUpService->oidcAuthorizeUrl($userId, $this->callbackUrl(), $context) : null;
 
         if ($authorizeUrl === null) {
@@ -88,9 +92,13 @@ class StepUpController extends AbstractController
     }
 
     #[Route(path: '/api/sw6oidc/admin/step-up/passkey/options', name: 'api.action.sw6oidc.admin.step-up.passkey-options', methods: ['POST'])]
-    public function passkeyOptions(Context $context): JsonResponse
+    public function passkeyOptions(Request $request, Context $context): JsonResponse
     {
         $userId = $this->currentUserId($context);
+
+        if ($userId !== null && !$this->flowStartAllowed($userId, $request)) {
+            return new JsonResponse(['error' => 'too_many_requests'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
         $options = $userId !== null && $this->passkeyConfig->isEnabledForAdmin() ? $this->stepUpService->passkeyOptions($userId) : null;
 
         if ($options === null) {
@@ -167,5 +175,14 @@ class StepUpController extends AbstractController
     private function callbackUrl(): string
     {
         return $this->generateUrl('api.action.sw6oidc.admin.callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
+    }
+
+    /**
+     * Every start stores a flow or ceremony: a consuming budget per admin and
+     * address, like the anonymous flow starts (R3-L41).
+     */
+    private function flowStartAllowed(string $userId, Request $request): bool
+    {
+        return $this->rateLimiter->consume(Sw6OidcRateLimiter::SCOPE_FLOW_START . ':' . $userId, $request->getClientIp());
     }
 }

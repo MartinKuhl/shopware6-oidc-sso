@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Storefront\Controller;
 
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Event\PasskeyRegisteredEvent;
+use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyLimitReachedException;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
@@ -77,10 +78,20 @@ class PasskeyController extends StorefrontController
         defaults: ['XmlHttpRequest' => true, '_loginRequired' => true],
         methods: ['POST'],
     )]
-    public function registrationOptions(SalesChannelContext $context, CustomerEntity $customer): JsonResponse
+    public function registrationOptions(Request $request, SalesChannelContext $context, CustomerEntity $customer): JsonResponse
     {
         if (!$this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())) {
             return $this->disabled();
+        }
+
+        if ($this->isCrossOrigin($request)) {
+            return $this->crossOrigin();
+        }
+
+        // Every call stores a ceremony and loads the account's keys: a
+        // consuming budget per customer (R3-L13).
+        if (!$this->rateLimiter->consume(Sw6OidcRateLimiter::SCOPE_OPTIONS . ':' . $customer->getId(), $request->getClientIp())) {
+            return $this->rateLimited();
         }
 
         if (!$this->authenticationClock->isFresh($context, self::REAUTH_WINDOW_SECONDS)) {
@@ -95,6 +106,8 @@ class PasskeyController extends StorefrontController
                 trim($customer->getFirstName() . ' ' . $customer->getLastName()),
                 $this->relyingPartyResolver->forSalesChannel($context),
             );
+        } catch (PasskeyLimitReachedException) {
+            return new JsonResponse(['error' => 'passkey_limit_reached'], Response::HTTP_CONFLICT);
         } catch (\Throwable $exception) {
             return PublicError::response($this->logger, 'sw6oidc: passkey registration could not start.', $exception, 'passkey_unavailable', Response::HTTP_BAD_REQUEST);
         }
@@ -114,6 +127,10 @@ class PasskeyController extends StorefrontController
             return $this->disabled();
         }
 
+        if ($this->isCrossOrigin($request)) {
+            return $this->crossOrigin();
+        }
+
         if (!$this->authenticationClock->isFresh($context, self::REAUTH_WINDOW_SECONDS)) {
             return $this->reauthenticationRequired();
         }
@@ -129,6 +146,8 @@ class PasskeyController extends StorefrontController
                 'customer',
                 $customer->getId(),
             );
+        } catch (PasskeyLimitReachedException) {
+            return new JsonResponse(['error' => 'passkey_limit_reached'], Response::HTTP_CONFLICT);
         } catch (\Throwable $exception) {
             return PublicError::response($this->logger, 'sw6oidc: passkey registration failed.', $exception, 'passkey_registration_failed', Response::HTTP_BAD_REQUEST);
         }
@@ -156,6 +175,10 @@ class PasskeyController extends StorefrontController
     {
         if (!$this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())) {
             return $this->disabled();
+        }
+
+        if ($this->isCrossOrigin($request)) {
+            return $this->crossOrigin();
         }
 
         // Every call stores a ceremony: a consuming budget (N-M15).
@@ -188,6 +211,10 @@ class PasskeyController extends StorefrontController
     {
         if (!$this->passkeyConfig->isEnabledForCustomer($context->getSalesChannelId())) {
             return $this->disabled();
+        }
+
+        if ($this->isCrossOrigin($request)) {
+            return $this->crossOrigin();
         }
 
         if ($this->rateLimiter->isBlocked(Sw6OidcRateLimiter::SCOPE_REDEEM, $request->getClientIp())) {
@@ -256,6 +283,32 @@ class PasskeyController extends StorefrontController
             'error' => 'reauthentication_required',
             'reauthUrl' => $this->generateUrl('frontend.sw6oidc.reauth'),
         ], Response::HTTP_FORBIDDEN);
+    }
+
+    /**
+     * Shopware 6.7 has no CSRF token and SameSite=Lax doesn't stop a
+     * top-level POST: without this, another site could log the victim into
+     * the attacker's account with an assertion of the attacker's own
+     * authenticator (login CSRF, R3-L14). Browsers send Sec-Fetch-Site, or
+     * at least Origin, with every fetch() POST; a request with neither isn't
+     * from a browser and can't carry the victim's cookies.
+     */
+    private function isCrossOrigin(Request $request): bool
+    {
+        $fetchSite = $request->headers->get('Sec-Fetch-Site');
+
+        if ($fetchSite !== null) {
+            return !\in_array($fetchSite, ['same-origin', 'none'], true);
+        }
+
+        $origin = $request->headers->get('Origin');
+
+        return $origin !== null && strcasecmp($origin, $request->getSchemeAndHttpHost()) !== 0;
+    }
+
+    private function crossOrigin(): JsonResponse
+    {
+        return new JsonResponse(['error' => 'cross_origin_request'], Response::HTTP_FORBIDDEN);
     }
 
     private function rateLimited(): JsonResponse

@@ -561,6 +561,7 @@
             <argument type="service" id="sw6oidc_passkey_credential.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="Doctrine\DBAL\Connection" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory" />
@@ -626,7 +627,6 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
-            <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument>%env(APP_URL)%</argument>
         </service>
 

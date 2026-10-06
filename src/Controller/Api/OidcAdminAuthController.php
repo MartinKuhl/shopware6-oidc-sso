@@ -386,6 +386,11 @@ class OidcAdminAuthController extends AbstractController
             return $this->json(['error' => 'user_verification_required'], Response::HTTP_FORBIDDEN);
         }
 
+        // Every start stores a flow: a consuming budget per admin (R3-L41).
+        if (!$this->rateLimiter->consume(Sw6OidcRateLimiter::SCOPE_FLOW_START . ':' . $source->getUserId(), $request->getClientIp())) {
+            return $this->json(['error' => 'too_many_requests'], Response::HTTP_TOO_MANY_REQUESTS);
+        }
+
         try {
             $provider = $this->providerResolver->getActiveById((string) $request->request->get('providerId'), LoginType::Admin->value, $context);
         } catch (ProviderNotFoundException) {

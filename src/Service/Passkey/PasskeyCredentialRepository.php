@@ -2,8 +2,10 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Passkey;
 
+use Doctrine\DBAL\Connection;
 use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -32,6 +34,7 @@ class PasskeyCredentialRepository
         private readonly EntityRepository $passkeyCredentialRepository,
         private readonly WebauthnCeremonyFactory $ceremonyFactory,
         private readonly LoggerInterface $logger,
+        private readonly Connection $connection,
     ) {
     }
 
@@ -101,28 +104,48 @@ class PasskeyCredentialRepository
     }
 
     /**
+     * How many passkeys (disabled ones included) carry this user handle,
+     * without deserializing them.
+     */
+    public function countForUserHandle(string $userHandle): int
+    {
+        $criteria = new Criteria();
+        $criteria->addFilter(new EqualsFilter('userHandle', bin2hex($userHandle)));
+
+        return $this->passkeyCredentialRepository->search($criteria, $this->context())->getEntities()->count();
+    }
+
+    /**
      * Persists the record returned by a successful assertion check() — the
      * library bumps the signature counter / backup flags on it but, unlike
      * 4.x, no longer saves it itself.
      */
-    public function updateAfterAssertion(CredentialRecord $record): void
+    /**
+     * Stores the record a successful assertion returned (counter, backup
+     * state) for the credential the caller already loaded. The write is a
+     * compare-and-set on the counter: of two concurrent assertions only the
+     * higher counter lands, so the counter can never go backwards (R3-L15).
+     * Authenticators without a counter (always 0) are always written.
+     */
+    public function updateAfterAssertion(Sw6OidcPasskeyCredentialEntity $entity, CredentialRecord $record): void
     {
-        $credentialId = base64_encode($record->publicKeyCredentialId);
-        $existing = $this->findEntityByCredentialId($credentialId);
+        $updated = $this->connection->executeStatement(
+            'UPDATE `sw6oidc_passkey_credential`
+             SET `public_key` = :publicKey, `sign_count` = :counter, `updated_at` = :now
+             WHERE `id` = :id AND (`sign_count` < :counter OR :counter = 0)',
+            [
+                'publicKey' => $this->toJson($record),
+                'counter' => $record->counter,
+                'now' => (new \DateTimeImmutable())->format(Defaults::STORAGE_DATE_TIME_FORMAT),
+                'id' => Uuid::fromHexToBytes($entity->getId()),
+            ],
+        );
 
-        if (!$existing instanceof Sw6OidcPasskeyCredentialEntity) {
-            $this->logger->warning('sw6oidc: updateAfterAssertion() called for an unknown credential; ignoring.', [
-                'credentialId' => $credentialId,
+        if ($updated === 0) {
+            $this->logger->info('sw6oidc: a concurrent passkey assertion already stored a higher signature counter.', [
+                'credentialId' => $entity->getId(),
             ]);
-
-            return;
         }
-
-        $this->passkeyCredentialRepository->update([[
-            'id' => $existing->getId(),
-            'publicKey' => $this->toJson($record),
-            'signCount' => $record->counter,
-        ]], $this->context());
     }
 
     public function saveNewCredentialRecord(
@@ -193,6 +216,11 @@ class PasskeyCredentialRepository
      */
     public function deleteOwnedByUser(string $id, string $userType, string $userId, Context $context): bool
     {
+        // A malformed id from the request is "not found", not a Criteria error (R3-L16).
+        if (!Uuid::isValid($id)) {
+            return false;
+        }
+
         $criteria = new Criteria([$id]);
         $criteria->addFilter(new EqualsFilter('userType', $userType));
         $criteria->addFilter(new EqualsFilter('userId', $userId));

@@ -2,9 +2,11 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Passkey;
 
+use Doctrine\DBAL\Connection;
 use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyCeremonyException;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
+use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyLimitReachedException;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingParty;
 use MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory;
@@ -41,7 +43,7 @@ final class PasskeyCeremonyTest extends TestCase
         $factory = new WebauthnCeremonyFactory();
         $cache = new InMemoryAtomicCache();
         $this->store = new InMemoryPasskeyCredentialStore();
-        $this->credentials = new PasskeyCredentialRepository($this->store->wire($this->createMock(EntityRepository::class)), $factory, new NullLogger());
+        $this->credentials = new PasskeyCredentialRepository($this->store->wire($this->createMock(EntityRepository::class)), $factory, new NullLogger(), $this->store->connection($this->createMock(Connection::class)));
         $this->registration = new PasskeyRegistrationService($factory, $this->credentials, $cache);
         $this->authentication = new PasskeyAuthenticationService($factory, $this->credentials, $cache);
         $this->authenticator = new SoftwareAuthenticator();
@@ -244,6 +246,20 @@ final class PasskeyCeremonyTest extends TestCase
     /**
      * @return array<string, mixed>
      */
+    public function testRegistrationStopsAtTheCredentialLimit(): void
+    {
+        $handle = bin2hex(hash('sha256', 'admin:' . $this->userId, true));
+
+        for ($i = 0; $i < PasskeyRegistrationService::MAX_CREDENTIALS_PER_ACCOUNT; ++$i) {
+            $this->store->add(['id' => Uuid::randomHex(), 'userType' => 'admin', 'userId' => $this->userId, 'credentialId' => base64_encode(random_bytes(16)), 'publicKey' => '{}', 'userHandle' => $handle]);
+        }
+
+        // R3-L13: no unbounded number of keys per account.
+        $this->expectException(PasskeyLimitReachedException::class);
+
+        $this->creationOptions();
+    }
+
     private function creationOptions(?string &$nonce = null): array
     {
         $result = $this->registration->buildCreationOptions('admin', $this->userId, 'admin', 'Admin', $this->rp());

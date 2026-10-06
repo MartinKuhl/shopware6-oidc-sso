@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Passkey;
 
 use MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface;
 use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyCeremonyException;
+use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyLimitReachedException;
 use Webauthn\AuthenticatorAttestationResponse;
 use Webauthn\CredentialRecord;
 use Webauthn\PublicKeyCredentialCreationOptions;
@@ -23,6 +24,9 @@ class PasskeyRegistrationService
     private const TTL_SECONDS = 300;
     private const CACHE_PREFIX = 'sw6oidc_passkey_reg_';
 
+    /** Passkeys one account may hold (R3-L13); disabled ones count too. */
+    public const MAX_CREDENTIALS_PER_ACCOUNT = 20;
+
     public function __construct(
         private readonly WebauthnCeremonyFactory $ceremonyFactory,
         private readonly PasskeyCredentialRepository $credentialRepository,
@@ -35,6 +39,8 @@ class PasskeyRegistrationService
      */
     public function buildCreationOptions(string $userType, string $userId, string $username, string $displayName, PasskeyRelyingParty $relyingParty): array
     {
+        $this->assertBelowLimit($userType, $userId);
+
         $challenge = random_bytes(32);
         $options = $this->buildOptions($userType, $userId, $username, $displayName, $relyingParty->id, $relyingParty->name, $challenge);
 
@@ -101,6 +107,9 @@ class PasskeyRegistrationService
             throw new PasskeyCeremonyException('Expected a WebAuthn attestation (registration) response.');
         }
 
+        // Checked again: several ceremonies may have been started before the first completed.
+        $this->assertBelowLimit($stored['userType'], $stored['userId']);
+
         try {
             $record = $this->ceremonyFactory->attestationResponseValidator(array_values($stored['origins'] ?? []))->check($response, $options, $host);
         } catch (\Throwable $exception) {
@@ -108,6 +117,16 @@ class PasskeyRegistrationService
         }
 
         $this->credentialRepository->saveNewCredentialRecord($record, $stored['userType'], $stored['userId'], $nickname);
+    }
+
+    /**
+     * @throws PasskeyLimitReachedException
+     */
+    private function assertBelowLimit(string $userType, string $userId): void
+    {
+        if ($this->credentialRepository->countForUserHandle(hash('sha256', $userType . ':' . $userId, true)) >= self::MAX_CREDENTIALS_PER_ACCOUNT) {
+            throw new PasskeyLimitReachedException(sprintf('This account already has %d passkeys.', self::MAX_CREDENTIALS_PER_ACCOUNT));
+        }
     }
 
     private function buildOptions(

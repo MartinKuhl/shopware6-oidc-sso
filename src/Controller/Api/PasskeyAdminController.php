@@ -8,6 +8,7 @@ use MartinKuhl\Sw6Oidc\Event\PasskeyRegisteredEvent;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer;
 use MartinKuhl\Sw6Oidc\Service\Jwt\JwtPayloadReader;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
+use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyLimitReachedException;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
@@ -29,6 +30,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
@@ -85,6 +87,10 @@ class PasskeyAdminController extends AbstractController
                 trim($user->getFirstName() . ' ' . $user->getLastName()),
                 $this->relyingPartyResolver->forAdministration(),
             );
+        } catch (PasskeyLimitReachedException) {
+            return new JsonResponse(['error' => 'passkey_limit_reached'], Response::HTTP_CONFLICT);
+        } catch (AccessDeniedHttpException $exception) {
+            throw $exception;
         } catch (\Throwable $exception) {
             return PublicError::response($this->logger, 'sw6oidc: admin passkey registration could not start.', $exception, 'passkey_unavailable', Response::HTTP_BAD_REQUEST);
         }
@@ -111,6 +117,10 @@ class PasskeyAdminController extends AbstractController
                 'admin',
                 $user->getId(),
             );
+        } catch (PasskeyLimitReachedException) {
+            return new JsonResponse(['error' => 'passkey_limit_reached'], Response::HTTP_CONFLICT);
+        } catch (AccessDeniedHttpException $exception) {
+            throw $exception;
         } catch (\Throwable $exception) {
             return PublicError::response($this->logger, 'sw6oidc: admin passkey registration failed.', $exception, 'passkey_registration_failed', Response::HTTP_BAD_REQUEST);
         }
@@ -290,14 +300,11 @@ class PasskeyAdminController extends AbstractController
     {
         $source = $context->getSource();
 
-        if (!$source instanceof AdminApiSource) {
-            throw new \RuntimeException('This action requires an authenticated Administration user.');
-        }
-
-        $userId = $source->getUserId();
+        // Integrations (no user) and other sources get a 403, not a 500 (R3-L16).
+        $userId = $source instanceof AdminApiSource ? $source->getUserId() : null;
 
         if ($userId === null) {
-            throw new \RuntimeException('This action requires an authenticated Administration user.');
+            throw new AccessDeniedHttpException('This action requires an authenticated Administration user.');
         }
 
         $user = $this->userRepository->search(new Criteria([$userId]), $context)->first();

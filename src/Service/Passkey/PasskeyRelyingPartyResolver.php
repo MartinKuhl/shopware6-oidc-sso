@@ -2,9 +2,9 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Passkey;
 
-use Doctrine\DBAL\Connection;
 use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyCeremonyException;
-use Shopware\Core\Framework\Uuid\Uuid;
+use Shopware\Core\System\SalesChannel\Aggregate\SalesChannelDomain\SalesChannelDomainCollection;
+use Shopware\Core\System\SalesChannel\Aggregate\SalesChannelDomain\SalesChannelDomainEntity;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
 
 /**
@@ -26,7 +26,6 @@ class PasskeyRelyingPartyResolver
 {
     public function __construct(
         private readonly PasskeyConfig $passkeyConfig,
-        private readonly Connection $connection,
         private readonly string $appUrl,
     ) {
     }
@@ -53,18 +52,14 @@ class PasskeyRelyingPartyResolver
      */
     public function forSalesChannel(SalesChannelContext $context): PasskeyRelyingParty
     {
-        $urls = $this->connection->fetchFirstColumn(
-            'SELECT `url` FROM `sales_channel_domain` WHERE `sales_channel_id` = :id',
-            ['id' => Uuid::fromHexToBytes($context->getSalesChannelId())],
-        );
+        // Core loads the channel's domains into every context (R3-L19).
+        $domains = $context->getSalesChannel()->getDomains();
+        $urls = $domains instanceof SalesChannelDomainCollection ? array_values($domains->map(static fn (SalesChannelDomainEntity $domain): string => $domain->getUrl())) : [];
 
-        $origins = array_values(array_unique(array_filter(array_map(
-            static fn (mixed $url): ?string => \is_string($url) ? self::origin($url) : null,
-            $urls,
-        ))));
+        $origins = array_values(array_unique(array_filter(array_map(self::origin(...), $urls))));
 
-        $currentUrl = $context->getSalesChannel()->getDomains()?->get($context->getDomainId())?->getUrl()
-            ?? (\is_string($urls[0] ?? null) ? $urls[0] : null);
+        $domainId = $context->getDomainId();
+        $currentUrl = ($domainId !== null ? $domains?->get($domainId)?->getUrl() : null) ?? ($urls[0] ?? null);
         $currentHost = \is_string($currentUrl) ? (string) parse_url($currentUrl, PHP_URL_HOST) : '';
 
         if ($currentHost === '' || $origins === []) {
