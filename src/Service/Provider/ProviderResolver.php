@@ -11,6 +11,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsAnyFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
+use Shopware\Core\Framework\Uuid\Uuid;
 
 /**
  * Resolves sw6oidc_provider rows for the current request.
@@ -30,7 +31,10 @@ class ProviderResolver
      */
     public function getActiveById(string $providerId, string $loginType, Context $context): Sw6OidcProviderEntity
     {
-        $provider = $this->providerRepository->search(new Criteria([$providerId]), $context)->first();
+        // An empty or malformed id (`?providerId=`) would make Criteria throw (R3-L1).
+        $provider = Uuid::isValid($providerId)
+            ? $this->providerRepository->search(new Criteria([$providerId]), $context)->first()
+            : null;
 
         if (
             !$provider instanceof Sw6OidcProviderEntity

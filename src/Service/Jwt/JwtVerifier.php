@@ -4,6 +4,12 @@ namespace MartinKuhl\Sw6Oidc\Service\Jwt;
 
 use Jose\Component\Core\AlgorithmManager;
 use Jose\Component\Core\JWKSet;
+use Jose\Component\Signature\Algorithm\ES256;
+use Jose\Component\Signature\Algorithm\ES384;
+use Jose\Component\Signature\Algorithm\ES512;
+use Jose\Component\Signature\Algorithm\PS256;
+use Jose\Component\Signature\Algorithm\PS384;
+use Jose\Component\Signature\Algorithm\PS512;
 use Jose\Component\Signature\Algorithm\RS256;
 use Jose\Component\Signature\Algorithm\RS384;
 use Jose\Component\Signature\Algorithm\RS512;
@@ -15,8 +21,8 @@ use Psr\Log\LoggerInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 /**
- * Verifies OIDC id_tokens and back-channel logout tokens: RS256/384/512
- * signature against the provider's JWKS (cached, per-provider TTL, key
+ * Verifies OIDC id_tokens and back-channel logout tokens: RS256/384/512,
+ * PS256/384/512 or ES256/384/512 signature (R4-L3) against the provider's JWKS (cached, per-provider TTL, key
  * selected by kid/alg/use), plus exp/nbf/iat (with clock leeway), iss, aud,
  * azp and nonce checks.
  */
@@ -36,6 +42,23 @@ class JwtVerifier
     /** Longer `kid` headers are refused before any lookup (R3-M1). */
     private const MAX_KID_LENGTH = 256;
     private const SCOPE_LOGOUT = 'logout';
+
+    /**
+     * Signature algorithms the verifier accepts, with the key type (and EC
+     * curve) a key must have for each. No `none`, no HMAC: the client secret
+     * must never become a verification key.
+     */
+    public const SUPPORTED_ALGORITHMS = [
+        'RS256' => ['RSA', null],
+        'RS384' => ['RSA', null],
+        'RS512' => ['RSA', null],
+        'PS256' => ['RSA', null],
+        'PS384' => ['RSA', null],
+        'PS512' => ['RSA', null],
+        'ES256' => ['EC', 'P-256'],
+        'ES384' => ['EC', 'P-384'],
+        'ES512' => ['EC', 'P-521'],
+    ];
 
     /** OIDC Back-Channel Logout 1.0 §2.4: the `events` member identifying a logout token. */
     public const BACKCHANNEL_LOGOUT_EVENT = 'http://schemas.openid.net/event/backchannel-logout';
@@ -57,7 +80,7 @@ class JwtVerifier
         string $jwksEndpoint,
         string $issuer,
         string $audience,
-        ?string $expectedNonce,
+        string $expectedNonce,
         int $jwksCacheTtlSeconds,
         int $httpTimeoutSeconds,
     ): array {
@@ -175,11 +198,16 @@ class JwtVerifier
         $kid = $signature->hasProtectedHeaderParameter('kid') ? $signature->getProtectedHeaderParameter('kid') : null;
         $kid = \is_string($kid) && $kid !== '' ? $kid : null;
 
+        // RFC 7515 §4.1.11: no header extensions are understood, so none may be critical (R4-L1).
+        if ($signature->hasProtectedHeaderParameter('crit')) {
+            throw new InvalidJwtException('JWT has a "crit" header; no critical header extensions are supported.');
+        }
+
         if ($kid !== null && \strlen($kid) > self::MAX_KID_LENGTH) {
             throw new InvalidJwtException('JWT "kid" header is too long.');
         }
 
-        $jwsVerifier = new JWSVerifier(new AlgorithmManager([new RS256(), new RS384(), new RS512()]));
+        $jwsVerifier = new JWSVerifier(new AlgorithmManager([new RS256(), new RS384(), new RS512(), new PS256(), new PS384(), new PS512(), new ES256(), new ES384(), new ES512()]));
 
         $candidates = $this->candidateKeys($this->getJwks($jwksEndpoint, $jwksCacheTtlSeconds, $httpTimeoutSeconds, false, $refreshScope), $alg, $kid);
         $mayRefetch = $allowRefetch && ($kid !== null ? $candidates->count() === 0 : $refreshScope === self::SCOPE_LOGIN);
@@ -210,8 +238,10 @@ class JwtVerifier
     {
         $candidates = [];
 
+        [$keyType, $curve] = self::SUPPORTED_ALGORITHMS[$alg];
+
         foreach ($keys->all() as $key) {
-            if ($key->get('kty') !== 'RSA') {
+            if ($key->get('kty') !== $keyType || ($curve !== null && (!$key->has('crv') || $key->get('crv') !== $curve))) {
                 continue;
             }
 
@@ -270,7 +300,7 @@ class JwtVerifier
     {
         $alg = $jws->getSignature(0)->getProtectedHeaderParameter('alg');
 
-        if (!\is_string($alg) || !\in_array($alg, ['RS256', 'RS384', 'RS512'], true)) {
+        if (!\is_string($alg) || !\array_key_exists($alg, self::SUPPORTED_ALGORITHMS)) {
             throw new InvalidJwtException(sprintf('Unsupported JWT signature algorithm "%s".', \is_scalar($alg) ? (string) $alg : ''));
         }
 
@@ -280,16 +310,11 @@ class JwtVerifier
     /**
      * @param array<string, mixed> $payload
      */
-    private function assertClaims(array $payload, string $issuer, string $audience, ?string $expectedNonce): void
+    private function assertClaims(array $payload, string $issuer, string $audience, string $expectedNonce): void
     {
         $this->assertStandardClaims($payload, $issuer, $audience);
 
-        if ($expectedNonce === null) {
-            $this->logger->warning('sw6oidc: JWT nonce validation skipped (no expected nonce supplied).');
-
-            return;
-        }
-
+        // Always checked: there is no "skip the nonce" mode (R3-L7).
         if (($payload['nonce'] ?? null) !== $expectedNonce) {
             throw new InvalidJwtException('JWT nonce does not match the nonce sent in the authorization request.');
         }
@@ -306,11 +331,18 @@ class JwtVerifier
             throw new InvalidJwtException('JWT has expired.');
         }
 
+        // A present but non-numeric time claim is invalid, never "0" (R4-L2).
+        foreach (['nbf', 'iat'] as $timeClaim) {
+            if (\array_key_exists($timeClaim, $payload) && !is_numeric($payload[$timeClaim])) {
+                throw new InvalidJwtException(sprintf('JWT "%s" claim is not a number.', $timeClaim));
+            }
+        }
+
         if (isset($payload['nbf']) && $now + self::LEEWAY_SECONDS < (int) $payload['nbf']) {
             throw new InvalidJwtException('JWT is not yet valid.');
         }
 
-        if (isset($payload['iat']) && is_numeric($payload['iat']) && $now + self::LEEWAY_SECONDS < (int) $payload['iat']) {
+        if (isset($payload['iat']) && $now + self::LEEWAY_SECONDS < (int) $payload['iat']) {
             throw new InvalidJwtException('JWT was issued in the future.');
         }
 

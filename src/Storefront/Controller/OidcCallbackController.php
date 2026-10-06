@@ -81,10 +81,18 @@ class OidcCallbackController extends StorefrontController
         }
 
         if ($request->query->get('error') !== null) {
-            $this->logger->warning('sw6oidc: IdP returned an OAuth error on the customer callback.', [
-                'error' => $request->query->get('error'),
-                'error_description' => $request->query->get('error_description'),
-            ]);
+            $flow = $this->callbackProcessor->abortFlowWithIdpError($request->query->get('state'), Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER);
+
+            if (!$flow instanceof AuthorizationFlowContext) {
+                // No flow of this browser: possibly forged, so it counts (R4-L4).
+                $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK_STOREFRONT, $request->getClientIp());
+            }
+
+            $this->logger->notice(
+                'sw6oidc: IdP returned an OAuth error on the customer callback.',
+                OidcCallbackProcessor::idpErrorLogContext($request->query->get('error'), $request->query->get('error_description'))
+                + ['knownFlow' => $flow instanceof AuthorizationFlowContext],
+            );
 
             $this->addFlash(self::DANGER, $this->trans('sw6oidc.login.failed'));
 

@@ -32,6 +32,9 @@ final class RelayStateValidatorTest extends TestCase
         yield 'javascript' => ['javascript:alert(1)'];
         yield 'relative' => ['account'];
         yield 'empty' => [''];
+        yield 'trailing newline' => ["/account\n"];
+        yield 'encoded trailing newline' => ['/account%0A'];
+        yield 'encoded DEL' => ['/account%7F'];
     }
 
     #[DataProvider('offSiteTargets')]

@@ -23,12 +23,11 @@ final readonly class AuthorizationFlowContext
     public const PURPOSE_REAUTH = 'reauth';
 
     private const PURPOSES = [self::PURPOSE_LOGIN, self::PURPOSE_LINK, self::PURPOSE_STEP_UP, self::PURPOSE_REAUTH];
-    /** 'test' is the provider live login test (OidcProviderAdminController). */
-    private const LOGIN_TYPES = ['customer', 'admin', 'test'];
+    private const LOGIN_TYPES = [LoginType::Customer->value, LoginType::Admin->value, LoginType::ProviderTest->value];
 
     public function __construct(
         public string $providerId,
-        /** 'customer' | 'admin' | 'test' */
+        /** a LoginType value; ProviderTest is the live login test */
         public string $loginType,
         public string $relayState,
         public string $codeVerifier,
@@ -41,6 +40,8 @@ final readonly class AuthorizationFlowContext
         public int $startedAt = 0,
         /** BrowserBinding hash of the browser that started the flow (M1) */
         public ?string $browserBinding = null,
+        /** UI locale of the admin running a live login test, for its result page */
+        public ?string $locale = null,
     ) {
     }
 
@@ -55,7 +56,8 @@ final readonly class AuthorizationFlowContext
      *     purpose: string,
      *     expectedUserId: string|null,
      *     startedAt: int,
-     *     browserBinding: string|null
+     *     browserBinding: string|null,
+     *     locale: string|null
      * }
      */
     public function toArray(): array
@@ -71,6 +73,7 @@ final readonly class AuthorizationFlowContext
             'expectedUserId' => $this->expectedUserId,
             'startedAt' => $this->startedAt,
             'browserBinding' => $this->browserBinding,
+            'locale' => $this->locale,
         ];
     }
 
@@ -91,6 +94,7 @@ final readonly class AuthorizationFlowContext
         $expectedUserId = $data['expectedUserId'] ?? null;
         $startedAt = $data['startedAt'] ?? 0;
         $browserBinding = $data['browserBinding'] ?? null;
+        $locale = $data['locale'] ?? null;
 
         if (
             !\in_array($data['loginType'], self::LOGIN_TYPES, true)
@@ -98,6 +102,7 @@ final readonly class AuthorizationFlowContext
             || ($expectedUserId !== null && !\is_string($expectedUserId))
             || !\is_int($startedAt)
             || ($browserBinding !== null && !\is_string($browserBinding))
+            || ($locale !== null && !\is_string($locale))
             || ($purpose !== self::PURPOSE_LOGIN && $expectedUserId === null)
         ) {
             throw new InvalidStateException('Stored OAuth state is malformed.');
@@ -114,6 +119,7 @@ final readonly class AuthorizationFlowContext
             $expectedUserId,
             $startedAt,
             $browserBinding,
+            $locale,
         );
     }
 }

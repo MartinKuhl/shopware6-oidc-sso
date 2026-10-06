@@ -16,13 +16,11 @@ class ClaimsNormalizer
 
     /**
      * @param array<string, mixed> $claims
+     * @param list<string>         $base64Claims claim names whose values are base64-decoded ("*" = all, M10)
      *
      * @return array<string, mixed> dot-notation flattened claims
      *
      * @throws ClaimsTooComplexException
-     */
-    /**
-     * @param list<string> $base64Claims claim names whose values are base64-decoded ("*" = all, M10)
      */
     public function flatten(array $claims, array $base64Claims = []): array
     {
@@ -68,10 +66,9 @@ class ClaimsNormalizer
     }
 
     /**
+     * @param array<mixed>         $claims
+     * @param list<string>         $base64Claims
      * @param array<string, mixed> $target
-     */
-    /**
-     * @param list<string> $base64Claims
      */
     private function flattenRecursive(array $claims, string $prefix, int $depth, array $base64Claims, array &$target): void
     {
@@ -79,7 +76,16 @@ class ClaimsNormalizer
             return;
         }
 
+        // The member names of an object-shaped top-level claim (Zitadel roles)
+        // are decoded like decodeGroups() decodes them, so group mapping and
+        // access-control rules see the same names (R3-L6).
+        $decodeKeys = $depth === 1 && $this->isBase64Claim($prefix, $base64Claims);
+
         foreach ($claims as $key => $value) {
+            if ($decodeKeys && \is_string($key)) {
+                $key = (string) $this->decode($key);
+            }
+
             $flatKey = $prefix === '' ? (string) $key : $prefix . '.' . $key;
 
             if (\count($target) >= self::MAX_FLATTENED_KEYS) {

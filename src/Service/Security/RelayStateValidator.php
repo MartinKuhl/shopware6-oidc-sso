@@ -22,7 +22,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  */
 class RelayStateValidator
 {
-    private const SAFE_PATH = '#^/(?![/\\\\])[^\x00-\x20\\\\]*$#';
+    // `D`: `$` must not match before a trailing newline (R3-L2).
+    private const SAFE_PATH = '#^/(?![/\\\\])[^\x00-\x20\x7f\\\\]*$#D';
     private const ROUTE_NAME = '/^frontend\.[a-z0-9_.\-]+$/';
 
     public function __construct(private readonly UrlGeneratorInterface $urlGenerator)

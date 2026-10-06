@@ -72,7 +72,8 @@ final class BrowserBindingTest extends TestCase
         $this->requests->push($request);
 
         self::assertSame($first, $this->binding->bindCurrentBrowser());
-        self::assertNull($request->attributes->get(BrowserBinding::PENDING_ATTRIBUTE));
+        // Same value, re-issued so the cookie's lifetime starts again (R3-L3).
+        self::assertSame($cookieValue, $request->attributes->get(BrowserBinding::PENDING_ATTRIBUTE));
     }
 
     public function testCallbackInAnotherBrowserIsRejectedBySecurityHelper(): void

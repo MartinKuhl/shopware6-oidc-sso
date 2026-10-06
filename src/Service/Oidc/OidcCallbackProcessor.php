@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Service\Oidc;
 
 use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeMapper;
+use MartinKuhl\Sw6Oidc\Service\Security\AuthorizationFlowContext;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcAccessControlEvaluator;
 use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
@@ -19,6 +20,9 @@ use Shopware\Core\Framework\Context;
  */
 class OidcCallbackProcessor
 {
+    private const MAX_IDP_ERROR_LENGTH = 64;
+    private const MAX_IDP_ERROR_DESCRIPTION_LENGTH = 200;
+
     public function __construct(
         private readonly ProviderResolver $providerResolver,
         private readonly OidcSecurityHelper $securityHelper,
@@ -33,17 +37,57 @@ class OidcCallbackProcessor
     }
 
     /**
+     * An OAuth error response from the IdP (`?error=…`): ends the flow it
+     * belongs to and returns it, or null when the `state` names no flow of
+     * this login type started in this browser — then the request may be
+     * forged and the caller counts it as a failure (R4-L4).
+     */
+    public function abortFlowWithIdpError(?string $state, string $expectedLoginType): ?AuthorizationFlowContext
+    {
+        try {
+            return $this->consumeFlow($state, $expectedLoginType);
+        } catch (InvalidStateException) {
+            return null;
+        }
+    }
+
+    /**
+     * Log context for an IdP error response: both values come straight from
+     * the query string, so they are cut short (R4-L4).
+     *
+     * @return array{error: string, error_description: string}
+     */
+    public static function idpErrorLogContext(mixed $error, mixed $description): array
+    {
+        return [
+            'error' => mb_substr(\is_string($error) ? $error : '', 0, self::MAX_IDP_ERROR_LENGTH),
+            'error_description' => mb_substr(\is_string($description) ? $description : '', 0, self::MAX_IDP_ERROR_DESCRIPTION_LENGTH),
+        ];
+    }
+
+    /**
+     * @param string $expectedLoginType the login type of the callback endpoint ('customer' or 'admin');
+     *                                  a flow started for the other one is rejected
+     *
      * @throws InvalidStateException
      * @throws \MartinKuhl\Sw6Oidc\Service\Jwt\Exception\InvalidJwtException
      * @throws \MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\MissingEmailClaimException
      * @throws \MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException
      * @throws \MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException
      */
-    /**
-     * @param string $expectedLoginType the login type of the callback endpoint ('customer' or 'admin');
-     *                                  a flow started for the other one is rejected
-     */
     public function process(?string $code, ?string $state, string $redirectUri, string $expectedLoginType, Context $context): OidcCallbackResult
+    {
+        return $this->processFlow($this->consumeFlow($state, $expectedLoginType), $code, $redirectUri, $context);
+    }
+
+    /**
+     * The first half of process(): redeems the state. Callers that must know
+     * the flow's purpose even when the rest of the pipeline fails (the
+     * Administration's step-up popup) call this and processFlow() separately.
+     *
+     * @throws InvalidStateException
+     */
+    public function consumeFlow(?string $state, string $expectedLoginType): AuthorizationFlowContext
     {
         $flow = $this->securityHelper->consumeAuthorizationFlow($state);
 
@@ -55,6 +99,20 @@ class OidcCallbackProcessor
             ));
         }
 
+        return $flow;
+    }
+
+    /**
+     * The second half of process(), for a flow from consumeFlow().
+     *
+     * @throws InvalidStateException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Jwt\Exception\InvalidJwtException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\MissingEmailClaimException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException
+     * @throws \MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException
+     */
+    public function processFlow(AuthorizationFlowContext $flow, ?string $code, string $redirectUri, Context $context): OidcCallbackResult
+    {
         if ($code === null || $code === '') {
             throw new InvalidStateException('Callback is missing the "code" parameter.');
         }
@@ -99,10 +157,7 @@ class OidcCallbackProcessor
 
         $userInfoClaims = $this->userInfoService->fetchClaims($provider, $tokens['access_token']);
         $mergedClaims = ClaimsMerger::merge($idTokenClaims, $userInfoClaims);
-
-        if (!\is_string($mergedClaims['sub'] ?? null) || $mergedClaims['sub'] === '') {
-            throw new InvalidStateException('The identity provider did not return a subject ("sub") claim.');
-        }
+        ClaimsMerger::requireSubject($mergedClaims);
 
         $this->logger->debug('sw6oidc: userinfo fetched and merged with id_token claims.', [
             'providerId' => $provider->getId(),

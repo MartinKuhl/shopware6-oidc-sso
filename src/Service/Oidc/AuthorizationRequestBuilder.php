@@ -32,6 +32,7 @@ class AuthorizationRequestBuilder
         string $purpose = AuthorizationFlowContext::PURPOSE_LOGIN,
         ?string $expectedUserId = null,
         array $extraParams = [],
+        ?string $locale = null,
     ): string {
         $flow = $this->securityHelper->beginAuthorizationRequest(
             $provider->getId(),
@@ -40,6 +41,7 @@ class AuthorizationRequestBuilder
             $provider->getPkceFlow(),
             $purpose,
             $expectedUserId,
+            $locale,
         );
 
         // The protocol parameters always win over extras.

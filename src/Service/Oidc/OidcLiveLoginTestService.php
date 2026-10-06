@@ -133,6 +133,13 @@ class OidcLiveLoginTestService
         }
 
         try {
+            ClaimsMerger::requireSubject($merged);
+        } catch (\Throwable $exception) {
+            // Every real login with these claims fails (R3-L4).
+            $steps[] = ['id' => 'subject', 'status' => 'fail', 'detail' => $exception->getMessage()];
+        }
+
+        try {
             $claims = $this->claimsNormalizer->flatten($merged, $provider->getBase64Claims());
         } catch (\Throwable $exception) {
             $steps[] = ['id' => 'claims', 'status' => 'fail', 'detail' => $exception->getMessage()];

@@ -199,4 +199,23 @@ final class ClaimsNormalizerTest extends TestCase
             'Engineering' => ['orgId' => '2'],
         ]));
     }
+
+    public function testObjectShapedBase64ClaimHasItsMemberNamesDecodedLikeGroups(): void
+    {
+        $roles = [base64_encode('Admins') => ['orgId' => '1'], base64_encode('Editors') => ['orgId' => '2']];
+
+        $flattened = $this->normalizer->flatten(['roles' => $roles], ['roles']);
+        $groups = $this->normalizer->decodeGroups($this->normalizer->normalizeGroups($roles), 'roles', ['roles']);
+
+        // Access rules (flattened keys) and group mapping see the same names (R3-L6).
+        self::assertSame(['roles.Admins.orgId', 'roles.Editors.orgId'], array_keys($flattened));
+        self::assertSame(['Admins', 'Editors'], $groups);
+    }
+
+    public function testMemberNamesOfUnlistedClaimsStayEncoded(): void
+    {
+        $key = base64_encode('Admins');
+
+        self::assertSame(['roles.' . $key . '.orgId'], array_keys($this->normalizer->flatten(['roles' => [$key => ['orgId' => '1']]], ['other'])));
+    }
 }

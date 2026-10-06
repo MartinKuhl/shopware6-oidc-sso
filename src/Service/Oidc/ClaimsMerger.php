@@ -46,4 +46,23 @@ final class ClaimsMerger
 
         return $merged;
     }
+
+    /**
+     * Every login is bound to the subject, so merged claims without a `sub`
+     * can't log anyone in — the live test applies the same rule (R3-L4).
+     *
+     * @param array<string, mixed> $mergedClaims
+     *
+     * @throws InvalidStateException
+     */
+    public static function requireSubject(array $mergedClaims): string
+    {
+        $sub = $mergedClaims['sub'] ?? null;
+
+        if (!\is_string($sub) || $sub === '') {
+            throw new InvalidStateException('The identity provider did not return a subject ("sub") claim.');
+        }
+
+        return $sub;
+    }
 }

@@ -6,6 +6,7 @@ use MartinKuhl\Sw6Oidc\Service\Jwt\Exception\InvalidJwtException;
 use MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\JwtTestSigner;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\AbstractLogger;
 use Psr\Log\LoggerInterface;
@@ -144,29 +145,55 @@ final class JwtVerifierTest extends TestCase
         $this->expectVerifyFailure('nonce', $this->signer->sign($claims));
     }
 
-    public function testNullExpectedNonceSkipsNonceCheckAndLogsWarning(): void
+    public function testCriticalHeaderIsRejected(): void
     {
-        $logger = new class extends AbstractLogger {
-            /** @var list<array{string, string}> */
-            public array $records = [];
-
-            public function log($level, \Stringable|string $message, array $context = []): void
-            {
-                $this->records[] = [(string) $level, (string) $message];
-            }
-        };
-
-        $claims = $this->verify(
-            $this->signer->sign($this->claims(['nonce' => 'whatever'])),
-            null,
-            $logger,
-        );
-
-        self::assertSame('whatever', $claims['nonce']);
-        $warnings = array_filter($logger->records, static fn (array $r): bool => $r[0] === 'warning' && str_contains($r[1], 'nonce'));
-        self::assertCount(1, $warnings);
+        $this->expectVerifyFailure('"crit"', $this->signer->sign($this->claims(['exp2' => 1]), ['crit' => ['exp2']]));
     }
 
+    public function testNonNumericNbfIsRejected(): void
+    {
+        $this->expectVerifyFailure('"nbf" claim is not a number', $this->signer->sign($this->claims(['nbf' => 'soon'])));
+    }
+
+    public function testNonNumericIatIsRejected(): void
+    {
+        $this->expectVerifyFailure('"iat" claim is not a number', $this->signer->sign($this->claims(['iat' => 'now'])));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function nonRsaAlgorithms(): iterable
+    {
+        yield 'ES256' => ['ES256'];
+        yield 'PS256' => ['PS256'];
+    }
+
+    #[DataProvider('nonRsaAlgorithms')]
+    public function testEcAndPssSignedTokensVerify(string $alg): void
+    {
+        $signer = new JwtTestSigner('k-' . $alg, $alg);
+        $client = new MockHttpClient(static fn (): MockResponse => new MockResponse($signer->jwksJson()));
+
+        $claims = $this->verifyWith(new JwtVerifier($client, new ArrayAdapter(), new NullLogger()), $signer->sign($this->claims()));
+
+        self::assertSame('user-1', $claims['sub']);
+    }
+
+    public function testEcKeyIsNotUsedForAnRsaAlgorithm(): void
+    {
+        // An ES256 key in the JWKS must never be a candidate for an RS256 token with the same kid.
+        $ecSigner = new JwtTestSigner('shared', 'ES256');
+        $rsaSigner = new JwtTestSigner('shared');
+        $client = new MockHttpClient(static fn (): MockResponse => new MockResponse($ecSigner->jwksJson()));
+
+        try {
+            $this->verifyWith(new JwtVerifier($client, new ArrayAdapter(), new NullLogger()), $rsaSigner->sign($this->claims()));
+            self::fail('Expected InvalidJwtException');
+        } catch (InvalidJwtException $exception) {
+            self::assertStringContainsString('signature verification failed', $exception->getMessage());
+        }
+    }
     public function testHs256TokenIsRejectedAsUnsupportedAlgorithm(): void
     {
         $this->expectVerifyFailure('Unsupported JWT signature algorithm "HS256"', JwtTestSigner::signHs256($this->claims()));
@@ -231,7 +258,7 @@ final class JwtVerifierTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function verify(string $jwt, ?string $nonce = self::NONCE, ?LoggerInterface $logger = null): array
+    private function verify(string $jwt, string $nonce = self::NONCE, ?LoggerInterface $logger = null): array
     {
         return $this->verifyWith(new JwtVerifier($this->client, new ArrayAdapter(), $logger ?? new NullLogger()), $jwt, $nonce);
     }
@@ -239,7 +266,7 @@ final class JwtVerifierTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function verifyWith(JwtVerifier $verifier, string $jwt, ?string $nonce = self::NONCE): array
+    private function verifyWith(JwtVerifier $verifier, string $jwt, string $nonce = self::NONCE): array
     {
         return $verifier->verify($jwt, self::JWKS, self::ISSUER, self::AUDIENCE, $nonce, 3600, 5);
     }

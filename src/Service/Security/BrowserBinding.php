@@ -45,12 +45,10 @@ class BrowserBinding
             return null;
         }
 
-        $value = $this->currentValue($request);
-
-        if ($value === null) {
-            $value = bin2hex(random_bytes(32));
-            $request->attributes->set(self::PENDING_ATTRIBUTE, $value);
-        }
+        $value = $this->currentValue($request) ?? bin2hex(random_bytes(32));
+        // Also for a reused value: re-issuing extends the cookie, so a flow
+        // started late in its lifetime doesn't fail as "different browser" (R3-L3).
+        $request->attributes->set(self::PENDING_ATTRIBUTE, $value);
 
         return $this->hash($value);
     }

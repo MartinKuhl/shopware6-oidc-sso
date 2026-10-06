@@ -220,24 +220,32 @@ class OidcAdminAuthController extends AbstractController
         }
 
         if ($request->query->get('error') !== null) {
-            $this->logger->warning('sw6oidc: IdP returned an OAuth error on the admin callback.', [
-                'error' => $request->query->get('error'),
-                'error_description' => $request->query->get('error_description'),
-            ]);
+            $flow = $this->callbackProcessor->abortFlowWithIdpError($request->query->get('state'), Sw6OidcUserProviderEntity::USER_TYPE_ADMIN);
 
-            return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_error' => 'oidc_failed']));
+            if (!$flow instanceof AuthorizationFlowContext) {
+                // No flow of this browser: possibly forged, so it counts (R4-L4).
+                $this->rateLimiter->recordFailure(Sw6OidcRateLimiter::SCOPE_CALLBACK_ADMIN, $request->getClientIp());
+            }
+
+            $this->logger->notice(
+                'sw6oidc: IdP returned an OAuth error on the admin callback.',
+                OidcCallbackProcessor::idpErrorLogContext($request->query->get('error'), $request->query->get('error_description'))
+                + ['knownFlow' => $flow instanceof AuthorizationFlowContext],
+            );
+
+            // A step-up popup must report back to its opener, never land on the login page (R3-F9).
+            return $flow?->purpose === AuthorizationFlowContext::PURPOSE_STEP_UP
+                ? $this->stepUpResultPage(['type' => 'sw6oidc-step-up', 'error' => 'step_up_failed'])
+                : new RedirectResponse($this->administrationLoginUrl(['sw6oidc_error' => 'oidc_failed']));
         }
 
         $redirectUri = $this->generateUrl('api.action.sw6oidc.admin.callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
 
+        $flow = null;
+
         try {
-            $result = $this->callbackProcessor->process(
-                $request->query->get('code'),
-                $request->query->get('state'),
-                $redirectUri,
-                Sw6OidcUserProviderEntity::USER_TYPE_ADMIN,
-                $context,
-            );
+            $flow = $this->callbackProcessor->consumeFlow($request->query->get('state'), Sw6OidcUserProviderEntity::USER_TYPE_ADMIN);
+            $result = $this->callbackProcessor->processFlow($flow, $request->query->get('code'), $redirectUri, $context);
 
             if ($result->flow->purpose === AuthorizationFlowContext::PURPOSE_LINK) {
                 return $this->completeLink($result, $context);
@@ -285,6 +293,10 @@ class OidcAdminAuthController extends AbstractController
 
             return new RedirectResponse($this->administrationLoginUrl($query));
         } catch (AccessControlDeniedException $exception) {
+            if ($flow->purpose === AuthorizationFlowContext::PURPOSE_STEP_UP) {
+                return $this->stepUpResultPage(['type' => 'sw6oidc-step-up', 'error' => 'step_up_failed']);
+            }
+
             $query = ['sw6oidc_error' => 'access_denied'];
             $message = $exception->getDisplayMessage();
 
@@ -294,6 +306,10 @@ class OidcAdminAuthController extends AbstractController
 
             return new RedirectResponse($this->administrationLoginUrl($query));
         } catch (AccountLinkingRequiredException | EmailNotVerifiedException | ProviderMismatchException | SubjectAlreadyLinkedException $exception) {
+            if ($flow->purpose === AuthorizationFlowContext::PURPOSE_STEP_UP) {
+                return $this->stepUpResultPage(['type' => 'sw6oidc-step-up', 'error' => 'step_up_failed']);
+            }
+
             $this->logger->notice('sw6oidc: admin OIDC login refused by the account policy.', [
                 'exceptionClass' => $exception::class,
                 'exception' => $exception->getMessage(),
@@ -333,7 +349,13 @@ class OidcAdminAuthController extends AbstractController
                 // violation, ...) as the previous exception rather than in
                 // its own getMessage().
                 'previousException' => $exception->getPrevious()?->getMessage(),
+                'purpose' => $flow?->purpose,
             ]);
+
+            if ($flow?->purpose === AuthorizationFlowContext::PURPOSE_STEP_UP) {
+                // The popup reports the failure to its opener (R3-F9).
+                return $this->stepUpResultPage(['type' => 'sw6oidc-step-up', 'error' => 'step_up_failed']);
+            }
 
             return new RedirectResponse($this->administrationLoginUrl(['sw6oidc_error' => 'oidc_failed']));
         }
@@ -623,6 +645,17 @@ class OidcAdminAuthController extends AbstractController
             $message = ['type' => 'sw6oidc-step-up', 'error' => 'step_up_failed'];
         }
 
+        return $this->stepUpResultPage($message);
+    }
+
+    /**
+     * The step-up popup's last page: posts the message to the Administration
+     * (its own origin only) and closes.
+     *
+     * @param array{type: string, nonce?: string, error?: string} $message
+     */
+    private function stepUpResultPage(array $message): Response
+    {
         $parts = parse_url($this->administrationBaseUrl);
         $origin = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '') . (isset($parts['port']) ? ':' . $parts['port'] : '');
         $scriptNonce = base64_encode(random_bytes(16));

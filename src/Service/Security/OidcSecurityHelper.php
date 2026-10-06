@@ -37,6 +37,7 @@ class OidcSecurityHelper
         string $codeChallengeMethod,
         string $purpose = AuthorizationFlowContext::PURPOSE_LOGIN,
         ?string $expectedUserId = null,
+        ?string $locale = null,
     ): array {
         $state = $this->randomUrlSafeString(32);
         $codeVerifier = $this->randomUrlSafeString(64);
@@ -53,6 +54,7 @@ class OidcSecurityHelper
             $expectedUserId,
             time(),
             $this->browserBinding?->bindCurrentBrowser(),
+            $locale,
         );
 
         $this->cache->save(

@@ -11,6 +11,7 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
 use Doctrine\DBAL\Connection;
 use Psr\Log\LoggerInterface;
@@ -25,6 +26,7 @@ use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
@@ -48,6 +50,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 class OidcProviderAdminController extends AbstractController
 {
     private const MAX_STORED_CLAIM_KEYS = 500;
+    private const DEFAULT_TEST_TIMEOUT_SECONDS = 10;
+    private const MAX_TEST_TIMEOUT_SECONDS = 30;
 
     public function __construct(
         private readonly EntityRepository $providerRepository,
@@ -117,13 +121,13 @@ class OidcProviderAdminController extends AbstractController
     )]
     public function discover(Request $request): JsonResponse
     {
-        $wellKnownConfigUrl = (string) $request->request->get('wellKnownConfigUrl', '');
+        $wellKnownConfigUrl = $this->stringInput($request, 'wellKnownConfigUrl') ?? '';
 
         if ($wellKnownConfigUrl === '') {
             return new JsonResponse(['error' => 'invalid_request', 'message' => 'A well-known configuration URL is required.'], 400);
         }
 
-        $timeout = (int) $request->request->get('httpTimeout', 10) ?: 10;
+        $timeout = $this->timeoutInput($request);
 
         $violation = $this->urlValidator->validate($wellKnownConfigUrl);
 
@@ -137,7 +141,15 @@ class OidcProviderAdminController extends AbstractController
             return PublicError::response($this->logger, 'sw6oidc: discovery request failed.', $exception, 'discovery_failed', Response::HTTP_BAD_REQUEST);
         }
 
-        return new JsonResponse(array_merge($endpoints, ['warnings' => $violation['warnings']]));
+        $warnings = $violation['warnings'];
+        $algorithmWarning = OidcDiscoveryService::unsupportedSigningAlgorithmsWarning($endpoints['idTokenSigningAlgValuesSupported'] ?? null);
+        unset($endpoints['idTokenSigningAlgValuesSupported']);
+
+        if ($algorithmWarning !== null) {
+            $warnings[] = $algorithmWarning;
+        }
+
+        return new JsonResponse(array_merge($endpoints, ['warnings' => $warnings]));
     }
 
     #[Route(
@@ -148,29 +160,29 @@ class OidcProviderAdminController extends AbstractController
     )]
     public function testConnection(Request $request, Context $context): JsonResponse
     {
-        $clientSecret = $request->request->get('clientSecret');
-        $providerId = (string) $request->request->get('providerId', '');
+        $providerId = $this->stringInput($request, 'providerId') ?? '';
+        $hasClientSecret = trim($this->stringInput($request, 'clientSecret') ?? '') !== '';
 
         // client_secret is write-only over the API, so the form of an existing
         // provider sends nothing unless the admin typed a new one: fall back
         // to the stored secret.
-        if (($clientSecret === null || $clientSecret === '') && Uuid::isValid($providerId)) {
-            $clientSecret = $this->loadProvider($providerId, $context)?->getUsableClientSecret();
+        if (!$hasClientSecret && Uuid::isValid($providerId)) {
+            $hasClientSecret = $this->loadProvider($providerId, $context)?->getUsableClientSecret() !== null;
         }
 
         $config = [
-            'wellKnownConfigUrl' => $request->request->get('wellKnownConfigUrl'),
-            'authorizeEndpoint' => $request->request->get('authorizeEndpoint'),
-            'accessTokenEndpoint' => $request->request->get('accessTokenEndpoint'),
-            'userInfoEndpoint' => $request->request->get('userInfoEndpoint'),
-            'jwksEndpoint' => $request->request->get('jwksEndpoint'),
-            'endSessionEndpoint' => $request->request->get('endSessionEndpoint'),
-            'revocationEndpoint' => $request->request->get('revocationEndpoint'),
-            'issuer' => $request->request->get('issuer'),
-            'clientId' => $request->request->get('clientId'),
-            'clientSecret' => $clientSecret,
+            'wellKnownConfigUrl' => $this->stringInput($request, 'wellKnownConfigUrl'),
+            'authorizeEndpoint' => $this->stringInput($request, 'authorizeEndpoint'),
+            'accessTokenEndpoint' => $this->stringInput($request, 'accessTokenEndpoint'),
+            'userInfoEndpoint' => $this->stringInput($request, 'userInfoEndpoint'),
+            'jwksEndpoint' => $this->stringInput($request, 'jwksEndpoint'),
+            'endSessionEndpoint' => $this->stringInput($request, 'endSessionEndpoint'),
+            'revocationEndpoint' => $this->stringInput($request, 'revocationEndpoint'),
+            'issuer' => $this->stringInput($request, 'issuer'),
+            'clientId' => $this->stringInput($request, 'clientId'),
+            'hasClientSecret' => $hasClientSecret,
             'publicClient' => $request->request->getBoolean('publicClient'),
-            'httpTimeout' => (int) $request->request->get('httpTimeout', 10) ?: 10,
+            'httpTimeout' => $this->timeoutInput($request),
         ];
 
         return new JsonResponse($this->connectionTestService->test($config));
@@ -198,11 +210,10 @@ class OidcProviderAdminController extends AbstractController
         }
 
         $redirectUri = $this->generateUrl('api.action.sw6oidc.provider.test-callback', [], UrlGeneratorInterface::ABSOLUTE_URL);
-        // A test flow has no post-login redirect, so its relay-state slot
-        // carries the admin's UI locale through the IdP round trip instead:
-        // the anonymous popup callback has no other way to know it.
+        // The anonymous popup callback has no other way to know the admin's
+        // UI locale, so the flow carries it.
         $locale = $this->translator->normalizeLocale((string) $request->request->get('locale', ''));
-        $authorizeUrl = $this->requestBuilder->build($provider, 'test', $locale, $redirectUri);
+        $authorizeUrl = $this->requestBuilder->build($provider, LoginType::ProviderTest->value, '', $redirectUri, locale: $locale);
 
         return new JsonResponse(['authorizeUrl' => $authorizeUrl]);
     }
@@ -244,7 +255,7 @@ class OidcProviderAdminController extends AbstractController
             ], [], $cspNonce, $locale);
         }
 
-        if ($flow->loginType !== 'test') {
+        if ($flow->loginType !== LoginType::ProviderTest->value) {
             $this->logger->warning('sw6oidc: provider test callback received a non-test authorization flow; refusing.', [
                 'providerId' => $flow->providerId,
             ]);
@@ -259,7 +270,7 @@ class OidcProviderAdminController extends AbstractController
             ], [], $cspNonce, $this->translator->normalizeLocale($request->getPreferredLanguage()));
         }
 
-        $locale = $this->translator->normalizeLocale($flow->relayState);
+        $locale = $this->translator->normalizeLocale($flow->locale ?? '');
 
         $context = Context::createDefaultContext();
 
@@ -348,6 +359,36 @@ class OidcProviderAdminController extends AbstractController
      * @param array<int, array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}> $steps
      * @param array<string, mixed> $claims
      */
+    /**
+     * A string request field, or null when absent. Any other JSON type is a
+     * client error, not a TypeError deep inside the test (R3-L44).
+     */
+    private function stringInput(Request $request, string $key): ?string
+    {
+        $value = $request->request->all()[$key] ?? null;
+
+        if ($value === null || \is_string($value)) {
+            return $value;
+        }
+
+        throw new BadRequestHttpException(sprintf('"%s" must be a string.', $key));
+    }
+
+    /**
+     * The test timeout in seconds, clamped to 1–30 (R3-L44): the endpoints
+     * run inside the admin's request.
+     */
+    private function timeoutInput(Request $request): int
+    {
+        $value = $request->request->all()['httpTimeout'] ?? self::DEFAULT_TEST_TIMEOUT_SECONDS;
+
+        if (!is_numeric($value)) {
+            throw new BadRequestHttpException('"httpTimeout" must be a number.');
+        }
+
+        return max(1, min(self::MAX_TEST_TIMEOUT_SECONDS, (int) $value));
+    }
+
     private function renderTestResultPage(string $status, array $steps, array $claims, ?string $cspNonce, string $locale): Response
     {
         // Same snippet keys, wording and pill layout as the provider detail

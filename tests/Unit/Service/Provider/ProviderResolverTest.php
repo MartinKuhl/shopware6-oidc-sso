@@ -19,10 +19,12 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 #[CoversClass(ProviderResolver::class)]
 final class ProviderResolverTest extends TestCase
 {
+    private const PROVIDER_ID = '0190f1a2b3c47d5e8f9a0b1c2d3e4f50';
+
     public function testFindByIssuerFiltersActiveProvidersByExactIssuer(): void
     {
         $provider = new Sw6OidcProviderEntity();
-        $provider->setId('p1');
+        $provider->setId(self::PROVIDER_ID);
 
         $repository = $this->createMock(EntityRepository::class);
         $repository->expects(self::once())->method('search')->willReturnCallback(static function (Criteria $criteria, Context $context) use ($provider): EntitySearchResult {
@@ -60,7 +62,7 @@ final class ProviderResolverTest extends TestCase
     public function testGetActiveByIdEnforcesTheLoginType(string $providerType, string $loginType, bool $active, bool $expectFound): void
     {
         $provider = new Sw6OidcProviderEntity();
-        $provider->setId('p1');
+        $provider->setId(self::PROVIDER_ID);
         $provider->setLoginType($providerType);
         $provider->setIsActive($active);
 
@@ -78,6 +80,26 @@ final class ProviderResolverTest extends TestCase
             $this->expectException(ProviderNotFoundException::class);
         }
 
-        self::assertSame($provider, (new ProviderResolver($repository))->getActiveById('p1', $loginType, Context::createDefaultContext()));
+        self::assertSame($provider, (new ProviderResolver($repository))->getActiveById(self::PROVIDER_ID, $loginType, Context::createDefaultContext()));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function malformedIds(): iterable
+    {
+        yield 'empty' => [''];
+        yield 'not a uuid' => ['p1'];
+    }
+
+    #[DataProvider('malformedIds')]
+    public function testMalformedIdIsProviderNotFoundWithoutQuery(string $providerId): void
+    {
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->expects(self::never())->method('search');
+
+        $this->expectException(ProviderNotFoundException::class);
+
+        (new ProviderResolver($repository))->getActiveById($providerId, 'customer', Context::createDefaultContext());
     }
 }
