@@ -1,11 +1,11 @@
 {
   "main.js": {
-    "file": "assets/sw6-oidc-D6SJhPW6.js",
+    "file": "assets/sw6-oidc-CUuUsB7b.js",
     "name": "sw6-oidc",
     "src": "main.js",
     "isEntry": true,
     "css": [
-      "assets/sw6-oidc-C1QxLIJp.css"
+      "assets/sw6-oidc-BOCPErVo.css"
     ]
   }
 }

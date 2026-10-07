@@ -3,11 +3,11 @@
   "entryPoints": {
     "sw6-oidc": {
       "css": [
-        "/bundles/sw6oidc/administration/assets/sw6-oidc-C1QxLIJp.css"
+        "/bundles/sw6oidc/administration/assets/sw6-oidc-BOCPErVo.css"
       ],
       "dynamic": [],
       "js": [
-        "/bundles/sw6oidc/administration/assets/sw6-oidc-D6SJhPW6.js"
+        "/bundles/sw6oidc/administration/assets/sw6-oidc-CUuUsB7b.js"
       ],
       "legacy": false,
       "preload": []
