@@ -224,7 +224,7 @@ class OidcConfigTransfer
             return null;
         }
 
-        return $this->encryptor->isEncrypted($stored) ? $stored : $this->encryptor->encrypt($stored, 'sw6oidc_provider.client_secret');
+        return $this->encryptor->isEncrypted($stored) ? $stored : $this->encryptor->encrypt($stored, Sw6OidcProviderDefinition::CLIENT_SECRET_PURPOSE);
     }
 
     /**

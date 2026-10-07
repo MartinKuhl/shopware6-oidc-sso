@@ -54,7 +54,7 @@ class AdminOidcGrant extends AbstractGrant
     public function __construct(
         RefreshTokenRepositoryInterface $refreshTokenRepository,
         private readonly Connection $connection,
-        string $refreshTokenTtl = 'P1W',
+        string $refreshTokenTtl,
     ) {
         // AuthorizationServer::enableGrantType() never sets this - League
         // only wires up client/access-token/scope repositories, default

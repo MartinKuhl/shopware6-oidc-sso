@@ -292,7 +292,7 @@ class JwtVerifier
         try {
             return (new CompactSerializer())->unserialize($jwt);
         } catch (\Throwable $exception) {
-            throw new InvalidJwtException('Malformed JWT: ' . $exception->getMessage(), 0, $exception);
+            throw new InvalidJwtException('Malformed JWT: ' . $exception->getMessage(), $exception);
         }
     }
 
@@ -413,7 +413,7 @@ class JwtVerifier
                 'exceptionClass' => $exception::class,
             ]);
 
-            throw new InvalidJwtException('Could not fetch the provider JWKS.', 0, $exception);
+            throw new InvalidJwtException('Could not fetch the provider JWKS.', $exception);
         }
 
         $item->set($json);

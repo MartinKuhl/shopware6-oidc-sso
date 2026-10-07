@@ -113,7 +113,7 @@ class PasskeyRegistrationService
         try {
             $record = $this->ceremonyFactory->attestationResponseValidator(array_values($stored['origins'] ?? []))->check($response, $options, $host);
         } catch (\Throwable $exception) {
-            throw new PasskeyCeremonyException($exception->getMessage(), 0, $exception);
+            throw new PasskeyCeremonyException($exception->getMessage(), $exception);
         }
 
         $this->credentialRepository->saveNewCredentialRecord($record, $stored['userType'], $stored['userId'], $nickname);

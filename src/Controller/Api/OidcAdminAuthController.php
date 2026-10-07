@@ -12,7 +12,6 @@ use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonce;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\StepUpService;
-use MartinKuhl\Sw6Oidc\Service\Jwt\JwtPayloadReader;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext;
 use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContextStore;
@@ -617,9 +616,7 @@ class OidcAdminAuthController extends AbstractController
 
     private function accessTokenJti(Response $tokenResponse): ?string
     {
-        $payload = json_decode((string) $tokenResponse->getContent(), true);
-        $accessToken = \is_array($payload) ? ($payload['access_token'] ?? null) : null;
-        $jti = \is_string($accessToken) ? JwtPayloadReader::stringClaim($accessToken, 'jti') : null;
+        $jti = AdminTokenIssuer::accessTokenJti($tokenResponse);
 
         if ($jti === null) {
             $this->logger->warning('sw6oidc: admin token response had no readable jti, session not registered.');

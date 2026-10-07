@@ -59,13 +59,13 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Cache\RedisConnectionFactory">
             <argument>%env(default::SW6OIDC_REDIS_DSN)%</argument>
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Cache\RedisAtomicCache">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\RedisConnectionFactory" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\DatabaseAtomicCache" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
         </service>
         <service id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" alias="MartinKuhl\Sw6Oidc\Service\Cache\RedisAtomicCache" />
@@ -73,7 +73,7 @@
         <!-- Encryption at rest (client_secret). Key derived from APP_SECRET. -->
         <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor">
             <argument>%env(APP_SECRET)%</argument>
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <tag name="kernel.reset" method="reset" />
         </service>
 
@@ -98,7 +98,7 @@
         <service id="MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier">
             <argument type="service" id="sw6oidc.http_client" />
             <argument type="service" id="cache.app" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <!--
@@ -122,7 +122,7 @@
             <tag name="kernel.reset" method="reset" />
         </service>
 
-        <service id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" class="Monolog\Logger">
+        <service id="sw6oidc.logger" class="Monolog\Logger">
             <argument>sw6oidc</argument>
             <argument type="collection">
                 <argument type="service" id="sw6oidc.log_handler" />
@@ -149,7 +149,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient">
             <argument type="service" id="sw6oidc.http_client" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\TokenExchangeService">
@@ -193,7 +193,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\GroupMappingResolver">
@@ -212,7 +212,7 @@
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeTransformer">
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeMapper">
@@ -230,7 +230,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\IdentityResolver" />
             <argument type="service" id="Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="event_dispatcher" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="Shopware\Core\System\SystemConfig\SystemConfigService" />
@@ -246,7 +246,7 @@
             <argument type="service" id="Shopware\Core\Content\Media\MediaService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\AvatarFetcher" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\TimeZoneValidator" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="event_dispatcher" />
             <argument type="service" id="acl_user_role.repository" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
@@ -269,7 +269,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcCallbackProcessor">
@@ -280,14 +280,14 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Jwt\JwtVerifier" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\ClaimsNormalizer" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\AttributeMapper" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcAccessControlEvaluator" />
         </service>
 
         <!-- Claims-based access control (evaluated inside OidcCallbackProcessor) -->
         <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcAccessControlEvaluator">
             <argument type="service" id="sw6oidc_access_control_rule.repository" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginErrorTicketStore">
@@ -298,7 +298,7 @@
         <service id="MartinKuhl\Sw6Oidc\Storefront\Controller\SendAuthorizationRequestController" public="true">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
             <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\LogoutRoute" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\RelayStateValidator" />
@@ -324,7 +324,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\CustomerProvisioningService" />
             <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\AccountService" />
             <argument type="service" id="Shopware\Core\System\SalesChannel\Context\SalesChannelContextService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
@@ -350,7 +350,7 @@
         <service id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry">
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument>%shopware.api.store.context_lifetime%</argument>
         </service>
 
@@ -358,27 +358,27 @@
             <argument type="service" id="Shopware\Core\System\SalesChannel\Context\SalesChannelContextPersister" />
             <argument type="service" id="Shopware\Core\Framework\Api\OAuth\RefreshTokenRepository" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
         </service>
 
         <!-- Session activity log (sw6oidc_session_activity) + admin force-logout + retention -->
         <service id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder">
             <argument type="service" id="sw6oidc_session_activity.repository" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat" />
             <argument>%env(bool:SW6OIDC_SESSION_ACTIVITY_TRUNCATE_IP)%</argument>
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat">
             <argument type="service" id="Doctrine\DBAL\Connection" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Health\InfrastructureInspector">
@@ -391,7 +391,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument>%shopware.api.refresh_token_ttl%</argument>
             <argument>%shopware.api.store.context_lifetime%</argument>
             <call method="setContainer">
@@ -405,7 +405,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\ScheduledTask\SessionActivityCleanupTaskHandler">
             <argument type="service" id="scheduled_task.repository" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument>%env(int:SW6OIDC_SESSION_ACTIVITY_RETENTION_DAYS)%</argument>
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
@@ -420,7 +420,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\ScheduledTask\OneTimeTokenCleanupTaskHandler">
             <argument type="service" id="scheduled_task.repository" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\DatabaseAtomicCache" />
             <tag name="messenger.message_handler" />
         </service>
@@ -443,7 +443,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -454,7 +454,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcIdpLogoutHandler" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
             </call>
@@ -466,7 +466,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState" />
         </service>
 
@@ -494,7 +494,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Storefront\Service\PendingLogoutRedirect" />
             <argument type="service" id="router" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
         </service>
@@ -555,7 +555,7 @@
         <service id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository">
             <argument type="service" id="sw6oidc_passkey_credential.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
         </service>
 
@@ -575,7 +575,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\WebauthnCeremonyFactory" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Cache\AtomicCacheInterface" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcAdminAuthController" public="true">
@@ -586,7 +586,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminLoginNonceService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer" />
             <argument>%env(APP_URL)%/admin</argument>
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
@@ -617,7 +617,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver">
@@ -636,7 +636,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\StepUpService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcRateLimiter" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
@@ -651,7 +651,7 @@
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\OidcUserProviderAdminController" public="true">
             <argument type="service" id="sw6oidc_user_provider.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
@@ -672,7 +672,7 @@
         <!-- R3-H4: trust-relevant provider settings need a superadmin; every change is audit-logged. -->
         <service id="MartinKuhl\Sw6Oidc\Subscriber\ProviderTrustGuardSubscriber">
             <argument type="service" id="Doctrine\DBAL\Connection" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <tag name="kernel.event_subscriber" />
         </service>
 
@@ -691,7 +691,7 @@
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <tag name="kernel.event_subscriber" />
         </service>
 
@@ -730,7 +730,7 @@
                  decorates="Shopware\Core\Framework\Api\OAuth\ClientRepository">
             <argument type="service" id=".inner" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument>%env(bool:SW6OIDC_ALLOW_USER_ACCESS_KEYS)%</argument>
         </service>
 
@@ -739,7 +739,7 @@
                  decorates="Shopware\Core\Framework\Api\OAuth\UserRepository">
             <argument type="service" id=".inner" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Subscriber\AdminPasswordLoginGuardSubscriber">
@@ -758,7 +758,7 @@
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <!-- R3-M21: password-session revocation runs from the message queue. -->
@@ -780,7 +780,7 @@
             <argument type="service" id="messenger.default_bus" />
             <argument type="service" id="request_stack" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\IssuerChangeConfirmationStore" />
             <tag name="kernel.event_subscriber" />
             <tag name="kernel.reset" method="reset" />
@@ -797,7 +797,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\Controller\Api\ProviderLockoutConfirmationController" public="true">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\LockoutConfirmationStore" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\IssuerChangeConfirmationStore" />
             <call method="setContainer">
                 <argument type="service" id="service_container" />
@@ -812,7 +812,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <call method="setContainer">
@@ -827,7 +827,7 @@
             <argument type="service" id="customer.repository" />
             <argument type="service" id="Shopware\Core\Checkout\Customer\SalesChannel\AccountService" />
             <argument type="service" id="Shopware\Core\System\SalesChannel\Context\SalesChannelContextService" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver" />
             <argument type="service" id="event_dispatcher" />
@@ -852,7 +852,7 @@
             <argument type="service" id="Doctrine\DBAL\Connection" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionDestructionService" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Subscriber\PasskeyDeletionSubscriber">
@@ -870,7 +870,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="user.repository" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Subscriber\PasskeyDeletionSubscriber" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRelyingPartyResolver" />
@@ -886,13 +886,19 @@
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Twig\StorefrontLoginOptionsExtension">
+            <tag name="twig.extension" />
+        </service>
+
+        <!-- R3-L46: built only when a template calls one of its functions. -->
+        <service id="MartinKuhl\Sw6Oidc\Twig\StorefrontLoginOptionsRuntime">
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository" />
             <argument type="service" id="Symfony\Contracts\Translation\TranslatorInterface" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService" />
-            <tag name="twig.extension" />
+            <tag name="twig.runtime" />
+            <tag name="kernel.reset" method="reset" />
         </service>
 
         <!-- CSP: append IdP origins to directives an existing policy already declares -->
@@ -919,7 +925,7 @@
         <service id="MartinKuhl\Sw6Oidc\Service\Health\WebhookNotifier">
             <argument type="service" id="sw6oidc.http_client" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
         </service>
 
         <service id="MartinKuhl\Sw6Oidc\Service\Health\ProviderHealthMonitor">
@@ -928,7 +934,7 @@
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\WebhookNotifier" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor" />
             <argument type="service" id="Doctrine\DBAL\Connection" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument>%env(APP_URL)%</argument>
         </service>
 
@@ -945,7 +951,7 @@
 
         <service id="MartinKuhl\Sw6Oidc\ScheduledTask\HealthCheckAlertTaskHandler">
             <argument type="service" id="scheduled_task.repository" />
-            <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <argument type="service" id="sw6oidc.logger" />
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Health\ProviderHealthMonitor" />
             <tag name="messenger.message_handler" />
         </service>

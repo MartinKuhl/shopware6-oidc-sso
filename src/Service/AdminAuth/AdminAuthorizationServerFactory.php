@@ -30,7 +30,7 @@ class AdminAuthorizationServerFactory
         private readonly CryptKeyInterface $privateKey,
         private readonly string $encryptionKey,
         private readonly AdminOidcGrant $grant,
-        private readonly string $accessTokenTtl = 'PT10M',
+        private readonly string $accessTokenTtl,
     ) {
     }
 

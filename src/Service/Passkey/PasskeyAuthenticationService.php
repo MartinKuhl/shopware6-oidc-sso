@@ -164,9 +164,9 @@ class PasskeyAuthenticationService
                 'userId' => $entity->getUserId(),
             ]);
 
-            throw new PasskeyCeremonyException('This passkey has been disabled.', 0, $exception);
+            throw new PasskeyCeremonyException('This passkey has been disabled.', $exception);
         } catch (\Throwable $exception) {
-            throw new PasskeyCeremonyException($exception->getMessage(), 0, $exception);
+            throw new PasskeyCeremonyException($exception->getMessage(), $exception);
         }
 
         $this->credentialRepository->updateAfterAssertion($entity, $record);

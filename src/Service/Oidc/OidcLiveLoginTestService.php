@@ -33,7 +33,7 @@ class OidcLiveLoginTestService
         private readonly UserInfoService $userInfoService,
         private readonly JwtVerifier $jwtVerifier,
         private readonly ClaimsNormalizer $claimsNormalizer,
-        private readonly ?Sw6OidcAccessControlEvaluator $accessControlEvaluator = null,
+        private readonly Sw6OidcAccessControlEvaluator $accessControlEvaluator,
     ) {
     }
 
@@ -168,19 +168,17 @@ class OidcLiveLoginTestService
                 'messageParams' => ['count' => \count($groups)],
             ];
 
-        if ($this->accessControlEvaluator instanceof Sw6OidcAccessControlEvaluator) {
-            try {
-                $this->accessControlEvaluator->evaluate($provider->getId(), $claims, Context::createDefaultContext());
-                $steps[] = ['id' => 'access_control', 'status' => 'pass', 'detail' => 'The access-control rules allow this account.', 'messageKey' => 'accessControlAllowed'];
-            } catch (AccessControlDeniedException $exception) {
-                $steps[] = [
-                    'id' => 'access_control',
-                    'status' => 'warning',
-                    'detail' => sprintf('This account would be denied by the rule on "%s".', $exception->claimKey),
-                    'messageKey' => 'accessControlDenied',
-                    'messageParams' => ['claim' => $exception->claimKey],
-                ];
-            }
+        try {
+            $this->accessControlEvaluator->evaluate($provider->getId(), $claims, Context::createDefaultContext());
+            $steps[] = ['id' => 'access_control', 'status' => 'pass', 'detail' => 'The access-control rules allow this account.', 'messageKey' => 'accessControlAllowed'];
+        } catch (AccessControlDeniedException $exception) {
+            $steps[] = [
+                'id' => 'access_control',
+                'status' => 'warning',
+                'detail' => sprintf('This account would be denied by the rule on "%s".', $exception->claimKey),
+                'messageKey' => 'accessControlDenied',
+                'messageParams' => ['claim' => $exception->claimKey],
+            ];
         }
 
         $statuses = array_column($steps, 'status');

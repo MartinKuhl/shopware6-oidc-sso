@@ -2,8 +2,13 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning\Exception;
 
-class AdminProvisioningDeniedException extends \RuntimeException
+use MartinKuhl\Sw6Oidc\Exception\Sw6OidcException;
+
+class AdminProvisioningDeniedException extends Sw6OidcException
 {
+    protected const STATUS_CODE = 403;
+    protected const ERROR_CODE = 'SW6OIDC_ADMIN_PROVISIONING_DENIED';
+
     public const REASON_AUTO_CREATE_DISABLED = 'auto_create_disabled';
     public const REASON_NO_ROLE = 'no_role';
     public const REASON_ACCOUNT_MISSING = 'account_missing';

@@ -10,4 +10,6 @@ namespace MartinKuhl\Sw6Oidc\Service\Security\Exception;
  */
 class UnknownStateException extends InvalidStateException
 {
+    protected const STATUS_CODE = 400;
+    protected const ERROR_CODE = 'SW6OIDC_UNKNOWN_STATE';
 }

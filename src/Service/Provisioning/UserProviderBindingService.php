@@ -146,7 +146,7 @@ class UserProviderBindingService
                 || $binding->getSub() !== $identity->subject
                 || $binding->getIssuerHash() !== self::issuerHash($identity->issuer)
             ) {
-                throw new ProviderMismatchException(sprintf('This %s account is bound to a different identity.', $userType), 0, $exception);
+                throw new ProviderMismatchException(sprintf('This %s account is bound to a different identity.', $userType), $exception);
             }
         }
     }

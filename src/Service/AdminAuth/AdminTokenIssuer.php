@@ -4,6 +4,7 @@ namespace MartinKuhl\Sw6Oidc\Service\AdminAuth;
 
 use League\OAuth2\Server\AuthorizationServer;
 use League\OAuth2\Server\Exception\OAuthServerException;
+use MartinKuhl\Sw6Oidc\Service\Jwt\JwtPayloadReader;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Symfony\Bridge\PsrHttpMessage\Factory\HttpFoundationFactory;
 use Symfony\Component\HttpFoundation\Response;
@@ -53,5 +54,16 @@ class AdminTokenIssuer
         $tokenResponse = $this->adminAuthorizationServer->respondToAccessTokenRequest($psrRequest, $this->psr17Factory->createResponse());
 
         return (new HttpFoundationFactory())->createResponse($tokenResponse);
+    }
+
+    /**
+     * The `jti` of the access token in a token response issued here, or null.
+     */
+    public static function accessTokenJti(Response $tokenResponse): ?string
+    {
+        $payload = json_decode((string) $tokenResponse->getContent(), true);
+        $accessToken = \is_array($payload) ? ($payload['access_token'] ?? null) : null;
+
+        return \is_string($accessToken) ? JwtPayloadReader::stringClaim($accessToken, 'jti') : null;
     }
 }

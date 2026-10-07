@@ -79,7 +79,7 @@ class WebauthnCeremonyFactory
         try {
             $credential = $this->serializer()->deserialize($json, PublicKeyCredential::class, 'json');
         } catch (\Throwable $exception) {
-            throw new PasskeyCeremonyException('The WebAuthn credential response could not be parsed.', 0, $exception);
+            throw new PasskeyCeremonyException('The WebAuthn credential response could not be parsed.', $exception);
         }
 
         if (!$credential instanceof PublicKeyCredential) {

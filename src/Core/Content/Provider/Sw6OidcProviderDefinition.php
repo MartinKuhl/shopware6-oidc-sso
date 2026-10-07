@@ -49,6 +49,9 @@ class Sw6OidcProviderDefinition extends EntityDefinition
     public const LOGOUT_STYLES = [self::LOGOUT_STYLE_STANDARD, self::LOGOUT_STYLE_AUTHELIA_FORWARD_AUTH];
 
     public const PKCE_FLOWS = ['S256', 'plain'];
+
+    /** Encryption purpose of client_secret (Sw6OidcEncryptedFieldSerializer::purpose()). */
+    public const CLIENT_SECRET_PURPOSE = self::ENTITY_NAME . '.client_secret';
     public const LOGIN_TYPES = ['customer', 'admin', 'both'];
     public const MIN_HTTP_TIMEOUT = 1;
     public const MAX_HTTP_TIMEOUT = 60;

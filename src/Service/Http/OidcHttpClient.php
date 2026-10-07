@@ -110,7 +110,7 @@ class OidcHttpClient
             // (or replay, making the IdP revoke the session). A destination
             // the SSRF guard blocked stays blocked (M3).
             if ($method !== 'GET' || $this->isBlockedAddress($exception)) {
-                throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed.', $logUrl), 0, $exception);
+                throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed.', $logUrl), $exception);
             }
 
             $this->logger->warning('sw6oidc: retrying HTTP request after transport error.', [
@@ -167,7 +167,7 @@ class OidcHttpClient
 
             return [$response->getContent(false), $response->getStatusCode()];
         } catch (HttpClientExceptionInterface $exception) {
-            throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed.', $this->withoutQuery($url)), 0, $exception);
+            throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed.', $this->withoutQuery($url)), $exception);
         }
     }
 }

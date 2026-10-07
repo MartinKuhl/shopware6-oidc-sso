@@ -20,6 +20,8 @@ use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcAccessControlEvaluator;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpFoundation\RequestStack;
+use MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding;
 use Psr\Log\NullLogger;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -79,7 +81,7 @@ final class OidcCallbackProcessorAccessControlTest extends TestCase
             $context,
         ));
 
-        $security = new OidcSecurityHelper(new InMemoryAtomicCache());
+        $security = new OidcSecurityHelper(new InMemoryAtomicCache(), new BrowserBinding(new RequestStack()));
         $state = $security->beginAuthorizationRequest('provider-1', 'customer', '', 'S256')['state'];
 
         $processor = new OidcCallbackProcessor(

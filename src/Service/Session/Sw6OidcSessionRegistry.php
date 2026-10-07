@@ -28,6 +28,9 @@ use Shopware\Core\Framework\Uuid\Uuid;
  */
 class Sw6OidcSessionRegistry
 {
+    /** Encryption purpose of a column: `sw6oidc_session.<column>`. */
+    private const PURPOSE_PREFIX = 'sw6oidc_session.';
+
     /** Hard upper bound for any entry; liveness comes from core's session state (R3-H5). */
     public const HARD_TTL_SECONDS = 7776000;
 
@@ -85,7 +88,7 @@ class Sw6OidcSessionRegistry
             'sid' => $session->sid,
             'user_type' => $userType,
             'user_id' => Uuid::fromHexToBytes($userId),
-            'session_key' => $this->encryptor->encrypt($sessionKey, 'sw6oidc_session.session_key'),
+            'session_key' => $this->encryptor->encrypt($sessionKey, self::PURPOSE_PREFIX . 'session_key'),
             'session_key_hash' => self::hashSessionKey($sessionKey),
             'sales_channel_id' => $salesChannelId !== null ? Uuid::fromHexToBytes($salesChannelId) : null,
             'id_token' => $this->encryptNullable($idToken, 'id_token'),
@@ -180,7 +183,7 @@ class Sw6OidcSessionRegistry
             'UPDATE `sw6oidc_session` SET `session_key` = :key, `session_key_hash` = :hash, `expires_at` = :expiresAt WHERE `id` = :id',
             [
                 'id' => $id,
-                'key' => $this->encryptor->encrypt($sessionKey, 'sw6oidc_session.session_key'),
+                'key' => $this->encryptor->encrypt($sessionKey, self::PURPOSE_PREFIX . 'session_key'),
                 'hash' => self::hashSessionKey($sessionKey),
                 'expiresAt' => $this->expiresAt(self::HARD_TTL_SECONDS),
             ],
@@ -300,7 +303,7 @@ class Sw6OidcSessionRegistry
      */
     private function hydrate(array $row): ?Sw6OidcSession
     {
-        $sessionKey = $this->encryptor->decryptOrNull((string) $row['session_key'], 'sw6oidc_session.session_key');
+        $sessionKey = $this->encryptor->decryptOrNull((string) $row['session_key'], self::PURPOSE_PREFIX . 'session_key');
 
         if ($sessionKey === null) {
             // Written under a different APP_SECRET: the session can't be targeted anymore.
@@ -327,11 +330,11 @@ class Sw6OidcSessionRegistry
 
     private function encryptNullable(?string $value, string $column): ?string
     {
-        return $value === null || $value === '' ? null : $this->encryptor->encrypt($value, 'sw6oidc_session.' . $column);
+        return $value === null || $value === '' ? null : $this->encryptor->encrypt($value, self::PURPOSE_PREFIX . $column);
     }
 
     private function decryptNullable(mixed $value, string $column): ?string
     {
-        return \is_string($value) ? $this->encryptor->decryptOrNull($value, 'sw6oidc_session.' . $column) : null;
+        return \is_string($value) ? $this->encryptor->decryptOrNull($value, self::PURPOSE_PREFIX . $column) : null;
     }
 }

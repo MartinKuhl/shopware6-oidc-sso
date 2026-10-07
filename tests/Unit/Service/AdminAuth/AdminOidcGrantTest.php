@@ -48,7 +48,7 @@ final class AdminOidcGrantTest extends TestCase
 
     public function testUserVerifiedIsStrippedFromRequestedScopes(): void
     {
-        $grant = new AdminOidcGrant($this->createStub(RefreshTokenRepositoryInterface::class), $this->createStub(Connection::class));
+        $grant = new AdminOidcGrant($this->createStub(RefreshTokenRepositoryInterface::class), $this->createStub(Connection::class), 'P1W');
         $method = new \ReflectionMethod($grant, 'withoutUserVerified');
 
         self::assertSame('write admin', $method->invoke($grant, 'write  user-verified admin'));
@@ -60,7 +60,7 @@ final class AdminOidcGrantTest extends TestCase
         $connection = $this->createMock(Connection::class);
         $connection->expects($expectQuery ? self::once() : self::never())->method('fetchOne')->willReturn($active);
 
-        $grant = new AdminOidcGrant($this->createStub(RefreshTokenRepositoryInterface::class), $connection);
+        $grant = new AdminOidcGrant($this->createStub(RefreshTokenRepositoryInterface::class), $connection, 'P1W');
         $request = (new ServerRequest('POST', '/api/sw6oidc/admin/token'))->withAttribute(AdminOidcGrant::REQUEST_ATTRIBUTE_USER_ID, $userId);
 
         $method = new \ReflectionMethod($grant, 'validateUser');

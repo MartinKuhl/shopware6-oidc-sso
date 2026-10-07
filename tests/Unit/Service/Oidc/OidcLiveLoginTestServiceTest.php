@@ -10,6 +10,7 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\TokenExchangeService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\UserInfoService;
 use PHPUnit\Framework\Attributes\CoversClass;
+use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcAccessControlEvaluator;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -189,6 +190,7 @@ final class OidcLiveLoginTestServiceTest extends TestCase
             $userInfoService ?? $this->createMock(UserInfoService::class),
             $jwtVerifier ?? $this->createMock(JwtVerifier::class),
             $claimsNormalizer ?? $this->createMock(ClaimsNormalizer::class),
+            $this->createMock(Sw6OidcAccessControlEvaluator::class),
         );
     }
 

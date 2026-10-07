@@ -25,13 +25,13 @@ use Shopware\Core\Framework\Uuid\Uuid;
 class SsoOnlyInvariant
 {
     private const FLAG_COLUMNS = [
-        'admin' => 'disable_non_oidc_admin_login',
-        'customer' => 'disable_non_oidc_customer_login',
+        LoginType::Admin->value => 'disable_non_oidc_admin_login',
+        LoginType::Customer->value => 'disable_non_oidc_customer_login',
     ];
 
     private const SHOW_COLUMNS = [
-        'admin' => 'show_admin_link',
-        'customer' => 'show_customer_link',
+        LoginType::Admin->value => 'show_admin_link',
+        LoginType::Customer->value => 'show_customer_link',
     ];
 
     public function __construct(
@@ -93,7 +93,7 @@ class SsoOnlyInvariant
     {
         $excludedUserIds = $this->bytes(array_values(array_unique([...$removedUserIds, ...$unboundUserIds])));
 
-        foreach ($this->servingProviders('admin', $providerChanges) as $id => $provider) {
+        foreach ($this->servingProviders(LoginType::Admin->value, $providerChanges) as $id => $provider) {
             [$issuerFilter, $issuerHash] = $this->issuerCondition($id, $provider, $rebindProviderIds);
 
             $found = $this->connection->fetchOne(
@@ -127,7 +127,7 @@ class SsoOnlyInvariant
      */
     public function holds(array $providerChanges = [], array $removedUserIds = [], array $unboundUserIds = []): bool
     {
-        return !$this->passwordLoginDisabled('admin', $providerChanges)
+        return !$this->passwordLoginDisabled(LoginType::Admin->value, $providerChanges)
             || $this->adminAccessPossible($providerChanges, $removedUserIds, $unboundUserIds);
     }
 
@@ -148,7 +148,7 @@ class SsoOnlyInvariant
     {
         $boundIds = [];
 
-        foreach ($this->servingProviders('admin', $providerChanges) as $id => $provider) {
+        foreach ($this->servingProviders(LoginType::Admin->value, $providerChanges) as $id => $provider) {
             [$issuerFilter, $issuerHash] = $this->issuerCondition($id, $provider, $rebindProviderIds);
 
             $boundIds[] = $this->connection->fetchFirstColumn(

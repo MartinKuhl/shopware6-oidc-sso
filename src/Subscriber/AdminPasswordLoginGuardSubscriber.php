@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Subscriber;
 
+use MartinKuhl\Sw6Oidc\Service\Security\Exception\PasswordLoginDisabledException;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\PasswordLoginGuardClientRepository;
 use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\PasswordLoginPolicy;
@@ -30,7 +31,7 @@ use Symfony\Component\HttpKernel\KernelEvents;
  */
 class AdminPasswordLoginGuardSubscriber implements EventSubscriberInterface
 {
-    public const ERROR_CODE = 'SW6OIDC_PASSWORD_LOGIN_DISABLED';
+    public const ERROR_CODE = PasswordLoginDisabledException::ERROR_CODE;
 
     public function __construct(
         private readonly PasswordLoginPolicy $passwordLoginPolicy,

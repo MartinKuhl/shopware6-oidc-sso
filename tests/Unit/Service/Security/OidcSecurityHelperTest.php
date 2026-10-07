@@ -8,6 +8,8 @@ use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\InMemoryAtomicCache;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpFoundation\RequestStack;
+use MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding;
 
 #[CoversClass(OidcSecurityHelper::class)]
 final class OidcSecurityHelperTest extends TestCase
@@ -21,7 +23,7 @@ final class OidcSecurityHelperTest extends TestCase
     protected function setUp(): void
     {
         $this->cache = new InMemoryAtomicCache();
-        $this->helper = new OidcSecurityHelper($this->cache);
+        $this->helper = new OidcSecurityHelper($this->cache, new BrowserBinding(new RequestStack()));
     }
 
     public function testBeginGeneratesUrlSafeStateNonceAndChallenge(): void

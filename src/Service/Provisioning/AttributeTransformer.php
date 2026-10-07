@@ -69,7 +69,7 @@ class AttributeTransformer
                     'exception' => $exception->getMessage(),
                 ]);
 
-                throw new AttributeTransformFailedException(sprintf('The "%s" transform failed.', $function), 0, $exception);
+                throw new AttributeTransformFailedException(sprintf('The "%s" transform failed.', $function), $exception);
             }
 
             $this->logger->warning('sw6oidc: attribute transform failed; using the untransformed value.', [

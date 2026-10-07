@@ -6,7 +6,6 @@ use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEn
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Event\PasskeyRegisteredEvent;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer;
-use MartinKuhl\Sw6Oidc\Service\Jwt\JwtPayloadReader;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyLimitReachedException;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
@@ -244,7 +243,7 @@ class PasskeyAdminController extends AbstractController
             return PublicError::response($this->logger, 'sw6oidc: admin passkey login failed.', $exception, 'passkey_login_failed', Response::HTTP_BAD_REQUEST);
         }
 
-        $jti = $this->accessTokenJti($httpResponse);
+        $jti = AdminTokenIssuer::accessTokenJti($httpResponse);
 
         if ($jti !== null) {
             $this->activityRecorder->recordLogin(
@@ -276,14 +275,6 @@ class PasskeyAdminController extends AbstractController
         $user = $this->userRepository->search(new Criteria([$userId]), Context::createDefaultContext())->first();
 
         return $user instanceof UserEntity && $user->getUsername() === $expected;
-    }
-
-    private function accessTokenJti(Response $response): ?string
-    {
-        $payload = json_decode((string) $response->getContent(), true);
-        $accessToken = \is_array($payload) ? ($payload['access_token'] ?? null) : null;
-
-        return \is_string($accessToken) ? JwtPayloadReader::stringClaim($accessToken, 'jti') : null;
     }
 
     private function rateLimited(): JsonResponse

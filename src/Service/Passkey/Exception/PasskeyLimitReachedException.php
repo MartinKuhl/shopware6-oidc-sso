@@ -7,4 +7,6 @@ namespace MartinKuhl\Sw6Oidc\Service\Passkey\Exception;
  */
 class PasskeyLimitReachedException extends PasskeyCeremonyException
 {
+    protected const STATUS_CODE = 409;
+    protected const ERROR_CODE = 'SW6OIDC_PASSKEY_LIMIT_REACHED';
 }

@@ -19,7 +19,8 @@ class OidcSecurityHelper
 
     public function __construct(
         private readonly AtomicCacheInterface $cache,
-        private readonly ?BrowserBinding $browserBinding = null,
+        // Required: a wiring mistake must not silently switch off login-CSRF protection (R3-L5).
+        private readonly BrowserBinding $browserBinding,
     ) {
     }
 
@@ -53,7 +54,7 @@ class OidcSecurityHelper
             $purpose,
             $expectedUserId,
             time(),
-            $this->browserBinding?->bindCurrentBrowser(),
+            $this->browserBinding->bindCurrentBrowser(),
             $locale,
         );
 
@@ -91,7 +92,7 @@ class OidcSecurityHelper
         try {
             $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $exception) {
-            throw new InvalidStateException('Stored OAuth state is corrupted.', 0, $exception);
+            throw new InvalidStateException('Stored OAuth state is corrupted.', $exception);
         }
 
         if (!\is_array($data)) {
@@ -100,7 +101,7 @@ class OidcSecurityHelper
 
         $flow = AuthorizationFlowContext::fromArray($data);
 
-        if ($this->browserBinding instanceof BrowserBinding && !$this->browserBinding->matchesCurrentBrowser($flow->browserBinding)) {
+        if (!$this->browserBinding->matchesCurrentBrowser($flow->browserBinding)) {
             throw new InvalidStateException('The login was started in a different browser (login CSRF protection).');
         }
 
