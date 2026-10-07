@@ -106,7 +106,7 @@ final class SessionActivityControllerTest extends TestCase
 
     private function controller(): SessionActivityController
     {
-        return new SessionActivityController($this->recorder, $this->registry, $this->destruction, new NullLogger());
+        return new SessionActivityController($this->recorder, $this->registry, $this->destruction, new NullLogger(), 'P1W', 'P1D');
     }
 
     private function activityIdFor(string $sessionKey): string

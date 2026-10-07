@@ -32,8 +32,8 @@ class SessionActivityController extends AbstractController
         private readonly Sw6OidcSessionRegistry $sessionRegistry,
         private readonly Sw6OidcSessionDestructionService $destructionService,
         private readonly LoggerInterface $logger,
-        private readonly string $adminSessionLifetime = 'P1W',
-        private readonly string $customerSessionLifetime = 'P1D',
+        private readonly string $adminSessionLifetime,
+        private readonly string $customerSessionLifetime,
     ) {
     }
 

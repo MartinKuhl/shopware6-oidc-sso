@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes (code review, revision 7)
+
+- **Composer dependencies changed**: `web-token/jwt-library ^4.0` replaces `web-token/jwt-framework`; `league/oauth2-server`, `symfony/psr-http-message-bridge` and `nyholm/psr7` are no longer required directly. Run `composer update martinkuhl/shopware6-oidc-sso`.
+- **`claim_encoding` is dropped** in the destructive migration step (replaced by `base64_claims` earlier).
+- **The health endpoint returns only `status`** unless `SW6OIDC_HEALTH_TOKEN` is set and sent.
+- **Providers with connected accounts can't be deleted through the plain DAL/API**; the Administration asks for confirmation and uses `POST /api/_action/sw6oidc/provider/{id}/delete`.
+- **Provider fields are validated**: PKCE method and login type are fixed choices, HTTP timeout 1–60 s, JWKS cache TTL 60–86400 s.
+- **At most 20 passkeys per account.** Forced logout of an admin session needs a superadmin.
+- **Exceptions extend `Sw6OidcException`** with `SW6OIDC_*` error codes; the logger service id is `sw6oidc.logger`; `OidcCustomerLoginRoute` is removed.
+- **The Administration uses Meteor (`mt-*`) components** instead of the deprecated `sw-*` ones.
+
+### Fixed (code review, revision 7)
+
+- The Storefront passkey page crashed (`AccountPasskeyController` needed the concrete `LogoutRoute`, which the plugin decorates).
+- ID tokens signed with PS*/ES* are accepted; `crit` headers, non-numeric `nbf`/`iat` and a missing nonce are rejected.
+- Unknown or rotated customer context tokens no longer leave a session alive on IdP logout; hashed `sid` storage; Redis values are encrypted.
+- Passkey signature counters are written compare-and-set; cross-site passkey requests are refused; registration options are rate-limited per customer.
+- Emails are IDN-normalized and mapped fields are truncated to the column limits instead of failing the login.
+- Log masking covers URL-encoded, JSON, Bearer/Basic and JWT values.
+
 ### Breaking changes (code review, revision 4)
 
 - **Passkey credentials and account bindings are written by the plugin only.** The Admin and Sync API can no longer create them, re-point them at another account, or delete bindings (passkeys can still be renamed and deleted).

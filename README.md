@@ -26,7 +26,7 @@ Shopware's built-in authentication is password-based. This plugin bridges Shopwa
 - **SSO-Only Mode**: optionally disable password login for customers and/or admins, with guards against locking everyone out and a break-glass environment variable
 - **Logout in Both Directions**: RP-initiated logout with RFC 7009 token revocation, plus OIDC Back-Channel and Front-Channel Logout
 - **PKCE + Nonce**: always-on PKCE (S256 or plain, configurable), single-use state/nonce for every authorization request, and a browser-binding cookie against login CSRF
-- **JWT Verification**: RS256/384/512 signature verification with JWKS caching and key selection by `kid`
+- **JWT Verification**: RS256/384/512, PS256/384/512 and ES256/384/512 signature verification with JWKS caching and key selection by `kid`
 - **Base64-Encoded Claims**: decode exactly the claims you list (e.g. ZITADEL metadata); nested role objects are supported
 - **Health Checks & Alerting**: a `/sw6oidc/health` endpoint for uptime monitors (optionally token-protected) with setup warnings, on-demand diagnostics per provider, and a scheduled reachability check that posts a webhook alert (Slack/Teams/…) once per outage
 - **Session Activity Log**: every OIDC/Passkey login with IP, user agent, logout time and reason in *Settings > Plugins > OIDC & Passkey sessions*, with a "Force logout" action
@@ -45,7 +45,7 @@ Shopware's built-in authentication is password-based. This plugin bridges Shopwa
 - **Reverse proxy / CDN**: `framework.trusted_proxies` **must** be configured, so Shopware sees the real client IP (rate limiting is per client IP — see [Rate limiting](#rate-limiting))
 - **Optional**: Redis (`SW6OIDC_REDIS_DSN`) for one-time tokens; not required, also not on several app servers. If used, it must not evict keys (`maxmemory-policy noeviction`).
 
-Composer dependencies (installed automatically): `web-token/jwt-framework`, `web-auth/webauthn-lib` (`^5.3`), `league/oauth2-server`, `symfony/psr-http-message-bridge`, `nyholm/psr7`.
+Composer dependencies (installed automatically): `web-token/jwt-library` (`^4.0`) and `web-auth/webauthn-lib` (`^5.3`). Everything else (OAuth server, PSR-7 bridge) comes with Shopware itself. The plugin is distributed through Composer only.
 
 ---
 
@@ -117,8 +117,10 @@ Unlike a typical Shopware plugin, providers are **not** configured in `Settings 
    - **Front-channel logout ends admin sessions** *(default off)*: see [Front-Channel Logout](#front-channel-logout)
    - **Is Active**: whether this provider is usable at all
    - **Default Customer Group** / **Default ACL Role** *(Account creation card)*: fallback assignment when no group mapping matches
-   - **HTTP Timeout**, **JWKS Cache TTL**: per-provider tuning (defaults: 30s, 86400s)
+   - **HTTP Timeout**, **JWKS Cache TTL**: per-provider tuning (defaults: 30s, 86400s; allowed 1–60s and 60–86400s)
 3. Save.
+
+Deleting a provider that still has connected accounts asks for confirmation first: those users lose their SSO binding and must connect again (with **Connect SSO**) after a new provider is set up. Through the plain Admin API such a provider can't be deleted.
 
 Use **Run live login test** on the saved provider: it runs a real login in a popup (nobody is logged in), shows which claims the IdP sent — check that `email_verified` is `true` — and previews the access-control result. It requires the provider *editor* permission.
 
@@ -260,7 +262,7 @@ Passkeys require **user verification** (PIN or biometrics) for registration and 
 
 ### Health checks & alerting
 
-- **`GET /sw6oidc/health`** (for uptime monitors): `{"status", "activeProviders", "incompleteProviders", "unreachableProviders", "unknownProviders", "infrastructure": {"warnings": [...]}}`. It never contacts an IdP itself and exposes only counts and warning codes, no provider names or URLs. The result is cached for 30 seconds.
+- **`GET /sw6oidc/health`** (for uptime monitors): without `SW6OIDC_HEALTH_TOKEN` it answers only `{"status"}`. With the token set (and sent), it also returns `"activeProviders", "incompleteProviders", "unreachableProviders", "unknownProviders", "infrastructure": {"warnings": [...]}`. It never contacts an IdP itself and exposes only counts and warning codes, no provider names or URLs. The result is cached for 30 seconds.
 
   | `status` | HTTP | Meaning |
   |---|---|---|
@@ -269,7 +271,7 @@ Passkeys require **user verification** (PIN or biometrics) for registration and 
   | `down` | 503 | No active provider is usable |
   | `unconfigured` | 200 | No active provider |
 
-  Only providers with alerting configured (threshold > 0 and a webhook) count their last scheduled check; a result older than 15 minutes counts as `unknown`, not as a failure. Set `SW6OIDC_HEALTH_TOKEN` to protect the endpoint: requests must then send the value in the `X-Sw6oidc-Health-Token` header, otherwise they get HTTP 401.
+  Only providers with alerting configured (threshold > 0 and a webhook) count their last scheduled check; a result older than 15 minutes counts as `unknown`, not as a failure. Set `SW6OIDC_HEALTH_TOKEN` to protect the endpoint and see the details: requests must then send the value in the `X-Sw6oidc-Health-Token` header, otherwise they get HTTP 401.
 - **Infrastructure warnings** (in the health response and in **Run diagnostics**): `redis_dsn_unusable` — `SW6OIDC_REDIS_DSN` is set, but Redis can't be used (PHP extension missing, unreachable, authentication failing; see the log); `multi_node_without_redis` — several app servers handled SSO in the last 15 minutes and Redis isn't in use; `redis_may_evict` — the Redis used for one-time tokens may evict keys (its `maxmemory-policy` isn't `noeviction`), so a login can fail or a logout token can be replayed. Logins stay correct in both cases (one-time tokens are in the database), but on several servers the rate limiter and JWKS cache are per server unless Shopware's cache pools are shared. Warnings never change the status.
 - **Run diagnostics** (provider detail page, *Health checks & alerting* card): configuration problems, the one-time token store in use (Redis or database), a live reachability probe (the JWKS must contain keys; without a JWKS endpoint the discovery document must have an `issuer`), the alerting state and infrastructure warnings.
 - **Alerting**: set **Alert after consecutive failed checks** (0 = off) and an **Alert webhook URL**. A scheduled task (every 5 minutes) probes each such provider; once the threshold is reached, **one** JSON message is POSTed per outage (with a `text` field for Slack, Mattermost, Teams workflows and similar), optionally followed by a recovery message. An alert that can't be delivered is retried on the next run. Changing the provider during an outage does not trigger a second alert.
@@ -337,7 +339,7 @@ Every authorization request generates a single-use state token, PKCE code verifi
 
 ### JWT Verification
 
-ID tokens are verified for signature (RS256/384/512 only — HS*/ES* are not supported), expiry, not-before, issued-at (required, 60 seconds clock leeway), issuer, audience, authorized party (`azp`) and nonce. JWKS keys are fetched and cached per provider and selected by `kid`; a failed fetch pauses further fetches for 60s (circuit breaker), and a token signed with a `kid` missing from the cached set triggers a rate-limited refetch so IdP key rotation doesn't lock users out until the cache expires.
+ID tokens are verified for signature (RS256/384/512, PS256/384/512, ES256/384/512 — HS* and `none` are never accepted, nor tokens with a `crit` header), expiry, not-before, issued-at (required, 60 seconds clock leeway), issuer, audience, authorized party (`azp`) and nonce (required). The connection test and discovery warn when the IdP only offers algorithms the plugin doesn't support. JWKS keys are fetched and cached per provider and selected by `kid`; a failed fetch pauses further fetches for 60s (circuit breaker), and a token signed with a `kid` missing from the cached set triggers a rate-limited refetch so IdP key rotation doesn't lock users out until the cache expires.
 
 When the scope contains `openid`, the IdP must return an `id_token`. Userinfo claims are merged in, but userinfo must describe the same `sub`, and `sub`, `email` and `email_verified` come from the `id_token` when it contains them.
 
@@ -388,13 +390,14 @@ The plugin's unauthenticated endpoints are rate-limited **per client IP address*
 - Registration requires a discoverable/resident credential, enabling usernameless login.
 - User verification (PIN or biometrics) is required for registration and login.
 - A registration only completes for the account that started it, and a signature counter going backwards (a possible cloned authenticator) disables the credential.
+- An account can have at most 20 passkeys. The Storefront passkey endpoints refuse cross-site requests.
 - Attestation conveyance is `none` — the plugin only verifies the public key, not the authenticator's hardware provenance. This favors broad device compatibility over attestation-based trust.
 - Passkeys are bound to a single Relying Party ID (domain) — see [Passkey Settings](#passkey-settings).
 - Deleting a user or customer deletes their passkeys.
 
 ### Client Secret Storage — Read This
 
-Client secrets and alert webhook URLs are **encrypted at rest** and are **write-only** in the Administration: after saving, the secret is never shown or returned by the Admin API again — leave the field empty to keep the stored value, or type a new one to replace it. The current envelope format (`sw6oidc_v2:`) uses XChaCha20-Poly1305 with a separate key per field, derived from Shopware's `APP_SECRET`. Existing plaintext secrets and older `sw6oidc_v1:` envelopes are re-encrypted by the plugin's migrations on `plugin:update`. The same encryption protects the plugin's stored session data and one-time tokens.
+Client secrets and alert webhook URLs are **encrypted at rest** and are **write-only** in the Administration: after saving, the secret is never shown or returned by the Admin API again — leave the field empty to keep the stored value, or type a new one to replace it. The current envelope format (`sw6oidc_v2:`) uses XChaCha20-Poly1305 with a separate key per field, derived from Shopware's `APP_SECRET`. Existing plaintext secrets and older `sw6oidc_v1:` envelopes are re-encrypted by the plugin's migrations on `plugin:update`. The same encryption protects the plugin's stored session data and one-time tokens, in the database and in Redis.
 
 **Keep `APP_SECRET` stable.** Rotating it makes every stored client secret undecryptable; OIDC logins for those providers then fail with a "re-enter the client secret" error (and the health endpoint reports the provider as incomplete) until an admin saves each provider with its secret again. A database dump alone no longer exposes the secrets, but a dump *plus* the `APP_SECRET` does.
 
@@ -415,7 +418,7 @@ Client secrets and alert webhook URLs are **encrypted at rest** and are **write-
 
 The unreleased version changes security-relevant behavior. Check these points before updating a running shop (details in [CHANGELOG.md](CHANGELOG.md)):
 
-1. **Run the migrations** (`bin/console plugin:update Sw6Oidc`). They add the identity-binding columns, the session/one-time-token tables, re-encrypt stored secrets to the v2 envelope (needs the same `APP_SECRET`), and convert `claim_encoding = base64` to `base64_claims = ["*"]`. `bin/console database:migrate-destructive Sw6Oidc --all` drops the unused button label/color columns.
+1. **Run the migrations** (`bin/console plugin:update Sw6Oidc`). They add the identity-binding columns, the session/one-time-token tables, re-encrypt stored secrets to the v2 envelope (needs the same `APP_SECRET`), and convert `claim_encoding = base64` to `base64_claims = ["*"]`. `bin/console database:migrate-destructive Sw6Oidc --all` drops the unused button label/color columns and the old `claim_encoding` column. Update the package first: `composer update martinkuhl/shopware6-oidc-sso` (the dependencies changed).
 2. **`email_verified` is required.** Every provider now has **Require a verified email** on. Make sure the IdP sends `email_verified: true` (check with the live login test), or switch the setting off deliberately for an IdP that fully controls its users' email addresses.
 3. **Existing accounts are no longer linked by email.** A first SSO login for an email that already has a Shopware account is refused. Either let users connect their account with **Connect SSO** (customer: *My Account > Profile*; admin: *My profile*), or enable **Link existing accounts by verified email** on the provider. Superadmins can only be connected with Connect SSO. Accounts already bound to a provider keep working; their binding is upgraded with the IdP subject on the next login with a verified email.
 4. **The `openid` scope requires an `id_token`.** A token response without one now fails the login.
@@ -427,10 +430,12 @@ The unreleased version changes security-relevant behavior. Check these points be
 10. **Logging defaults to `warning`.** Use **Enable debug logging** in the plugin settings for troubleshooting instead of `SW6OIDC_LOG_LEVEL=debug`.
 11. **Front-channel logout no longer ends admin sessions** unless **Front-channel logout ends admin sessions** is enabled on the provider.
 12. **Back-channel logout tokens need `jti` and a recent `iat`.**
-13. **The health endpoint** answers 200 for `degraded` and 503 only for `down`; adjust monitors that relied on 503 for `degraded`. Set `SW6OIDC_HEALTH_TOKEN` if the endpoint should not be public.
+13. **The health endpoint** answers 200 for `degraded` and 503 only for `down`; adjust monitors that relied on 503 for `degraded`. Without `SW6OIDC_HEALTH_TOKEN` it now returns only the status; set the token to get the counts and warnings.
 14. **Behind a proxy/CDN, configure `framework.trusted_proxies`** — rate limiting is per client IP.
 15. **Admin password login is blocked at the credential check** in SSO-only mode, including `client_credentials` with user access keys (`SW6OIDC_ALLOW_USER_ACCESS_KEYS=1` re-allows those). Customer registration is blocked in SSO-only mode as well.
-16. **Session activity permissions**: force logout needs the new *force logout* permission of the sessions module; provider, passkey and session privileges can now be granted to normal roles.
+16. **Session activity permissions**: force logout needs the new *force logout* permission of the sessions module; provider, passkey and session privileges can now be granted to normal roles. Force-logging-out an admin needs a superadmin.
+17. **Inactive accounts can't log in through SSO.** An inactive admin is refused before any sync; a customer who can't log in (inactive, guest, other sales channel) sees "account unavailable" instead of an error page.
+18. **Plugin-internal changes for extensions:** the plugin's exceptions extend `Sw6OidcException` (Shopware `HttpException`, stable `SW6OIDC_*` codes), its logger service is `sw6oidc.logger`, and `OidcCustomerLoginRoute` is gone (customer logins use Shopware's `AccountService::loginById()`).
 
 ---
 
@@ -558,6 +563,7 @@ JIT-created customers also trigger Shopware's own `CustomerRegisterEvent`. Chang
 - **IdP setup guides**: [Authelia](Docs/authelia-sw6oidc-setup.md), [ZITADEL](Docs/zitadel-sw6oidc-setup.md), [Dex](Docs/dex-sw6oidc-setup.md)
 - **Integration tests**: [tests/Integration/README.md](tests/Integration/README.md)
 - **Browser E2E tests**: [tests/E2E/README.md](tests/E2E/README.md)
+- **Static analysis and tests**: `composer ci` runs PHPCS, PHPStan (level 8 for `src/`, level 5 for `tests/`), Psalm (with unused-code detection and a baseline), Rector (dry run) and the unit tests
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 
 ## Version

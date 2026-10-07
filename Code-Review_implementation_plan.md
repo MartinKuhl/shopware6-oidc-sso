@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Source** | `Code-Review.md` revision 4, with the revision 5 status table (2026-10-06) |
-| **State** | Every Critical (none), High and Medium finding is fixed on `fix/code-review-rev2` (commits `b020e3e` … `f8c1195`). This plan covers what is left: the test gate, the Low findings, the frontend Lows and hygiene, unused code, static analysis, and the follow-ups the fix round created. |
+| **State** | **Done (2026-10-07, review revision 7).** Phases Q2–Q9 are implemented in `af243ae` … `a9577b4`; see the status table in `Code-Review.md`. Still open: running the integration and E2E suites (Q0/Q1 gate; CI now runs them as blocking jobs), the partials R3-L29 and R3-L49, and the optional roadmap. R3-L48 was closed as won't fix. |
 | **Plugin version after this work** | `0.2.0` |
 | **Structure** | Phases Q0–Q9, plus an optional roadmap phase. One commit per phase or more; finding IDs go in the commit messages, as before. |
 
