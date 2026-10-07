@@ -88,7 +88,6 @@ final class CustomerProvisioningServiceTest extends TestCase
 
     private ?string $boundProviderId = null;
 
-    private ?string $boundSub = null;
 
     private string $providerId = '';
 
@@ -143,14 +142,8 @@ final class CustomerProvisioningServiceTest extends TestCase
                     }
                 }
 
-                $bySubject = \array_key_exists('sub', $filters);
-                $subjectMatches = $bySubject
-                    && $this->boundSub !== null
-                    && $filters['sub'] === $this->boundSub
-                    && ($filters['providerId'] ?? null) === $this->boundProviderId
-                    && $this->existingCustomers !== [];
-
-                if ($this->boundProviderId !== null && (!$bySubject || $subjectMatches)) {
+                // The double holds legacy (subject-less) bindings only: a lookup by subject finds none.
+                if ($this->boundProviderId !== null && !\array_key_exists('sub', $filters)) {
                     $binding = new Sw6OidcUserProviderEntity();
                     $binding->setId(Uuid::randomHex());
                     $binding->setUserType(Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER);
@@ -158,7 +151,7 @@ final class CustomerProvisioningServiceTest extends TestCase
                     \assert(\is_string($userId));
                     $binding->setUserId($userId);
                     $binding->setProviderId($this->boundProviderId);
-                    $binding->setSub($this->boundSub);
+                    $binding->setSub(null);
                     $entities[] = $binding;
                 }
 

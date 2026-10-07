@@ -132,18 +132,6 @@ class Sw6OidcSessionRegistry
         ]);
     }
 
-    /**
-     * All live OIDC sessions of a local account, newest last.
-     *
-     * @return list<Sw6OidcSession>
-     */
-    public function resolveByUser(string $userType, string $userId): array
-    {
-        return $this->fetch('`user_type` = :userType AND `user_id` = :userId', [
-            'userType' => $userType,
-            'userId' => Uuid::fromHexToBytes($userId),
-        ]);
-    }
 
     /**
      * The account's session created with this session key (context token /

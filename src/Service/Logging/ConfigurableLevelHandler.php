@@ -32,11 +32,16 @@ final class ConfigurableLevelHandler implements HandlerInterface, ResetInterface
         private readonly SystemConfigService $systemConfigService,
         string $baseLevel = 'warning',
     ) {
-        try {
-            $this->baseLevel = Level::fromName($baseLevel);
-        } catch (\Throwable) {
-            $this->baseLevel = Level::Warning;
-        }
+        $this->baseLevel = match (strtolower(trim($baseLevel))) {
+            'debug' => Level::Debug,
+            'info' => Level::Info,
+            'notice' => Level::Notice,
+            'error' => Level::Error,
+            'critical' => Level::Critical,
+            'alert' => Level::Alert,
+            'emergency' => Level::Emergency,
+            default => Level::Warning,
+        };
     }
 
     public function isHandling(LogRecord $record): bool

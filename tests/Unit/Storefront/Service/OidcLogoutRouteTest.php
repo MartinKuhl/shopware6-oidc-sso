@@ -49,7 +49,7 @@ final class OidcLogoutRouteTest extends TestCase
 
         $this->route($this->provider('https://auth.example/logout'))->logout($this->context('c1000000000000000000000000000001'), new RequestDataBag());
 
-        self::assertEquals([$other], $this->registry->resolveByUser('customer', 'c1000000000000000000000000000001'));
+        self::assertEquals([$other], SqliteSessionRegistry::sessionsOf($this->registry, 'customer', 'c1000000000000000000000000000001'));
     }
 
     public function testProviderPostLogoutUrlOverridesTheLoginPageAndCarriesASignedState(): void
@@ -74,7 +74,7 @@ final class OidcLogoutRouteTest extends TestCase
 
         self::assertSame('fresh-token', $response->getToken());
         self::assertSame('https://auth.example/logout?rd=' . rawurlencode(self::LOGIN_URL), $this->pending->pull());
-        self::assertSame([], $this->registry->resolveByUser('customer', self::CUSTOMER_ID), 'the ended session leaves the registry');
+        self::assertSame([], SqliteSessionRegistry::sessionsOf($this->registry, 'customer', self::CUSTOMER_ID), 'the ended session leaves the registry');
     }
 
     public function testNoLogoutContextLeavesNoPendingRedirect(): void
@@ -106,7 +106,7 @@ final class OidcLogoutRouteTest extends TestCase
         } catch (\RuntimeException) {
         }
 
-        self::assertCount(1, $this->registry->resolveByUser('customer', self::CUSTOMER_ID), 'a failed logout keeps the session registered');
+        self::assertCount(1, SqliteSessionRegistry::sessionsOf($this->registry, 'customer', self::CUSTOMER_ID), 'a failed logout keeps the session registered');
         self::assertNull($this->pending->pull());
     }
 

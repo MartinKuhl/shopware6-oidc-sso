@@ -10,7 +10,7 @@ use Shopware\Core\Defaults;
 /**
  * One-time tokens in `sw6oidc_one_time_token`: shared by every app server,
  * unaffected by cache:clear, atomic without Redis. Keys are stored hashed,
- * values encrypted (they carry PKCE verifiers, id_tokens, user ids).
+ * values encrypted (they carry PKCE verifiers, nonces, user ids).
  *
  * getAndDelete() locks the row (SELECT … FOR UPDATE) and deletes it in the
  * same transaction, so exactly one of several concurrent consumers gets the

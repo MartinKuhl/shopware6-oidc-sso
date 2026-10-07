@@ -2,6 +2,8 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Controller\Api;
 
+use Symfony\Component\HttpFoundation\RequestStack;
+use MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding;
 use MartinKuhl\Sw6Oidc\Tests\Unit\Support\SqliteSessionRegistry;
 use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Controller\Api\OidcAdminAuthController;
@@ -26,7 +28,7 @@ final class OidcAdminAuthControllerSessionTest extends TestCase
     {
         $registry = SqliteSessionRegistry::create();
         $pending = $registry->register('a1000000000000000000000000000001', 'sub-1', 'sid-1', 'admin', self::USER_ID, 'pending:abc', null, 'id.token', ttlSeconds: 600);
-        $nonces = new AdminLoginNonceService(new InMemoryAtomicCache());
+        $nonces = new AdminLoginNonceService(new InMemoryAtomicCache(), new BrowserBinding(new RequestStack()));
         $nonce = $nonces->createNonce(self::USER_ID, 'a1000000000000000000000000000001', $pending->id);
 
         $response = $this->exchange($nonces, $registry, $nonce, $this->jwt(['jti' => 'jti-123', 'sub' => self::USER_ID]));
@@ -45,18 +47,18 @@ final class OidcAdminAuthControllerSessionTest extends TestCase
     public function testNonOidcNonceRegistersNothing(): void
     {
         $registry = SqliteSessionRegistry::create();
-        $nonces = new AdminLoginNonceService(new InMemoryAtomicCache());
+        $nonces = new AdminLoginNonceService(new InMemoryAtomicCache(), new BrowserBinding(new RequestStack()));
 
         $this->exchange($nonces, $registry, $nonces->createNonce(self::USER_ID), $this->jwt(['jti' => 'jti-1']));
 
-        self::assertSame([], $registry->resolveByUser('admin', self::USER_ID));
+        self::assertSame([], SqliteSessionRegistry::sessionsOf($registry, 'admin', self::USER_ID));
     }
 
     public function testUnknownNonceIsRejected(): void
     {
         $registry = SqliteSessionRegistry::create();
 
-        $response = $this->exchange(new AdminLoginNonceService(new InMemoryAtomicCache()), $registry, 'unknown', 'x');
+        $response = $this->exchange(new AdminLoginNonceService(new InMemoryAtomicCache(), new BrowserBinding(new RequestStack())), $registry, 'unknown', 'x');
 
         self::assertSame(400, $response->getStatusCode());
     }

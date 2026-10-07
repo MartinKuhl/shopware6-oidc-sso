@@ -37,14 +37,15 @@ final class Sw6OidcSessionRegistryTest extends TestCase
 
         self::assertEquals([$session], $this->registry->resolve($this->providerId, 'user|42'));
         self::assertEquals([$session], $this->registry->resolveBySid($this->providerId, 'sid-a'));
-        self::assertEquals([$session], $this->registry->resolveByUser('customer', $this->customerId));
+        self::assertEquals([$session], SqliteSessionRegistry::sessionsOf($this->registry, 'customer', $this->customerId));
         self::assertEquals($session, $this->registry->findBySessionKey('customer', $this->customerId, 'ctx-token'));
 
         $stored = $this->registry->get($session->id);
-        self::assertSame($salesChannelId, $stored?->salesChannelId);
-        self::assertSame('id.token.value', $stored?->idToken);
-        self::assertSame('at', $stored?->idpAccessToken);
-        self::assertSame('rt', $stored?->idpRefreshToken);
+        self::assertNotNull($stored);
+        self::assertSame($salesChannelId, $stored->salesChannelId);
+        self::assertSame('id.token.value', $stored->idToken);
+        self::assertSame('at', $stored->idpAccessToken);
+        self::assertSame('rt', $stored->idpRefreshToken);
     }
 
     public function testCredentialsAreNeverStoredInPlaintext(): void
@@ -87,7 +88,7 @@ final class Sw6OidcSessionRegistryTest extends TestCase
         $this->registry->register($this->providerId, 'sub', 'sid-b', 'admin', $this->customerId, 'jti-b');
 
         self::assertSame(2, $this->registry->removeAllForUser('admin', $this->customerId));
-        self::assertSame([], $this->registry->resolveByUser('admin', $this->customerId));
+        self::assertSame([], SqliteSessionRegistry::sessionsOf($this->registry, 'admin', $this->customerId));
     }
 
     public function testEmptySidIsStoredAsNull(): void
@@ -174,7 +175,7 @@ final class Sw6OidcSessionRegistryTest extends TestCase
     {
         self::assertNull($this->registry->get('0123456789abcdef0123456789abcdef'));
         self::assertSame([], $this->registry->resolve($this->providerId, 'nobody'));
-        self::assertSame([], $this->registry->resolveByUser('admin', Uuid::randomHex()));
+        self::assertSame([], SqliteSessionRegistry::sessionsOf($this->registry, 'admin', Uuid::randomHex()));
     }
 
     private function age(string $age): void

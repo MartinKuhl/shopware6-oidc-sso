@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\UserProviderBindingService;
 use MartinKuhl\Sw6Oidc\Service\Security\SsoOnlyInvariant;
@@ -43,6 +44,9 @@ class OidcUserProviderAdminController extends AbstractController
         Sw6OidcUserProviderEntity::USER_TYPE_CUSTOMER => 'customer',
     ];
 
+    /**
+     * @param EntityRepository<Sw6OidcUserProviderCollection> $userProviderRepository
+     */
     public function __construct(
         private readonly EntityRepository $userProviderRepository,
         private readonly UserProviderBindingService $bindingService,
@@ -85,7 +89,6 @@ class OidcUserProviderAdminController extends AbstractController
         $bindings = [];
 
         foreach ($this->userProviderRepository->search($criteria, $context)->getEntities() as $binding) {
-            \assert($binding instanceof Sw6OidcUserProviderEntity);
             $provider = $binding->getProvider();
 
             $bindings[$binding->getUserId()] = [

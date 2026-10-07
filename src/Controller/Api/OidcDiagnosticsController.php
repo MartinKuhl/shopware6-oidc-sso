@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Health\InfrastructureInspector;
 use MartinKuhl\Sw6Oidc\Service\Health\ProviderConfigInspector;
@@ -22,6 +23,9 @@ use Symfony\Component\Routing\Attribute\Route;
 #[Route(defaults: ['_routeScope' => ['api']])]
 class OidcDiagnosticsController extends AbstractController
 {
+    /**
+     * @param EntityRepository<Sw6OidcProviderCollection> $providerRepository
+     */
     public function __construct(
         private readonly EntityRepository $providerRepository,
         private readonly ProviderConfigInspector $configInspector,

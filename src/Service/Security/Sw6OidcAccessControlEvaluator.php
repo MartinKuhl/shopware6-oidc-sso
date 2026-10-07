@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Security;
 
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleEntity;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\AccessControlDeniedException;
@@ -40,6 +41,9 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
  */
 class Sw6OidcAccessControlEvaluator
 {
+    /**
+     * @param EntityRepository<Sw6OidcAccessControlRuleCollection> $ruleRepository
+     */
     public function __construct(
         private readonly EntityRepository $ruleRepository,
         private readonly LoggerInterface $logger,
@@ -58,8 +62,6 @@ class Sw6OidcAccessControlEvaluator
             ->addSorting(new FieldSorting('sortOrder', FieldSorting::ASCENDING));
 
         foreach ($this->ruleRepository->search($criteria, $context)->getEntities() as $rule) {
-            \assert($rule instanceof Sw6OidcAccessControlRuleEntity);
-
             if ($this->matches($rule, $flattenedClaims)) {
                 continue;
             }

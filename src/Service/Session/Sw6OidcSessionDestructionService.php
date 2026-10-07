@@ -64,7 +64,7 @@ class Sw6OidcSessionDestructionService
         $this->contextPersister->revokeAllCustomerTokens($userId);
     }
 
-    public function destroyCustomerSession(string $contextToken, string $salesChannelId, ?string $customerId = null): void
+    private function destroyCustomerSession(string $contextToken, string $salesChannelId, ?string $customerId = null): void
     {
         $known = $this->connection->fetchOne(
             'SELECT 1 FROM `sales_channel_api_context` WHERE `token` = :token',

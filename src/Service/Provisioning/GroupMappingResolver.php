@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingEntity;
 use Shopware\Core\Framework\Context;
@@ -27,6 +28,9 @@ class GroupMappingResolver implements ResetInterface
     /** @var array<string, list<Sw6OidcRoleMappingEntity>> */
     private array $mappingsByProvider = [];
 
+    /**
+     * @param EntityRepository<Sw6OidcRoleMappingCollection> $roleMappingRepository
+     */
     public function __construct(private readonly EntityRepository $roleMappingRepository)
     {
     }

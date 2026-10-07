@@ -8,6 +8,8 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\OrFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\SuffixFilter;
+use Shopware\Core\System\Country\Aggregate\CountryState\CountryStateCollection;
+use Shopware\Core\System\Country\CountryCollection;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
@@ -27,6 +29,10 @@ class CountryResolver implements ResetInterface
     /** @var array<string, string|null> */
     private array $stateMemoized = [];
 
+    /**
+     * @param EntityRepository<CountryCollection> $countryRepository
+     * @param EntityRepository<CountryStateCollection> $countryStateRepository
+     */
     public function __construct(
         private readonly EntityRepository $countryRepository,
         private readonly EntityRepository $countryStateRepository,

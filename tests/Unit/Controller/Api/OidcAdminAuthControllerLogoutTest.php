@@ -62,7 +62,7 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
         parse_str((string) parse_url((string) $body['logoutUrl'], PHP_URL_QUERY), $query);
         self::assertSame('current-id-token', $query['id_token_hint']);
         self::assertNull($registry->get($current->id), 'the ended session leaves the registry');
-        self::assertCount(2, $registry->resolveByUser('admin', self::USER_ID));
+        self::assertCount(2, SqliteSessionRegistry::sessionsOf($registry, 'admin', self::USER_ID));
     }
 
     public function testLoginSessionHandleFindsTheSessionAfterATokenRefresh(): void
@@ -99,7 +99,7 @@ final class OidcAdminAuthControllerLogoutTest extends TestCase
 
         parse_str((string) parse_url((string) $body['logoutUrl'], PHP_URL_QUERY), $query);
         self::assertArrayNotHasKey('id_token_hint', $query);
-        self::assertCount(2, $registry->resolveByUser('admin', self::USER_ID));
+        self::assertCount(2, SqliteSessionRegistry::sessionsOf($registry, 'admin', self::USER_ID));
     }
 
     public function testAnotherAdminsLoginSessionHandleIsIgnored(): void

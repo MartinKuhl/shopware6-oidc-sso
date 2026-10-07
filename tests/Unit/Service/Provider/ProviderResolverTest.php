@@ -5,8 +5,8 @@ namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Provider;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
-use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
+use MartinKuhl\Sw6Oidc\Service\Provider\ProviderResolver;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -15,6 +15,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\Filter;
 
 #[CoversClass(ProviderResolver::class)]
 final class ProviderResolverTest extends TestCase
@@ -28,7 +29,11 @@ final class ProviderResolverTest extends TestCase
 
         $repository = $this->createMock(EntityRepository::class);
         $repository->expects(self::once())->method('search')->willReturnCallback(static function (Criteria $criteria, Context $context) use ($provider): EntitySearchResult {
-            $filters = array_map(static fn (EqualsFilter $filter): array => [$filter->getField(), $filter->getValue()], $criteria->getFilters());
+            $filters = array_map(static function (Filter $filter): array {
+                self::assertInstanceOf(EqualsFilter::class, $filter);
+
+                return [$filter->getField(), $filter->getValue()];
+            }, $criteria->getFilters());
             self::assertSame([['isActive', true], ['issuer', 'https://idp.example']], $filters);
 
             return new EntitySearchResult(Sw6OidcProviderDefinition::ENTITY_NAME, 1, new Sw6OidcProviderCollection([$provider]), null, $criteria, $context);

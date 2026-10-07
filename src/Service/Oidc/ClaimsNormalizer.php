@@ -124,6 +124,8 @@ class ClaimsNormalizer
      *  - a flat array (["Engineering", "Developers"])
      *  - Zitadel's nested role-object shape ({"Engineering": {"orgId": "..."}}),
      *    where the parent keys are the group names.
+     *
+     * @return list<string>
      */
     public function normalizeGroups(mixed $groupsClaim): array
     {

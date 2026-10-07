@@ -75,8 +75,6 @@ final class Sw6OidcRateLimiterTest extends TestCase
 
         self::assertTrue($limiter->isBlocked('scope', '2001:db8:1:2:bbbb::2'), 'same /64');
         self::assertFalse($limiter->isBlocked('scope', '2001:db8:1:3::1'), 'other /64');
-        self::assertSame('2001:db8:1:2::/64', Sw6OidcRateLimiter::clientKey('2001:db8:1:2:aaaa::1'));
-        self::assertSame('198.51.100.1', Sw6OidcRateLimiter::clientKey('198.51.100.1'));
-        self::assertSame('unknown', Sw6OidcRateLimiter::clientKey(null));
+        self::assertFalse($limiter->isBlocked('scope', '198.51.100.1'), 'IPv4 stays per address');
     }
 }

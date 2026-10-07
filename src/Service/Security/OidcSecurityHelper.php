@@ -108,7 +108,7 @@ class OidcSecurityHelper
         return $flow;
     }
 
-    public function deriveCodeChallenge(string $codeVerifier, string $codeChallengeMethod): string
+    private function deriveCodeChallenge(string $codeVerifier, string $codeChallengeMethod): string
     {
         if ($codeChallengeMethod === 'plain') {
             return $codeVerifier;
@@ -117,6 +117,9 @@ class OidcSecurityHelper
         return $this->base64UrlEncode(hash('sha256', $codeVerifier, true));
     }
 
+    /**
+     * @param positive-int $bytes
+     */
     private function randomUrlSafeString(int $bytes): string
     {
         return $this->base64UrlEncode(random_bytes($bytes));

@@ -88,7 +88,7 @@ class Sw6OidcRateLimiter
     /**
      * The address a budget is kept for: IPv4 as is, IPv6 by its /64.
      */
-    public static function clientKey(?string $clientIp): string
+    private function clientKey(?string $clientIp): string
     {
         if ($clientIp === null || $clientIp === '') {
             return 'unknown';
@@ -109,6 +109,6 @@ class Sw6OidcRateLimiter
 
     private function key(string $scope, ?string $clientIp): string
     {
-        return $scope . '-' . hash('sha256', self::clientKey($clientIp));
+        return $scope . '-' . hash('sha256', $this->clientKey($clientIp));
     }
 }

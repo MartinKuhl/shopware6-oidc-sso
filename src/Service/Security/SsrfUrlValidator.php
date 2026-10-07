@@ -31,10 +31,6 @@ class SsrfUrlValidator
         $this->resolver = $resolver ?? $this->resolveViaDns(...);
     }
 
-    public function isInsecureModeEnabled(): bool
-    {
-        return $this->allowInsecure;
-    }
 
     /**
      * @return array{blocked: bool, warnings: list<string>}
@@ -73,7 +69,7 @@ class SsrfUrlValidator
         }
 
         foreach ($ips as $ip) {
-            if (!self::isPublicIp($ip)) {
+            if (!$this->isPublicIp($ip)) {
                 if (!$this->allowInsecure) {
                     return ['blocked' => true, 'warnings' => [
                         'This URL resolves to a private, loopback, or otherwise non-public address and cannot be used '
@@ -90,7 +86,7 @@ class SsrfUrlValidator
         return ['blocked' => false, 'warnings' => $warnings];
     }
 
-    public static function isPublicIp(string $ip): bool
+    private function isPublicIp(string $ip): bool
     {
         if (filter_var($ip, \FILTER_VALIDATE_IP) === false) {
             return false;

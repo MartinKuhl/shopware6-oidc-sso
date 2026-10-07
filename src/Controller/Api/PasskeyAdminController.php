@@ -6,8 +6,8 @@ use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEn
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Event\PasskeyRegisteredEvent;
 use MartinKuhl\Sw6Oidc\Service\AdminAuth\AdminTokenIssuer;
-use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\Exception\PasskeyLimitReachedException;
+use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyAuthenticationService;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyConfig;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyCredentialRepository;
 use MartinKuhl\Sw6Oidc\Service\Passkey\PasskeyRegistrationService;
@@ -24,6 +24,7 @@ use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
+use Shopware\Core\System\User\UserCollection;
 use Shopware\Core\System\User\UserEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -50,6 +51,9 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 #[Route(defaults: ['_routeScope' => ['api']])]
 class PasskeyAdminController extends AbstractController
 {
+    /**
+     * @param EntityRepository<UserCollection> $userRepository
+     */
     public function __construct(
         private readonly PasskeyRegistrationService $registrationService,
         private readonly PasskeyAuthenticationService $authenticationService,

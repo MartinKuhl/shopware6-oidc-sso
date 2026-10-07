@@ -15,6 +15,7 @@ use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
 
@@ -157,8 +158,10 @@ final class Sw6OidcAccessControlEvaluatorTest extends TestCase
     {
         $repository = $this->createMock(EntityRepository::class);
         $repository->expects(self::once())->method('search')->willReturnCallback(function (Criteria $criteria, Context $context): EntitySearchResult {
-            self::assertSame('providerId', $criteria->getFilters()[0]->getField());
-            self::assertSame('provider-7', $criteria->getFilters()[0]->getValue());
+            $filter = $criteria->getFilters()[0];
+            self::assertInstanceOf(EqualsFilter::class, $filter);
+            self::assertSame('providerId', $filter->getField());
+            self::assertSame('provider-7', $filter->getValue());
             $sorting = $criteria->getSorting()[0];
             self::assertSame('sortOrder', $sorting->getField());
             self::assertSame(FieldSorting::ASCENDING, $sorting->getDirection());

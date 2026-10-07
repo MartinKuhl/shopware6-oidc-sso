@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
+use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingDefinition as Attr;
 use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingEntity;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
@@ -37,6 +38,9 @@ class AttributeMapper
         Attr::TYPE_PICTURE => 'picture',
     ];
 
+    /**
+     * @param EntityRepository<Sw6OidcAttributeMappingCollection> $attributeMappingRepository
+     */
     public function __construct(
         private readonly EntityRepository $attributeMappingRepository,
         private readonly GenderMapper $genderMapper,
@@ -143,7 +147,6 @@ class AttributeMapper
         $mappings = [];
 
         foreach ($this->attributeMappingRepository->search($criteria, $context)->getEntities() as $mapping) {
-            \assert($mapping instanceof Sw6OidcAttributeMappingEntity);
             $mappings[$mapping->getAttributeType()] = $mapping;
         }
 

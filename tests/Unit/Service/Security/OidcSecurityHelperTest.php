@@ -80,14 +80,16 @@ final class OidcSecurityHelperTest extends TestCase
         self::assertSame('plain', $flow->codeChallengeMethod);
     }
 
-    public function testDeriveCodeChallengeMatchesRfc7636Vector(): void
+    public function testTheCodeChallengeIsTheS256HashOfTheStoredVerifier(): void
     {
-        // RFC 7636 Appendix B.
-        self::assertSame(
-            'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
-            $this->helper->deriveCodeChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk', 'S256'),
-        );
-        self::assertSame('verifier', $this->helper->deriveCodeChallenge('verifier', 'plain'));
+        $result = $this->helper->beginAuthorizationRequest('provider-1', 'admin', '', 'S256');
+        $flow = $this->helper->consumeAuthorizationFlow($result['state']);
+
+        // RFC 7636 §4.2: BASE64URL(SHA256(code_verifier)).
+        self::assertSame(rtrim(strtr(base64_encode(hash('sha256', $flow->codeVerifier, true)), '+/', '-_'), '='), $result['codeChallenge']);
+
+        $plain = $this->helper->beginAuthorizationRequest('provider-1', 'admin', '', 'plain');
+        self::assertSame($this->helper->consumeAuthorizationFlow($plain['state'])->codeVerifier, $plain['codeChallenge']);
     }
 
     public function testConsumeReturnsStoredContext(): void

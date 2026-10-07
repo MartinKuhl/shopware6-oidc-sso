@@ -5,7 +5,9 @@ namespace MartinKuhl\Sw6Oidc\Tests\Unit\Support;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
+use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionRegistry;
+use Shopware\Core\Framework\Uuid\Uuid;
 use Psr\Log\NullLogger;
 
 /**
@@ -18,6 +20,25 @@ final class SqliteSessionRegistry
     public static function create(?Connection $connection = null, string $customerContextLifetime = 'P1D'): Sw6OidcSessionRegistry
     {
         return new Sw6OidcSessionRegistry($connection ?? self::connection(), new Sw6OidcEncryptor('unit-test-app-secret'), new NullLogger(), $customerContextLifetime);
+    }
+
+    /**
+     * The live sessions of an account, oldest first — what the registry's
+     * former resolveByUser() returned; production code never needed it.
+     *
+     * @return list<Sw6OidcSession>
+     */
+    public static function sessionsOf(Sw6OidcSessionRegistry $registry, string $userType, string $userId): array
+    {
+        $connection = (new \ReflectionProperty($registry, 'connection'))->getValue($registry);
+        \assert($connection instanceof Connection);
+
+        $ids = $connection->fetchFirstColumn(
+            'SELECT `id` FROM `sw6oidc_session` WHERE `user_type` = :userType AND `user_id` = :userId ORDER BY `created_at` ASC',
+            ['userType' => $userType, 'userId' => Uuid::fromHexToBytes($userId)],
+        );
+
+        return array_values(array_filter(array_map(static fn (mixed $id): ?Sw6OidcSession => $registry->get((string) $id), $ids)));
     }
 
     public static function connection(): Connection

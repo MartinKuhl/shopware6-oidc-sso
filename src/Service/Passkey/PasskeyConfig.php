@@ -33,7 +33,7 @@ class PasskeyConfig
 
     public function getRpName(string $fallback): string
     {
-        $configured = (string) ($this->systemConfigService->get(self::CONFIG_DOMAIN . 'passkeyRpName') ?? '');
+        $configured = $this->stringValue($this->systemConfigService->get(self::CONFIG_DOMAIN . 'passkeyRpName'));
 
         return $configured !== '' ? $configured : $fallback;
     }
@@ -46,15 +46,20 @@ class PasskeyConfig
      */
     public function getRpId(string $fallbackHost, ?string $salesChannelId = null): string
     {
-        $configured = (string) ($this->systemConfigService->get(self::KEY_RP_ID, $salesChannelId) ?? '');
+        $configured = $this->stringValue($this->systemConfigService->get(self::KEY_RP_ID, $salesChannelId));
 
         return $configured !== '' ? $configured : $fallbackHost;
     }
 
     public function getAdminRpId(string $fallbackHost): string
     {
-        $configured = (string) ($this->systemConfigService->get(self::KEY_RP_ID_ADMIN) ?? '');
+        $configured = $this->stringValue($this->systemConfigService->get(self::KEY_RP_ID_ADMIN));
 
         return $configured !== '' ? $configured : $fallbackHost;
+    }
+
+    private function stringValue(mixed $value): string
+    {
+        return \is_string($value) ? trim($value) : '';
     }
 }

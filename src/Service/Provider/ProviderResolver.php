@@ -2,9 +2,10 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Provider;
 
-use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Provider\Exception\ProviderNotFoundException;
+use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
@@ -18,6 +19,9 @@ use Shopware\Core\Framework\Uuid\Uuid;
  */
 class ProviderResolver
 {
+    /**
+     * @param EntityRepository<Sw6OidcProviderCollection> $providerRepository
+     */
     public function __construct(private readonly EntityRepository $providerRepository)
     {
     }

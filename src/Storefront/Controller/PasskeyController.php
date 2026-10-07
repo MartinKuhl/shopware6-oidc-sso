@@ -16,6 +16,7 @@ use MartinKuhl\Sw6Oidc\Service\Session\SessionAuthenticationClock;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSession;
 use MartinKuhl\Sw6Oidc\Service\Session\Sw6OidcSessionActivityRecorder;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Checkout\Customer\CustomerCollection;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Checkout\Customer\SalesChannel\AccountService;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -57,6 +58,9 @@ class PasskeyController extends StorefrontController
 
     public const REAUTH_WINDOW_SECONDS = SessionAuthenticationClock::DEFAULT_WINDOW_SECONDS;
 
+    /**
+     * @param EntityRepository<CustomerCollection> $customerRepository
+     */
     public function __construct(
         private readonly PasskeyRegistrationService $registrationService,
         private readonly PasskeyAuthenticationService $authenticationService,

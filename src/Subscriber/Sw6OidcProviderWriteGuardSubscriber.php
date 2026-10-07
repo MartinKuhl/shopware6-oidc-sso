@@ -147,8 +147,8 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
 
     /** login type => [flag column, flag property] */
     private const LOCKOUT_FLAGS = [
-        'admin' => ['disable_non_oidc_admin_login', 'disableNonOidcAdminLogin'],
-        'customer' => ['disable_non_oidc_customer_login', 'disableNonOidcCustomerLogin'],
+        LoginType::Admin->value => ['disable_non_oidc_admin_login', 'disableNonOidcAdminLogin'],
+        LoginType::Customer->value => ['disable_non_oidc_customer_login', 'disableNonOidcCustomerLogin'],
     ];
 
     /** storage name => property name */
@@ -573,7 +573,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
             return;
         }
 
-        foreach (self::LOCKOUT_FLAGS as $userType => [$column, $property]) {
+        foreach (self::LOCKOUT_FLAGS as $userType => [, $property]) {
             if (!$this->invariant->passwordLoginDisabled($userType, $changes)) {
                 continue;
             }

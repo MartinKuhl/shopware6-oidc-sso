@@ -37,6 +37,7 @@
         "test": "phpunit",
         "test-coverage": "phpunit --coverage-html var/coverage/html --coverage-clover var/coverage/clover.xml --coverage-text",
         "phpstan": "phpstan analyse -c phpstan.neon.dist --no-progress",
+        "phpstan-tests": "phpstan analyse -c phpstan.tests.neon.dist --no-progress",
         "psalm": "psalm",
         "rector": "rector process --dry-run",
         "rector-fix": "rector process",
@@ -45,6 +46,7 @@
         "ci": [
             "@cs-check",
             "@phpstan",
+            "@phpstan-tests",
             "@psalm",
             "@rector",
             "@test"

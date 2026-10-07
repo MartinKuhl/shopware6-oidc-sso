@@ -71,7 +71,7 @@ final class SessionActivityControllerTest extends TestCase
         $this->destruction->expects(self::once())->method('destroyAllForUser')->with('admin', 'e1000000000000000000000000000001');
 
         self::assertTrue($this->forceLogout($this->activityIdFor('jti-a'))['endedAllSessions']);
-        self::assertSame([], $this->registry->resolveByUser('admin', 'e1000000000000000000000000000001'));
+        self::assertSame([], SqliteSessionRegistry::sessionsOf($this->registry, 'admin', 'e1000000000000000000000000000001'));
     }
 
     public function testOnlyASuperadminMayEndAnAdministratorsSessions(): void

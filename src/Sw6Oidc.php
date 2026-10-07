@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc;
 use Doctrine\DBAL\Connection;
 use Shopware\Core\Framework\Plugin;
 use Shopware\Core\Framework\Plugin\Context\UninstallContext;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 
 class Sw6Oidc extends Plugin
 {
@@ -29,6 +30,10 @@ class Sw6Oidc extends Plugin
 
         if ($uninstallContext->keepUserData()) {
             return;
+        }
+
+        if (!$this->container instanceof ContainerInterface) {
+            throw new \LogicException('The plugin container is not available during uninstall.');
         }
 
         /** @var Connection $connection */

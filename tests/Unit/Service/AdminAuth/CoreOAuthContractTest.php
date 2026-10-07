@@ -9,6 +9,7 @@ use League\OAuth2\Server\Repositories\RefreshTokenRepositoryInterface;
 use League\OAuth2\Server\Repositories\ScopeRepositoryInterface;
 use League\OAuth2\Server\Repositories\UserRepositoryInterface;
 use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Api\OAuth\AccessTokenRepository;
 use Shopware\Core\Framework\Api\OAuth\ClientRepository;
@@ -29,24 +30,48 @@ use Shopware\Core\Framework\Api\OAuth\UserRepository;
 #[CoversNothing]
 final class CoreOAuthContractTest extends TestCase
 {
-    public function testTheCoreServicesStillImplementTheLeagueInterfaces(): void
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function coreServices(): iterable
     {
-        self::assertTrue(is_a(ClientRepository::class, ClientRepositoryInterface::class, true));
-        self::assertTrue(is_a(AccessTokenRepository::class, AccessTokenRepositoryInterface::class, true));
-        self::assertTrue(is_a(ScopeRepository::class, ScopeRepositoryInterface::class, true));
-        self::assertTrue(is_a(RefreshTokenRepository::class, RefreshTokenRepositoryInterface::class, true));
-        self::assertTrue(is_a(UserRepository::class, UserRepositoryInterface::class, true));
-        self::assertTrue(is_a(FakeCryptKey::class, CryptKeyInterface::class, true));
+        yield 'client repository' => [ClientRepository::class, ClientRepositoryInterface::class];
+        yield 'access token repository' => [AccessTokenRepository::class, AccessTokenRepositoryInterface::class];
+        yield 'scope repository' => [ScopeRepository::class, ScopeRepositoryInterface::class];
+        yield 'refresh token repository' => [RefreshTokenRepository::class, RefreshTokenRepositoryInterface::class];
+        yield 'user repository' => [UserRepository::class, UserRepositoryInterface::class];
+        yield 'crypt key' => [FakeCryptKey::class, CryptKeyInterface::class];
     }
 
-    public function testTheCoreSpecificsTheBridgeUsesStillExist(): void
+    #[DataProvider('coreServices')]
+    public function testTheCoreServicesStillImplementTheLeagueInterfaces(string $coreClass, string $leagueInterface): void
+    {
+        self::assertTrue(is_a($coreClass, $leagueInterface, true), $coreClass);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function coreMembers(): iterable
     {
         // Sw6OidcSessionDestructionService, PasswordSessionRevoker
-        self::assertTrue(method_exists(RefreshTokenRepository::class, 'revokeRefreshTokensForUser'));
-        // AdminOidcGrant: finalizes scopes exactly like a password login, issues core's user
-        self::assertTrue(\defined(ScopeRepository::class . '::PASSWORD_GRANT'));
-        self::assertTrue(class_exists(User::class));
-        // UserVerifiedScope (the step-up scope)
+        yield 'refresh token revocation' => [RefreshTokenRepository::class . '::revokeRefreshTokensForUser'];
+        // AdminOidcGrant: finalizes scopes exactly like a password login
+        yield 'password grant scopes' => [ScopeRepository::class . '::PASSWORD_GRANT'];
+    }
+
+    #[DataProvider('coreMembers')]
+    public function testTheCoreMembersTheBridgeUsesStillExist(string $member): void
+    {
+        [$class, $name] = explode('::', $member);
+
+        self::assertTrue(method_exists($class, $name) || \defined($member), $member);
+    }
+
+    public function testTheCoreUserAndScopeStillExist(): void
+    {
+        // AdminOidcGrant issues core's user; step-up tokens carry this scope.
         self::assertSame('user-verified', UserVerifiedScope::IDENTIFIER);
+        self::assertSame('u1', (new User('u1'))->getIdentifier());
     }
 }

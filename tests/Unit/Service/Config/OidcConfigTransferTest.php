@@ -19,13 +19,14 @@ use MartinKuhl\Sw6Oidc\Service\Config\OidcConfigTransfer;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupDefinition;
 use Shopware\Core\Framework\Api\Acl\Role\AclRoleDefinition;
 use Shopware\Core\Framework\Api\Acl\Role\AclRoleEntity;
-use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupDefinition;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\EntitySearchResult;
+use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\IdSearchResult;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\EntityWriteGatewayInterface;
 use Shopware\Core\Framework\Uuid\Uuid;
@@ -165,7 +166,7 @@ final class OidcConfigTransferTest extends TestCase
     {
         $result = $this->transfer()->import($this->exportFile(withSecret: true), false, false, false, Context::createDefaultContext());
         self::assertArrayHasKey('authelia', $result->failed);
-        self::assertSame([], $this->upserts);
+        self::assertCount(0, $this->upserts);
 
         $result = $this->transfer()->import($this->exportFile(withSecret: true), false, true, false, Context::createDefaultContext());
         self::assertSame(['authelia'], $result->created);
@@ -344,7 +345,9 @@ final class OidcConfigTransferTest extends TestCase
                 return $this->ids(array_values(array_intersect($criteria->getIds(), $this->existingRefs[$entity])), $criteria);
             }
 
-            $name = $criteria->getFilters()[0]->getValue();
+            $filter = $criteria->getFilters()[0];
+            self::assertInstanceOf(EqualsFilter::class, $filter);
+            $name = $filter->getValue();
 
             return $this->ids(isset($this->refsByName[$entity][$name]) ? [$this->refsByName[$entity][$name]] : [], $criteria);
         });
@@ -357,7 +360,13 @@ final class OidcConfigTransferTest extends TestCase
      */
     private function ids(array $ids, Criteria $criteria): IdSearchResult
     {
-        return new IdSearchResult(\count($ids), array_map(static fn ($id): array => ['primaryKey' => $id, 'data' => []], $ids), $criteria, Context::createDefaultContext());
+        $data = [];
+
+        foreach ($ids as $id) {
+            $data[(string) $id] = ['primaryKey' => (string) $id, 'data' => []];
+        }
+
+        return new IdSearchResult(\count($ids), $data, $criteria, Context::createDefaultContext());
     }
 
     private function aclRole(): AclRoleEntity

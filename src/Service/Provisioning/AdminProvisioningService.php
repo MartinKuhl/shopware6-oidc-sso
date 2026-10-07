@@ -12,13 +12,18 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\AdminProvisioningDeniedExc
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Content\Media\MediaCollection;
 use Shopware\Core\Content\Media\MediaService;
 use Shopware\Core\Framework\Context;
+use Shopware\Core\Framework\DataAbstractionLayer\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
 use Shopware\Core\Framework\DataAbstractionLayer\Event\EntityWrittenContainerEvent;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\Uuid\Uuid;
+use Shopware\Core\System\Locale\LocaleCollection;
+use Shopware\Core\System\User\UserCollection;
 use Shopware\Core\System\User\UserEntity;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
@@ -37,6 +42,12 @@ class AdminProvisioningService
     /** user.customFields key: sha256 of the picture URL last imported (M19). */
     public const AVATAR_URL_HASH_FIELD = 'sw6oidc_avatar_url_hash';
 
+    /**
+     * @param EntityRepository<EntityCollection<Entity>> $aclUserRoleRepository
+     * @param EntityRepository<LocaleCollection> $localeRepository
+     * @param EntityRepository<MediaCollection> $mediaRepository
+     * @param EntityRepository<UserCollection> $userRepository
+     */
     public function __construct(
         private readonly EntityRepository $userRepository,
         private readonly EntityRepository $localeRepository,
@@ -448,8 +459,7 @@ class AdminProvisioningService
      * covers both a brand-new Media row and one from a previous sync that
      * was created private, self-healing on the next login rather than
      * requiring a one-off manual fix.
-     */
-    /**
+     *
      * @return array<string, mixed> user update fields (empty = nothing to write)
      */
     private function syncAvatar(string $userId, string $pictureUrl, ?UserEntity $existing, Context $context): array

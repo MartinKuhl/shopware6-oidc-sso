@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Service\Provisioning;
 
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\UserProvider\Sw6OidcUserProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
@@ -29,6 +30,9 @@ use Shopware\Core\Framework\Uuid\Uuid;
  */
 class UserProviderBindingService
 {
+    /**
+     * @param EntityRepository<Sw6OidcUserProviderCollection> $userProviderRepository
+     */
     public function __construct(private readonly EntityRepository $userProviderRepository)
     {
     }
@@ -66,8 +70,6 @@ class UserProviderBindingService
         $global = null;
 
         foreach ($bindings as $binding) {
-            \assert($binding instanceof Sw6OidcUserProviderEntity);
-
             if ($binding->getBindingScope() !== Sw6OidcUserProviderEntity::GLOBAL_SCOPE) {
                 return $binding;
             }
@@ -86,21 +88,6 @@ class UserProviderBindingService
         return $this->findBindingBySubject($userType, $identity, $context, $salesChannelId)?->getUserId();
     }
 
-    /**
-     * @throws ProviderMismatchException when the account is already bound to a
-     *                                   different provider than the one currently authenticating
-     */
-    public function assertNotBoundToDifferentProvider(string $userType, string $userId, string $providerId, Context $context): void
-    {
-        $bound = $this->getBoundProviderId($userType, $userId, $context);
-
-        if ($bound !== null && $bound !== $providerId) {
-            throw new ProviderMismatchException(sprintf(
-                'This %s account is bound to a different identity provider.',
-                $userType,
-            ));
-        }
-    }
 
     /**
      * Binds an unbound account to an IdP identity. A concurrent first login
@@ -185,9 +172,9 @@ class UserProviderBindingService
      * Bindings are writable in system scope only (R3-H3); this service is
      * their one writer, whatever context its caller holds.
      *
-     * @param callable(Context): mixed $write
+     * @param \Closure(Context): mixed $write
      */
-    private function asSystem(Context $context, callable $write): void
+    private function asSystem(Context $context, \Closure $write): void
     {
         $context->scope(Context::SYSTEM_SCOPE, $write);
     }

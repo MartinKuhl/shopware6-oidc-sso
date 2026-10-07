@@ -34,7 +34,9 @@ final class PlaceholderAddressSubscriberTest extends TestCase
         $response = ($event->getController())();
         self::assertInstanceOf(RedirectResponse::class, $response);
         self::assertSame('/account/address/addr-1', $response->getTargetUrl());
-        self::assertSame(['completeAddress'], $event->getRequest()->getSession()->getFlashBag()->peek('warning'));
+        $session = $event->getRequest()->getSession();
+        self::assertInstanceOf(Session::class, $session);
+        self::assertSame(['completeAddress'], $session->getFlashBag()->peek('warning'));
     }
 
     public function testCheckoutWithARealAddressIsUntouched(): void

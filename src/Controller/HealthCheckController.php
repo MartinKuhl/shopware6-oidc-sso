@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Controller;
 
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Health\HealthAlertState;
 use MartinKuhl\Sw6Oidc\Service\Health\InfrastructureInspector;
@@ -48,6 +49,9 @@ class HealthCheckController extends AbstractController
     /** HealthCheckAlertTask runs every 300 s. */
     private const STALE_AFTER_SECONDS = 900;
 
+    /**
+     * @param EntityRepository<Sw6OidcProviderCollection> $providerRepository
+     */
     public function __construct(
         private readonly EntityRepository $providerRepository,
         private readonly ProviderConfigInspector $configInspector,

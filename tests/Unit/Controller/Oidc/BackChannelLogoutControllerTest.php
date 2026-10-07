@@ -95,7 +95,7 @@ final class BackChannelLogoutControllerTest extends TestCase
         $this->post($this->token(['sid' => null]));
 
         self::assertCount(1, $this->destroyed);
-        self::assertSame([], $this->registry->resolveByUser('admin', 'e1000000000000000000000000000001'), 'both registry entries are removed');
+        self::assertSame([], SqliteSessionRegistry::sessionsOf($this->registry, 'admin', 'e1000000000000000000000000000001'), 'both registry entries are removed');
     }
 
     public function testReplayedTokenIsAcceptedButNotProcessedTwice(): void
@@ -104,9 +104,11 @@ final class BackChannelLogoutControllerTest extends TestCase
         $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'customer', 'c1000000000000000000000000000001', 'ctx-1', '5c000000000000000000000000000001');
         $controller = $this->controller();
 
-        self::assertSame(200, $controller->logout($this->request($token))->getStatusCode());
+        $first = $controller->logout($this->request($token));
         $this->registry->register('a1000000000000000000000000000001', 'user-1', 'sid-1', 'customer', 'c1000000000000000000000000000001', 'ctx-again', '5c000000000000000000000000000001');
-        self::assertSame(200, $controller->logout($this->request($token))->getStatusCode());
+        $replay = $controller->logout($this->request($token));
+
+        self::assertSame([200, 200], [$first->getStatusCode(), $replay->getStatusCode()]);
 
         self::assertSame(['ctx-1'], array_map(static fn (Sw6OidcSession $s): string => $s->sessionKey, $this->destroyed));
     }

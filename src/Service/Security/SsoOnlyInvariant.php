@@ -197,7 +197,6 @@ class SsoOnlyInvariant
      */
     private function servingProviders(string $loginType, array $providerChanges): array
     {
-        /** @var list<array<string, mixed>> $rows */
         $rows = $this->connection->fetchAllAssociative(
             'SELECT LOWER(HEX(`id`)) AS `id`, `is_active`, `login_type`, `disable_non_oidc_admin_login`, `disable_non_oidc_customer_login`, `show_admin_link`,
                     `show_customer_link`, `issuer`

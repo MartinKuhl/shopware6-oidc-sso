@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Service\Passkey;
 
 use Doctrine\DBAL\Connection;
+use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\PasskeyCredential\Sw6OidcPasskeyCredentialEntity;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Defaults;
@@ -30,6 +31,9 @@ use Webauthn\CredentialRecord;
  */
 class PasskeyCredentialRepository
 {
+    /**
+     * @param EntityRepository<Sw6OidcPasskeyCredentialCollection> $passkeyCredentialRepository
+     */
     public function __construct(
         private readonly EntityRepository $passkeyCredentialRepository,
         private readonly WebauthnCeremonyFactory $ceremonyFactory,
@@ -65,15 +69,6 @@ class PasskeyCredentialRepository
         }
     }
 
-    /**
-     * @param string $publicKeyCredentialId raw credential id bytes
-     */
-    public function findOneByCredentialId(string $publicKeyCredentialId): ?CredentialRecord
-    {
-        $entity = $this->findEntityByCredentialId(base64_encode($publicKeyCredentialId));
-
-        return $entity instanceof Sw6OidcPasskeyCredentialEntity ? $this->toRecord($entity) : null;
-    }
 
     /**
      * @param string $userHandle      raw WebAuthn user handle bytes
@@ -96,7 +91,6 @@ class PasskeyCredentialRepository
         $records = [];
 
         foreach ($this->passkeyCredentialRepository->search($criteria, $this->context())->getEntities() as $entity) {
-            \assert($entity instanceof Sw6OidcPasskeyCredentialEntity);
             $records[] = $this->toRecord($entity);
         }
 
@@ -116,13 +110,9 @@ class PasskeyCredentialRepository
     }
 
     /**
-     * Persists the record returned by a successful assertion check() — the
-     * library bumps the signature counter / backup flags on it but, unlike
-     * 4.x, no longer saves it itself.
-     */
-    /**
-     * Stores the record a successful assertion returned (counter, backup
-     * state) for the credential the caller already loaded. The write is a
+     * Persists the record a successful assertion check() returned (the
+     * library bumps the counter and backup flags but, unlike 4.x, no longer
+     * saves it) for the credential the caller already loaded. The write is a
      * compare-and-set on the counter: of two concurrent assertions only the
      * higher counter lands, so the counter can never go backwards (R3-L15).
      * Authenticators without a counter (always 0) are always written.

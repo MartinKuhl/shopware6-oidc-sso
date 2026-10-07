@@ -2,10 +2,11 @@
 
 namespace MartinKuhl\Sw6Oidc\Controller\Api;
 
+use Doctrine\DBAL\Connection;
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Http\Exception\OidcHttpException;
 use MartinKuhl\Sw6Oidc\Service\Oidc\AuthorizationRequestBuilder;
-use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcConnectionTestService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcDiscoveryService;
 use MartinKuhl\Sw6Oidc\Service\Oidc\OidcLiveLoginTestService;
@@ -13,7 +14,8 @@ use MartinKuhl\Sw6Oidc\Service\Oidc\TestResultTranslator;
 use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
-use Doctrine\DBAL\Connection;
+use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
+use MartinKuhl\Sw6Oidc\Service\Security\SsrfUrlValidator;
 use MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcProviderWriteGuardSubscriber;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Defaults;
@@ -23,7 +25,6 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Criteria;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\PlatformRequest;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use MartinKuhl\Sw6Oidc\Service\Security\PublicError;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -54,6 +55,9 @@ class OidcProviderAdminController extends AbstractController
     private const DEFAULT_TEST_TIMEOUT_SECONDS = 10;
     private const MAX_TEST_TIMEOUT_SECONDS = 30;
 
+    /**
+     * @param EntityRepository<Sw6OidcProviderCollection> $providerRepository
+     */
     public function __construct(
         private readonly EntityRepository $providerRepository,
         private readonly AuthorizationRequestBuilder $requestBuilder,
@@ -386,10 +390,6 @@ class OidcProviderAdminController extends AbstractController
     }
 
     /**
-     * @param array<int, array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}> $steps
-     * @param array<string, mixed> $claims
-     */
-    /**
      * A string request field, or null when absent. Any other JSON type is a
      * client error, not a TypeError deep inside the test (R3-L44).
      */
@@ -419,6 +419,10 @@ class OidcProviderAdminController extends AbstractController
         return max(1, min(self::MAX_TEST_TIMEOUT_SECONDS, (int) $value));
     }
 
+    /**
+     * @param array<int, array{id: string, status: string, detail: string, messageKey?: string, messageParams?: array<string, string|int>}> $steps
+     * @param array<string, mixed> $claims
+     */
     private function renderTestResultPage(string $status, array $steps, array $claims, ?string $cspNonce, string $locale): Response
     {
         // Same snippet keys, wording and pill layout as the provider detail

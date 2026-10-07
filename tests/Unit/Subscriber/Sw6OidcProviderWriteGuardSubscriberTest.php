@@ -389,7 +389,7 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
             /**
              * @param list<object> $dispatched
              */
-            public function __construct(private array &$dispatched)
+            public function __construct(public array &$dispatched)
             {
             }
 

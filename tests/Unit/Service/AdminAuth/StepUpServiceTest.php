@@ -25,7 +25,7 @@ final class StepUpServiceTest extends TestCase
 {
     private const ADMIN = 'a0000000000000000000000000000001';
 
-    private ?string $subjectOwner = self::ADMIN;
+    private string $subjectOwner = self::ADMIN;
 
     public function testFreshReauthenticationOfTheSameAdminYieldsASingleUseNonce(): void
     {
@@ -84,7 +84,7 @@ final class StepUpServiceTest extends TestCase
     private function service(?AuthorizationRequestBuilder $builder = null): StepUpService
     {
         $bindings = $this->createStub(UserProviderBindingService::class);
-        $bindings->method('findUserIdBySubject')->willReturnCallback(fn (): ?string => $this->subjectOwner);
+        $bindings->method('findUserIdBySubject')->willReturnCallback(fn (): string => $this->subjectOwner);
         $bindings->method('getBoundProviderId')->willReturn('p0000000000000000000000000000001');
 
         $resolver = $this->createStub(ProviderResolver::class);

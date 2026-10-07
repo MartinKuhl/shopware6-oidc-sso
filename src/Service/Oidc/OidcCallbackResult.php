@@ -51,7 +51,7 @@ final readonly class OidcCallbackResult
      * The IdP subject: from the verified id_token, else (providers without
      * the openid scope) from userinfo. The processor rejects a mismatch.
      */
-    public function subject(): ?string
+    private function subject(): ?string
     {
         foreach ([$this->idTokenClaims['sub'] ?? null, $this->claims['sub'] ?? null] as $sub) {
             if (\is_string($sub) && $sub !== '') {

@@ -243,9 +243,6 @@ final class PasskeyCeremonyTest extends TestCase
         return new PasskeyRelyingParty('shop.example', 'Shop', ['https://shop.example']);
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     public function testRegistrationStopsAtTheCredentialLimit(): void
     {
         $handle = bin2hex(hash('sha256', 'admin:' . $this->userId, true));
@@ -260,6 +257,11 @@ final class PasskeyCeremonyTest extends TestCase
         $this->creationOptions();
     }
 
+    /**
+     * @param-out string $nonce
+     *
+     * @return array<string, mixed>
+     */
     private function creationOptions(?string &$nonce = null): array
     {
         $result = $this->registration->buildCreationOptions('admin', $this->userId, 'admin', 'Admin', $this->rp());

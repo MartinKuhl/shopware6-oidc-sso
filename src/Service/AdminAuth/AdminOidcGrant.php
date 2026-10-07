@@ -153,7 +153,7 @@ class AdminOidcGrant extends AbstractGrant
             ['id' => Uuid::fromHexToBytes($userId)],
         );
 
-        if ($active === false || !(bool) $active) {
+        if ($userId === '' || $active === false || !(bool) $active) {
             throw OAuthServerException::invalidGrant('The user does not exist or is inactive.');
         }
 

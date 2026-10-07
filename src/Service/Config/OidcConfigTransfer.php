@@ -3,10 +3,16 @@
 namespace MartinKuhl\Sw6Oidc\Service\Config;
 
 use Doctrine\DBAL\Connection;
+use MartinKuhl\Sw6Oidc\Core\Content\AccessControlRule\Sw6OidcAccessControlRuleCollection;
+use MartinKuhl\Sw6Oidc\Core\Content\AttributeMapping\Sw6OidcAttributeMappingCollection;
+use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
+use MartinKuhl\Sw6Oidc\Core\Content\RoleMapping\Sw6OidcRoleMappingCollection;
 use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
+use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupCollection;
 use Shopware\Core\Checkout\Customer\Aggregate\CustomerGroup\CustomerGroupEntity;
+use Shopware\Core\Framework\Api\Acl\Role\AclRoleCollection;
 use Shopware\Core\Framework\Api\Acl\Role\AclRoleEntity;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
@@ -66,6 +72,14 @@ class OidcConfigTransfer
         'updatedAt',
     ];
 
+    /**
+     * @param EntityRepository<Sw6OidcAccessControlRuleCollection> $accessControlRuleRepository
+     * @param EntityRepository<AclRoleCollection> $aclRoleRepository
+     * @param EntityRepository<Sw6OidcAttributeMappingCollection> $attributeMappingRepository
+     * @param EntityRepository<CustomerGroupCollection> $customerGroupRepository
+     * @param EntityRepository<Sw6OidcProviderCollection> $providerRepository
+     * @param EntityRepository<Sw6OidcRoleMappingCollection> $roleMappingRepository
+     */
     public function __construct(
         private readonly EntityRepository $providerRepository,
         private readonly EntityRepository $attributeMappingRepository,
@@ -95,7 +109,6 @@ class OidcConfigTransfer
         $providers = [];
 
         foreach ($this->providerRepository->search($criteria, $context)->getEntities() as $provider) {
-            \assert($provider instanceof Sw6OidcProviderEntity);
             $providers[] = $this->exportProvider($provider, $secretMode);
         }
 
@@ -341,22 +354,24 @@ class OidcConfigTransfer
 
         // One transaction per provider: a rejected upsert (SSRF, lockout
         // guard, validation) must not leave its mappings deleted.
-        $repositories = [
-            'attributeMappings' => $this->attributeMappingRepository,
-            'roleMappings' => $this->roleMappingRepository,
-            'accessControlRules' => $this->accessControlRuleRepository,
-        ];
+        $replaced = [];
 
         foreach (self::CHILD_COLLECTIONS as $collection) {
             if ($exists && !\array_key_exists($collection, $provider)) {
-                unset($payload[$collection], $repositories[$collection]);
+                unset($payload[$collection]);
+            } else {
+                $replaced[] = $collection;
             }
         }
 
-        $this->connection->transactional(function () use ($exists, $id, $payload, $repositories, $context): void {
+        $this->connection->transactional(function () use ($exists, $id, $payload, $replaced, $context): void {
             if ($exists) {
-                foreach ($repositories as $repository) {
-                    $this->deleteChildren($repository, $id, $context);
+                foreach ($replaced as $collection) {
+                    match ($collection) {
+                        'attributeMappings' => $this->deleteChildren($this->attributeMappingRepository, $id, $context),
+                        'roleMappings' => $this->deleteChildren($this->roleMappingRepository, $id, $context),
+                        'accessControlRules' => $this->deleteChildren($this->accessControlRuleRepository, $id, $context),
+                    };
                 }
             }
 
@@ -412,6 +427,11 @@ class OidcConfigTransfer
         return null;
     }
 
+    /**
+     * @template TCollection of \Shopware\Core\Framework\DataAbstractionLayer\EntityCollection
+     *
+     * @param \Shopware\Core\Framework\DataAbstractionLayer\EntityRepository<TCollection> $repository
+     */
     private function deleteChildren(EntityRepository $repository, string $providerId, Context $context): void
     {
         $ids = $repository->searchIds((new Criteria())->addFilter(new EqualsFilter('providerId', $providerId)), $context)->getIds();

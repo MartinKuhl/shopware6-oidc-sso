@@ -13,6 +13,7 @@ use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\CustomerProvisioningDenied
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\ProviderMismatchException;
 use MartinKuhl\Sw6Oidc\Service\Provisioning\Exception\SubjectAlreadyLinkedException;
 use Psr\Log\LoggerInterface;
+use Shopware\Core\Checkout\Customer\CustomerCollection;
 use Shopware\Core\Checkout\Customer\CustomerEntity;
 use Shopware\Core\Checkout\Customer\Event\CustomerRegisterEvent;
 use Shopware\Core\Framework\Context;
@@ -23,6 +24,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
 use Shopware\Core\System\NumberRange\ValueGenerator\NumberRangeValueGeneratorInterface;
 use Shopware\Core\System\SalesChannel\SalesChannelContext;
+use Shopware\Core\System\Salutation\SalutationCollection;
 use Shopware\Core\System\SystemConfig\SystemConfigService;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
@@ -47,6 +49,10 @@ class CustomerProvisioningService
 
     private const MIN_BIRTH_YEAR = 1900;
 
+    /**
+     * @param EntityRepository<CustomerCollection> $customerRepository
+     * @param EntityRepository<SalutationCollection> $salutationRepository
+     */
     public function __construct(
         private readonly EntityRepository $customerRepository,
         private readonly EntityRepository $salutationRepository,
@@ -191,8 +197,6 @@ class CustomerProvisioningService
         $inactiveMatch = null;
 
         foreach ($this->customerRepository->search($criteria, $salesChannelContext->getContext())->getEntities() as $customer) {
-            \assert($customer instanceof CustomerEntity);
-
             if (!CustomerSalesChannelBinding::allows($customer, $salesChannelContext->getSalesChannelId())) {
                 continue;
             }

@@ -58,36 +58,8 @@ final class UserProviderBindingServiceTest extends TestCase
         ], $capturedCriteria->getFilters());
     }
 
-    public function testAssertNotBoundToDifferentProviderPassesWhenUnbound(): void
-    {
-        $service = new UserProviderBindingService($this->repositoryReturning(null));
 
-        $service->assertNotBoundToDifferentProvider(self::USER_TYPE, Uuid::randomHex(), Uuid::randomHex(), Context::createDefaultContext());
 
-        $this->addToAssertionCount(1);
-    }
-
-    public function testAssertNotBoundToDifferentProviderPassesWhenBoundToSameProvider(): void
-    {
-        $userId = Uuid::randomHex();
-        $providerId = Uuid::randomHex();
-        $service = new UserProviderBindingService($this->repositoryReturning($this->binding($userId, $providerId)));
-
-        $service->assertNotBoundToDifferentProvider(self::USER_TYPE, $userId, $providerId, Context::createDefaultContext());
-
-        $this->addToAssertionCount(1);
-    }
-
-    public function testAssertNotBoundToDifferentProviderThrowsWhenBoundToDifferentProvider(): void
-    {
-        $userId = Uuid::randomHex();
-        $service = new UserProviderBindingService($this->repositoryReturning($this->binding($userId, Uuid::randomHex())));
-
-        $this->expectException(ProviderMismatchException::class);
-        $this->expectExceptionMessage('This admin account is bound to a different identity provider.');
-
-        $service->assertNotBoundToDifferentProvider(self::USER_TYPE, $userId, Uuid::randomHex(), Context::createDefaultContext());
-    }
 
     public function testBindCreatesSubjectBindingWhenUnbound(): void
     {

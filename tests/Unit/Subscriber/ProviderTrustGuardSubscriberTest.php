@@ -151,7 +151,7 @@ final class ProviderTrustGuardSubscriberTest extends TestCase
             /**
              * @param list<array{string, array<string, mixed>}> $logged
              */
-            public function __construct(private array &$logged)
+            public function __construct(public array &$logged)
             {
             }
 

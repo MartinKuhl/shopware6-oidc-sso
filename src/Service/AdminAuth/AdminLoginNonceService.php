@@ -24,7 +24,8 @@ class AdminLoginNonceService
 
     public function __construct(
         private readonly AtomicCacheInterface $cache,
-        private readonly ?BrowserBinding $browserBinding = null,
+        // Required: the nonce must be redeemed in the browser that logged in (M1, R3-L5).
+        private readonly BrowserBinding $browserBinding,
     ) {
     }
 
@@ -67,7 +68,7 @@ class AdminLoginNonceService
         $string = static fn (mixed $value): ?string => \is_string($value) && $value !== '' ? $value : null;
         $binding = $string($data['browserBinding'] ?? null);
 
-        if ($this->browserBinding instanceof BrowserBinding && !$this->browserBinding->matchesCurrentBrowser($binding)) {
+        if (!$this->browserBinding->matchesCurrentBrowser($binding)) {
             return null;
         }
 
@@ -75,7 +76,6 @@ class AdminLoginNonceService
             $data['userId'],
             $string($data['providerId'] ?? null),
             $string($data['registrySessionId'] ?? null),
-            $binding,
         );
     }
 }

@@ -2,6 +2,8 @@
 
 namespace MartinKuhl\Sw6Oidc\Tests\Unit\Support;
 
+use Symfony\Component\HttpFoundation\RequestStack;
+use MartinKuhl\Sw6Oidc\Service\Security\BrowserBinding;
 use Doctrine\DBAL\Connection;
 use League\OAuth2\Server\AuthorizationServer;
 use MartinKuhl\Sw6Oidc\Controller\Api\OidcAdminAuthController;
@@ -51,7 +53,7 @@ trait BuildsOidcAdminAuthController
             'requestBuilder' => $this->createMock(AuthorizationRequestBuilder::class),
             'callbackProcessor' => $this->createMock(OidcCallbackProcessor::class),
             'adminProvisioningService' => $this->createMock(AdminProvisioningService::class),
-            'loginNonceService' => new AdminLoginNonceService(new InMemoryAtomicCache()),
+            'loginNonceService' => new AdminLoginNonceService(new InMemoryAtomicCache(), new BrowserBinding(new RequestStack())),
             'tokenIssuer' => new AdminTokenIssuer($server),
             'administrationBaseUrl' => 'https://shop.example/admin',
             'logger' => new NullLogger(),

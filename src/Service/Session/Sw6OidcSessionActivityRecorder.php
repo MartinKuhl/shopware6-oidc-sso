@@ -2,6 +2,7 @@
 
 namespace MartinKuhl\Sw6Oidc\Service\Session;
 
+use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityCollection;
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\SessionActivity\Sw6OidcSessionActivityEntity;
 use MartinKuhl\Sw6Oidc\Service\Health\NodeHeartbeat;
@@ -14,8 +15,8 @@ use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\EqualsFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Filter\MultiFilter;
 use Shopware\Core\Framework\DataAbstractionLayer\Search\Sorting\FieldSorting;
 use Shopware\Core\Framework\Uuid\Uuid;
-use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\IpUtils;
+use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Writes the sw6oidc_session_activity log: one row per login, closed on
@@ -30,6 +31,9 @@ class Sw6OidcSessionActivityRecorder
 {
     private const CLOSE_BATCH_SIZE = 200;
 
+    /**
+     * @param EntityRepository<Sw6OidcSessionActivityCollection> $activityRepository
+     */
     public function __construct(
         private readonly EntityRepository $activityRepository,
         private readonly LoggerInterface $logger,
