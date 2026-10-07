@@ -261,6 +261,12 @@ jobs:
           bin/console plugin:refresh
           bin/console plugin:install --activate Sw6Oidc
 
+      # Every service argument fits its type declaration: a decorated core
+      # service behind a concrete type hint only failed at runtime (R7-H1).
+      - name: Lint the container
+        working-directory: shop
+        run: bin/console lint:container
+
       - name: Build Administration
         working-directory: shop
         env:
