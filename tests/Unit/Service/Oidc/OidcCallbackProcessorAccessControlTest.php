@@ -58,7 +58,7 @@ final class OidcCallbackProcessorAccessControlTest extends TestCase
     {
         $provider = new Sw6OidcProviderEntity();
         // Without the openid scope the flow may rely on userinfo alone.
-        $provider->assign(['id' => 'provider-1', 'groupAttribute' => 'groups', 'claimEncoding' => 'none', 'scope' => 'email profile']);
+        $provider->assign(['id' => 'provider-1', 'groupAttribute' => 'groups', 'scope' => 'email profile']);
 
         $resolver = $this->createStub(ProviderResolver::class);
         $resolver->method('getActiveById')->willReturn($provider);

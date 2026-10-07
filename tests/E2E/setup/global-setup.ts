@@ -93,7 +93,6 @@ export default async function globalSetup(): Promise<void> {
         issuer: DEX_URL,
         scope: 'openid profile email',
         pkceFlow: 'S256',
-        claimEncoding: 'none',
         groupAttribute: 'groups',
         isActive: true,
         requireEmailVerified: true,

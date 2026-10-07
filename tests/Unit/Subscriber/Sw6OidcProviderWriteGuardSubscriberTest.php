@@ -71,6 +71,29 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
         $this->assertNoViolations($this->validate([$this->update($id, ['health_alert_webhook_url' => $encrypted])]));
     }
 
+    public function testAnExplicitNullBooleanIsAViolationNotADatabaseError(): void
+    {
+        $violation = $this->singleViolation($this->validate([$this->update($this->db->provider(), ['is_active' => null])]));
+
+        // R3-L43: the NOT NULL column used to turn this into a 500.
+        self::assertSame('/isActive', $violation->getPropertyPath());
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_VALUE_REQUIRED, $violation->getCode());
+    }
+
+    public function testDeletingAProviderWithBindingsNeedsTheConfirmation(): void
+    {
+        $id = $this->db->provider(['login_type' => 'customer']);
+        $this->db->bind($id, $this->db->admin());
+
+        // R3-L43: the bindings go with the provider, so a plain delete is refused.
+        self::assertSame(
+            Sw6OidcProviderWriteGuardSubscriber::CODE_PROVIDER_HAS_BINDINGS,
+            $this->singleViolation($this->validate([$this->delete($id)]))->getCode(),
+        );
+        $this->assertNoViolations($this->validate([$this->delete($id)], bindingLossConfirmed: true));
+        $this->assertNoViolations($this->validate([$this->delete($this->db->provider(['login_type' => 'customer']))]));
+    }
+
     public function testBlockedEndpointAddsFieldScopedViolation(): void
     {
         $violation = $this->singleViolation($this->validate([$this->update($this->db->provider(), ['jwks_endpoint' => 'https://internal.example/jwks'])], privateIps: true));
@@ -258,12 +281,12 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
         );
         self::assertSame(
             Sw6OidcProviderWriteGuardSubscriber::CODE_LOCKOUT_GUARD,
-            $this->singleViolation($this->validate([$this->delete($flagged)]))->getCode(),
+            $this->singleViolation($this->validate([$this->delete($flagged)], bindingLossConfirmed: true))->getCode(),
         );
 
         // Without another flagged provider, password login simply comes back.
         $this->db->connection->executeStatement('DELETE FROM `sw6oidc_provider` WHERE `id` = :id', ['id' => Uuid::fromHexToBytes($other)], ['id' => \Doctrine\DBAL\ParameterType::BINARY]);
-        $this->assertNoViolations($this->validate([$this->delete($flagged)]));
+        $this->assertNoViolations($this->validate([$this->delete($flagged)], bindingLossConfirmed: true));
     }
 
     /**
@@ -354,7 +377,7 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
     /**
      * @param list<WriteCommand> $commands
      */
-    private function validate(array $commands, bool $privateIps = false, bool $breakGlass = false, bool $withRequest = true): PreWriteValidationEvent
+    private function validate(array $commands, bool $privateIps = false, bool $breakGlass = false, bool $withRequest = true, bool $bindingLossConfirmed = false): PreWriteValidationEvent
     {
         $requestStack = new RequestStack();
 
@@ -392,7 +415,13 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
 
         $source = new AdminApiSource($this->actingAdmin);
         $source->setIsAdmin(true);
-        $event = new PreWriteValidationEvent(WriteContext::createFromContext(new Context($source)), $commands);
+        $context = new Context($source);
+
+        if ($bindingLossConfirmed) {
+            $context->addState(Sw6OidcProviderWriteGuardSubscriber::STATE_BINDING_LOSS_CONFIRMED);
+        }
+
+        $event = new PreWriteValidationEvent(WriteContext::createFromContext($context), $commands);
         $this->subscriber->validate($event);
 
         return $event;

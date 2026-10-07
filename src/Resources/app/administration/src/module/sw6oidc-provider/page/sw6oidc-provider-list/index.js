@@ -11,7 +11,7 @@ const { Criteria } = Shopware.Data;
 Component.register('sw6oidc-provider-list', () => Promise.resolve({
     template,
 
-    inject: ['repositoryFactory', 'acl'],
+    inject: ['repositoryFactory', 'acl', 'sw6oidcApiService'],
 
     mixins: [
         Mixin.getByName('notification'),
@@ -26,6 +26,7 @@ Component.register('sw6oidc-provider-list', () => Promise.resolve({
             sortBy: 'sortOrder',
             sortDirection: 'ASC',
             requestId: 0,
+            isDeleting: false,
         };
     },
 
@@ -54,6 +55,24 @@ Component.register('sw6oidc-provider-list', () => Promise.resolve({
     // No own created(): the listing mixin's created() already loads the list (R3-F11).
 
     methods: {
+        /**
+         * Deleting a provider disconnects its accounts from SSO (their
+         * bindings go with it): the server refuses a plain delete while
+         * bindings exist, so the confirmed delete uses the plugin's endpoint (R3-L43).
+         */
+        async onDeleteProvider(id) {
+            this.isDeleting = true;
+
+            try {
+                await this.sw6oidcApiService.post(`_action/sw6oidc/provider/${id}/delete`);
+                await this.getList();
+            } catch {
+                this.createNotificationError({ message: this.$t('sw6oidc.provider.list.deleteError') });
+            } finally {
+                this.isDeleting = false;
+            }
+        },
+
         async getList() {
             const requestId = ++this.requestId;
             this.isLoading = true;

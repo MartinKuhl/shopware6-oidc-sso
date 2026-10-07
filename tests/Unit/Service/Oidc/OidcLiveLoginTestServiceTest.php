@@ -203,7 +203,6 @@ final class OidcLiveLoginTestServiceTest extends TestCase
         $provider->setIssuer('https://idp.example');
         $provider->setJwksCacheTtl(3600);
         $provider->setHttpTimeout(10);
-        $provider->setClaimEncoding('none');
         $provider->setUserInfoEndpoint(null);
 
         return $provider;

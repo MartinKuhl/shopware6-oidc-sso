@@ -49,6 +49,20 @@ final class Sw6OidcEncryptorTest extends TestCase
         self::assertFalse($encryptor->canDecrypt($encrypted));
     }
 
+    public function testAnUndecryptableValueIsReportedOncePerRequest(): void
+    {
+        $envelope = (new Sw6OidcEncryptor('old-secret'))->encrypt('client-secret');
+        $logger = $this->createMock(LoggerInterface::class);
+        $logger->expects(self::exactly(2))->method('error');
+        $encryptor = new Sw6OidcEncryptor('new-secret', $logger);
+
+        // Every hydration decrypts again; one log line per request (R3-L42).
+        $encryptor->decrypt($envelope);
+        $encryptor->decrypt($envelope);
+        $encryptor->reset();
+        $encryptor->decrypt($envelope);
+    }
+
     public function testCorruptEnvelopePassesThrough(): void
     {
         $encryptor = new Sw6OidcEncryptor('app-secret');

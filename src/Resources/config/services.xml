@@ -74,6 +74,7 @@
         <service id="MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor">
             <argument>%env(APP_SECRET)%</argument>
             <argument type="service" id="MartinKuhl\Sw6Oidc\Service\Logging\OidcLogger" />
+            <tag name="kernel.reset" method="reset" />
         </service>
 
         <!-- Service id must be the class name: Field::getSerializer() resolves it by class. -->

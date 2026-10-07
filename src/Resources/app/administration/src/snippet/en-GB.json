@@ -22,7 +22,9 @@
                 },
                 "loadError": "The providers could not be loaded.",
                 "active": "Active",
-                "inactive": "Inactive"
+                "inactive": "Inactive",
+                "deleteConfirm": "Accounts that log in through this provider lose single sign-on: their connection is deleted with the provider. Delete it anyway?",
+                "deleteError": "The provider could not be deleted."
             },
             "detail": {
                 "buttonSave": "Save",

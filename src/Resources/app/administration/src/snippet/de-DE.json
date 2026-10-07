@@ -22,7 +22,9 @@
                 },
                 "loadError": "Die Anbieter konnten nicht geladen werden.",
                 "active": "Aktiv",
-                "inactive": "Inaktiv"
+                "inactive": "Inaktiv",
+                "deleteConfirm": "Konten, die sich über diesen Anbieter anmelden, verlieren Single Sign-on: ihre Verknüpfung wird mit dem Anbieter gelöscht. Trotzdem löschen?",
+                "deleteError": "Der Anbieter konnte nicht gelöscht werden."
             },
             "detail": {
                 "buttonSave": "Speichern",

@@ -87,6 +87,37 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
     public const CODE_SECRET_REQUIRED = 'SW6OIDC_SECRET_REQUIRED_FOR_ENDPOINT_CHANGE';
     public const CODE_CLIENT_SECRET_REQUIRED = 'SW6OIDC_CLIENT_SECRET_REQUIRED';
     public const CODE_ISSUER_CHANGE_CONFIRM = 'SW6OIDC_ISSUER_CHANGE_CONFIRM';
+    public const CODE_VALUE_REQUIRED = 'SW6OIDC_VALUE_REQUIRED';
+    public const CODE_PROVIDER_HAS_BINDINGS = 'SW6OIDC_PROVIDER_HAS_BINDINGS';
+
+    /**
+     * Context state of a provider delete the admin confirmed although it
+     * disconnects accounts (OidcProviderAdminController::deleteWithBindings).
+     */
+    public const STATE_BINDING_LOSS_CONFIRMED = 'sw6oidc.provider_binding_loss_confirmed';
+
+    /** NOT NULL boolean columns: an explicit null is a 400, not a database 500 (R3-L43). */
+    private const NOT_NULL_BOOLEANS = [
+        'public_client' => 'publicClient',
+        'auto_create_customer' => 'autoCreateCustomer',
+        'auto_create_admin' => 'autoCreateAdmin',
+        'disable_non_oidc_admin_login' => 'disableNonOidcAdminLogin',
+        'disable_non_oidc_customer_login' => 'disableNonOidcCustomerLogin',
+        'show_customer_link' => 'showCustomerLink',
+        'show_admin_link' => 'showAdminLink',
+        'is_active' => 'isActive',
+        'sync_customer_profile_on_sso' => 'syncCustomerProfileOnSso',
+        'sync_customer_address_on_sso' => 'syncCustomerAddressOnSso',
+        'sync_customer_group_on_sso' => 'syncCustomerGroupOnSso',
+        'sync_admin_profile_on_sso' => 'syncAdminProfileOnSso',
+        'sync_admin_role_on_sso' => 'syncAdminRoleOnSso',
+        'allow_superadmin_group_mapping' => 'allowSuperadminGroupMapping',
+        'require_email_verified' => 'requireEmailVerified',
+        'link_existing_accounts' => 'linkExistingAccounts',
+        'frontchannel_admin_logout' => 'frontchannelAdminLogout',
+        'revoke_superadmin_on_sso' => 'revokeSuperadminOnSso',
+        'health_alert_notify_on_recovery' => 'healthAlertNotifyOnRecovery',
+    ];
 
     /**
      * URLs the client secret (or tokens) are sent to: changing one on an
@@ -212,6 +243,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
 
             if ($command instanceof DeleteCommand) {
                 $changes[$id] = null;
+                $this->validateDeleteKeepsBindings($idBytes, $violations[$id], $event->getContext());
 
                 continue;
             }
@@ -222,6 +254,7 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
 
             $current = $command instanceof UpdateCommand ? $this->currentRow($idBytes) : null;
 
+            $this->validateNotNull($command, $violations[$id]);
             $this->validateUrls($command, $violations[$id]);
             $this->validateRedirectUrls($command, $violations[$id]);
             $this->validateClientSecret($command, $current, $violations[$id]);
@@ -695,6 +728,45 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
         );
 
         return $row === false ? null : $row;
+    }
+
+    private function validateNotNull(WriteCommand $command, ConstraintViolationList $violations): void
+    {
+        $payload = $command->getPayload();
+
+        foreach (self::NOT_NULL_BOOLEANS as $storageName => $propertyName) {
+            if (\array_key_exists($storageName, $payload) && $payload[$storageName] === null) {
+                $violations->add($this->violation('This value must be true or false.', $propertyName, null, self::CODE_VALUE_REQUIRED));
+            }
+        }
+    }
+
+    /**
+     * Deleting a provider deletes its account bindings with it (database
+     * cascade): those accounts can't use SSO any more. A plain API delete is
+     * refused while bindings exist; the Administration asks and then deletes
+     * through the confirming endpoint (R3-L43). CLI/system writes are trusted.
+     */
+    private function validateDeleteKeepsBindings(string $idBytes, ConstraintViolationList $violations, Context $context): void
+    {
+        if ($context->hasState(self::STATE_BINDING_LOSS_CONFIRMED) || !$context->getSource() instanceof AdminApiSource) {
+            return;
+        }
+
+        $bindings = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM `sw6oidc_user_provider` WHERE `provider_id` = :id',
+            ['id' => $idBytes],
+            ['id' => ParameterType::BINARY],
+        );
+
+        if ($bindings > 0) {
+            $violations->add($this->violation(
+                sprintf('Deleting this provider disconnects %d account(s) from single sign-on. Confirm the deletion to continue.', $bindings),
+                'id',
+                $bindings,
+                self::CODE_PROVIDER_HAS_BINDINGS,
+            ));
+        }
     }
 
     private function violation(string $message, string $propertyName, mixed $invalidValue, string $code): ConstraintViolation

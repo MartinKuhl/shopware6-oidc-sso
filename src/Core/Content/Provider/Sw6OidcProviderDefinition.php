@@ -48,6 +48,13 @@ class Sw6OidcProviderDefinition extends EntityDefinition
 
     public const LOGOUT_STYLES = [self::LOGOUT_STYLE_STANDARD, self::LOGOUT_STYLE_AUTHELIA_FORWARD_AUTH];
 
+    public const PKCE_FLOWS = ['S256', 'plain'];
+    public const LOGIN_TYPES = ['customer', 'admin', 'both'];
+    public const MIN_HTTP_TIMEOUT = 1;
+    public const MAX_HTTP_TIMEOUT = 60;
+    public const MIN_JWKS_CACHE_TTL = 60;
+    public const MAX_JWKS_CACHE_TTL = 86400;
+
     public function getEntityClass(): string
     {
         return Sw6OidcProviderEntity::class;
@@ -72,6 +79,9 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             'frontchannelAdminLogout' => false,
             'revokeSuperadminOnSso' => false,
             'logoutStyle' => self::LOGOUT_STYLE_STANDARD,
+            'sortOrder' => 0,
+            'httpTimeout' => 30,
+            'jwksCacheTtl' => 86400,
         ];
     }
 
@@ -99,8 +109,8 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new StringField('issuer', 'issuer', 1024))->addFlags(new ApiAware()),
             (new StringField('well_known_config_url', 'wellKnownConfigUrl', 1024))->addFlags(new ApiAware()),
             (new StringField('scope', 'scope', 512))->addFlags(new ApiAware(), new Required()),
-            (new StringField('pkce_flow', 'pkceFlow'))->addFlags(new ApiAware(), new Required()),
-            (new StringField('claim_encoding', 'claimEncoding'))->addFlags(new ApiAware(), new Required()),
+            // Strict: `s256` would break every login (R3-L43).
+            (new StringField('pkce_flow', 'pkceFlow'))->addFlags(new ApiAware(), new Required(), new Choice(self::PKCE_FLOWS, true)),
             (new ListField('base64_claims', 'base64Claims', StringField::class))->addFlags(new ApiAware()),
             (new BoolField('public_client', 'publicClient'))->addFlags(new ApiAware()),
             (new StringField('group_attribute', 'groupAttribute'))->addFlags(new ApiAware(), new Required()),
@@ -111,8 +121,8 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new BoolField('show_customer_link', 'showCustomerLink'))->addFlags(new ApiAware()),
             (new BoolField('show_admin_link', 'showAdminLink'))->addFlags(new ApiAware()),
             (new BoolField('is_active', 'isActive'))->addFlags(new ApiAware()),
-            (new StringField('login_type', 'loginType'))->addFlags(new ApiAware(), new Required()),
-            (new IntField('sort_order', 'sortOrder'))->addFlags(new ApiAware()),
+            (new StringField('login_type', 'loginType'))->addFlags(new ApiAware(), new Required(), new Choice(self::LOGIN_TYPES, true)),
+            (new IntField('sort_order', 'sortOrder'))->addFlags(new ApiAware(), new Required()),
             (new BoolField('sync_customer_profile_on_sso', 'syncCustomerProfileOnSso'))->addFlags(new ApiAware()),
             (new BoolField('sync_customer_address_on_sso', 'syncCustomerAddressOnSso'))->addFlags(new ApiAware()),
             (new BoolField('sync_customer_group_on_sso', 'syncCustomerGroupOnSso'))->addFlags(new ApiAware()),
@@ -123,8 +133,9 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new BoolField('link_existing_accounts', 'linkExistingAccounts'))->addFlags(new ApiAware()),
             (new BoolField('frontchannel_admin_logout', 'frontchannelAdminLogout'))->addFlags(new ApiAware()),
             (new BoolField('revoke_superadmin_on_sso', 'revokeSuperadminOnSso'))->addFlags(new ApiAware()),
-            (new IntField('http_timeout', 'httpTimeout'))->addFlags(new ApiAware()),
-            (new IntField('jwks_cache_ttl', 'jwksCacheTtl'))->addFlags(new ApiAware()),
+            // Bounded: 40000 overflowed the SMALLINT column, a negative TTL disabled the cache (R3-L43).
+            (new IntField('http_timeout', 'httpTimeout', self::MIN_HTTP_TIMEOUT, self::MAX_HTTP_TIMEOUT))->addFlags(new ApiAware(), new Required()),
+            (new IntField('jwks_cache_ttl', 'jwksCacheTtl', self::MIN_JWKS_CACHE_TTL, self::MAX_JWKS_CACHE_TTL))->addFlags(new ApiAware(), new Required()),
             (new StringField('last_test_status', 'lastTestStatus', 16))->addFlags(new ApiAware(), new Choice(['pass', 'fail'], true)),
             (new DateTimeField('last_test_at', 'lastTestAt'))->addFlags(new ApiAware()),
             (new JsonField('last_test_claims', 'lastTestClaims'))->addFlags(new ApiAware()),

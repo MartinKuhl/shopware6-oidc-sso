@@ -23,7 +23,7 @@
             :sort-by="sortBy"
             :sort-direction="sortDirection"
             :disable-data-fetching="true"
-            :show-selection="acl.can('sw6oidc_provider.deleter') || undefined"
+            :show-selection="false"
             :allow-edit="acl.can('sw6oidc_provider.editor') || undefined"
             :allow-view="acl.can('sw6oidc_provider.viewer') || undefined"
             :allow-delete="acl.can('sw6oidc_provider.deleter') || undefined"
@@ -49,6 +49,21 @@
                     :aria-label="$t('sw6oidc.provider.list.inactive')"
                 />
             </template>
+            {% block sw6oidc_provider_list_delete_confirm %}
+            <template #delete-confirm-text>
+                {{ $t('sw6oidc.provider.list.deleteConfirm') }}
+            </template>
+            <template #delete-modal-delete-item="{ item }">
+                <mt-button
+                    variant="critical"
+                    size="small"
+                    :is-loading="isDeleting"
+                    @click="onDeleteProvider(item.id)"
+                >
+                    {{ $t('global.default.delete') }}
+                </mt-button>
+            </template>
+            {% endblock %}
             {% block sw6oidc_provider_list_column_last_test_status %}
             <template #column-lastTestStatus="{ item }">
                 <mt-badge

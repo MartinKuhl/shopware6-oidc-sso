@@ -14,6 +14,7 @@ use MartinKuhl\Sw6Oidc\Service\Security\Exception\InvalidStateException;
 use MartinKuhl\Sw6Oidc\Service\Security\LoginType;
 use MartinKuhl\Sw6Oidc\Service\Security\OidcSecurityHelper;
 use Doctrine\DBAL\Connection;
+use MartinKuhl\Sw6Oidc\Subscriber\Sw6OidcProviderWriteGuardSubscriber;
 use Psr\Log\LoggerInterface;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Context;
@@ -319,9 +320,38 @@ class OidcProviderAdminController extends AbstractController
         return $this->renderTestResultPage($result['status'], $result['steps'], $result['claims'], $cspNonce, $locale);
     }
 
+    /**
+     * Deletes a provider although accounts are bound to it: the
+     * Administration asked first, because those accounts lose SSO (their
+     * bindings go with the provider). A plain DAL delete of such a provider is
+     * refused by the write guard (R3-L43).
+     */
+    #[Route(
+        path: '/api/_action/sw6oidc/provider/{id}/delete',
+        name: 'api.action.sw6oidc.provider.delete',
+        defaults: ['_acl' => ['sw6oidc_provider:delete']],
+        methods: ['POST'],
+    )]
+    public function deleteWithBindings(string $id, Context $context): JsonResponse
+    {
+        if (!$this->loadProvider($id, $context) instanceof Sw6OidcProviderEntity) {
+            return new JsonResponse(['error' => 'not_found'], 404);
+        }
+
+        $context->addState(Sw6OidcProviderWriteGuardSubscriber::STATE_BINDING_LOSS_CONFIRMED);
+
+        try {
+            $this->providerRepository->delete([['id' => $id]], $context);
+        } finally {
+            $context->removeState(Sw6OidcProviderWriteGuardSubscriber::STATE_BINDING_LOSS_CONFIRMED);
+        }
+
+        return new JsonResponse(['status' => true]);
+    }
+
     private function loadProvider(string $id, Context $context): ?Sw6OidcProviderEntity
     {
-        $provider = $this->providerRepository->search(new Criteria([$id]), $context)->first();
+        $provider = Uuid::isValid($id) ? $this->providerRepository->search(new Criteria([$id]), $context)->first() : null;
 
         return $provider instanceof Sw6OidcProviderEntity ? $provider : null;
     }

@@ -103,7 +103,7 @@ final class OidcCallbackProcessorIdentityTest extends TestCase
         array $userInfoClaims = [],
     ): OidcCallbackResult {
         $provider = new Sw6OidcProviderEntity();
-        $provider->assign(['id' => 'provider-1', 'groupAttribute' => 'groups', 'claimEncoding' => 'none', 'scope' => $scope, 'clientId' => 'client', 'issuer' => 'https://idp.example.com']);
+        $provider->assign(['id' => 'provider-1', 'groupAttribute' => 'groups', 'scope' => $scope, 'clientId' => 'client', 'issuer' => 'https://idp.example.com']);
 
         $resolver = $this->createStub(ProviderResolver::class);
         $resolver->method('getActiveById')->willReturn($provider);

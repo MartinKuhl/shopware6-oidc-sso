@@ -31,7 +31,6 @@ class Sw6OidcProviderEntity extends Entity
     protected ?string $wellKnownConfigUrl = null;
     protected string $scope = 'openid profile email';
     protected string $pkceFlow = 'S256';
-    protected string $claimEncoding = 'none';
     protected bool $publicClient = false;
     protected string $groupAttribute = 'groups';
     protected bool $autoCreateCustomer = true;
@@ -293,16 +292,6 @@ class Sw6OidcProviderEntity extends Entity
     public function setPkceFlow(string $pkceFlow): void
     {
         $this->pkceFlow = $pkceFlow;
-    }
-
-    public function getClaimEncoding(): string
-    {
-        return $this->claimEncoding;
-    }
-
-    public function setClaimEncoding(string $claimEncoding): void
-    {
-        $this->claimEncoding = $claimEncoding;
     }
 
     public function isPublicClient(): bool

@@ -3,6 +3,7 @@
 namespace MartinKuhl\Sw6Oidc\Service\Security;
 
 use Psr\Log\LoggerInterface;
+use Symfony\Contracts\Service\ResetInterface;
 
 /**
  * Encrypts secrets and security state at rest, keyed from APP_SECRET.
@@ -25,8 +26,11 @@ use Psr\Log\LoggerInterface;
  *
  * Constructible from a plain string (no container) so a Migration can use it.
  */
-class Sw6OidcEncryptor
+class Sw6OidcEncryptor implements ResetInterface
 {
+    /** @var array<string, true> undecryptable values already reported in this request */
+    private array $reported = [];
+
     public const PREFIX = 'sw6oidc_v2:';
     public const LEGACY_PREFIX = 'sw6oidc_v1:';
 
@@ -78,14 +82,37 @@ class Sw6OidcEncryptor
         $plaintext = $this->tryDecrypt($value, $purpose);
 
         if ($plaintext === null) {
-            $this->logger?->error('sw6oidc: an encrypted value could not be decrypted (was APP_SECRET changed?). Re-enter the secret to fix this.', [
-                'purpose' => $purpose,
-            ]);
+            $this->reportUndecryptable($value, $purpose);
 
             return $value;
         }
 
         return $plaintext;
+    }
+
+    /**
+     * Hydrating a provider decrypts every envelope it has, on every login
+     * page and admin listing: an undecryptable one is reported once per
+     * request, not on each of those reads (R3-L42).
+     */
+    private function reportUndecryptable(string $value, string $purpose): void
+    {
+        $key = $purpose . "\0" . hash('sha256', $value);
+
+        if (isset($this->reported[$key])) {
+            return;
+        }
+
+        $this->reported[$key] = true;
+
+        $this->logger?->error('sw6oidc: an encrypted value could not be decrypted (was APP_SECRET changed?). Re-enter the secret to fix this.', [
+            'purpose' => $purpose,
+        ]);
+    }
+
+    public function reset(): void
+    {
+        $this->reported = [];
     }
 
     /**
