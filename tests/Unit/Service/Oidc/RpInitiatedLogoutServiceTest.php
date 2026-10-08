@@ -46,7 +46,7 @@ final class RpInitiatedLogoutServiceTest extends TestCase
     {
         $httpClient = $this->createMock(OidcHttpClient::class);
         $httpClient->expects(self::exactly(2))
-            ->method('postForm')
+            ->method('postFormIgnoringResponseBody')
             ->with(
                 'https://idp.example/revoke',
                 self::callback(static function (array $params): bool {
@@ -59,8 +59,7 @@ final class RpInitiatedLogoutServiceTest extends TestCase
                 'shop-client',
                 'the-secret',
                 3,
-            )
-            ->willReturn([]);
+            );
 
         $this->service($httpClient)->revokeTokens($this->revocationProvider(), new LogoutContext('a1000000000000000000000000000001', null, 'access', 'refresh'));
     }
@@ -73,12 +72,10 @@ final class RpInitiatedLogoutServiceTest extends TestCase
         $sent = [];
         $httpClient = $this->createMock(OidcHttpClient::class);
         $httpClient->expects(self::exactly(2))
-            ->method('postForm')
+            ->method('postFormIgnoringResponseBody')
             ->with('https://idp.example/revoke', self::anything(), 3, null, null, 3)
-            ->willReturnCallback(static function (string $url, array $params) use (&$sent): array {
+            ->willReturnCallback(static function (string $url, array $params) use (&$sent): void {
                 $sent[] = $params;
-
-                return [];
             });
 
         $this->service($httpClient)->revokeTokens($provider, new LogoutContext('a1000000000000000000000000000001', null, 'access', 'refresh'));

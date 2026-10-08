@@ -63,6 +63,26 @@ final class OidcHttpClientTest extends TestCase
         $client->postForm('https://idp.example/token', [], 10, 'my-client', 'my-secret');
     }
 
+    public function testPostIgnoringResponseBodyAcceptsAnEmptySuccessBody(): void
+    {
+        // RFC 7009 §2.2: a successful revocation answers 200, content ignored (Authelia: empty).
+        $httpClient = new MockHttpClient(new MockResponse(''));
+
+        (new OidcHttpClient($httpClient, new NullLogger()))->postFormIgnoringResponseBody('https://idp.example/revoke', ['token' => 't'], 5, 'my-client', 'my-secret');
+
+        self::assertSame(1, $httpClient->getRequestsCount());
+    }
+
+    public function testPostIgnoringResponseBodyStillFailsOnAnErrorStatus(): void
+    {
+        $httpClient = new MockHttpClient(new MockResponse('{"error":"invalid_client"}', ['http_code' => 401]));
+
+        $this->expectException(OidcHttpException::class);
+        $this->expectExceptionMessage('failed with status 401');
+
+        (new OidcHttpClient($httpClient, new NullLogger()))->postFormIgnoringResponseBody('https://idp.example/revoke', ['token' => 't'], 5);
+    }
+
     public function testGetIsRetriedOnceAfterATransportError(): void
     {
         $calls = 0;

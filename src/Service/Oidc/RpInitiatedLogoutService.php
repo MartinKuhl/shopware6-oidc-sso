@@ -104,7 +104,7 @@ class RpInitiatedLogoutService
         $authentication = ClientAuthentication::forProvider($provider, $provider->getRevocationEndpointAuthMethod(), $secret);
 
         try {
-            $this->httpClient->postForm(
+            $this->httpClient->postFormIgnoringResponseBody(
                 $revocationEndpoint,
                 ['token' => $token, 'token_type_hint' => $tokenTypeHint] + $authentication->bodyParams,
                 // Runs inside the user's logout request: an unreachable IdP

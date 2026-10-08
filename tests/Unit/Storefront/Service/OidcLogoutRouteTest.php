@@ -120,10 +120,8 @@ final class OidcLogoutRouteTest extends TestCase
 
         $revoked = [];
         $httpClient = $this->createMock(OidcHttpClient::class);
-        $httpClient->method('postForm')->willReturnCallback(static function (string $url, array $params) use (&$revoked): array {
+        $httpClient->method('postFormIgnoringResponseBody')->willReturnCallback(static function (string $url, array $params) use (&$revoked): void {
             $revoked[] = [$params['token'], $params['token_type_hint']];
-
-            return [];
         });
 
         $response = $this->route($provider, null, $httpClient)->logout($this->context(), new RequestDataBag());

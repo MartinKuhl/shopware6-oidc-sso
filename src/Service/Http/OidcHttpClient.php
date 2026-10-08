@@ -34,6 +34,47 @@ class OidcHttpClient
         ?string $basicAuthPassword = null,
         ?int $maxDurationSeconds = null,
     ): array {
+        return $this->requestJson('POST', $url, $this->formOptions($formParams, $timeoutSeconds, $basicAuthUsername, $basicAuthPassword, $maxDurationSeconds));
+    }
+
+    /**
+     * POST for endpoints whose success answer has no meaningful body, like
+     * RFC 7009 revocation (§2.2: HTTP 200, the content is ignored — Authelia
+     * sends an empty body). Only the status code decides.
+     *
+     * @param array<string, string> $formParams
+     * @param int|null              $maxDurationSeconds cap on the whole request (`timeout` alone is an idle timeout)
+     */
+    public function postFormIgnoringResponseBody(
+        string $url,
+        array $formParams,
+        int $timeoutSeconds,
+        ?string $basicAuthUsername = null,
+        ?string $basicAuthPassword = null,
+        ?int $maxDurationSeconds = null,
+    ): void {
+        $options = $this->formOptions($formParams, $timeoutSeconds, $basicAuthUsername, $basicAuthPassword, $maxDurationSeconds);
+        [, $statusCode] = $this->send('POST', $url, $options);
+
+        $this->logResponse('POST', $url, $statusCode, null);
+
+        if ($statusCode >= 400) {
+            throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed with status %d.', $this->withoutQuery($url), $statusCode));
+        }
+    }
+
+    /**
+     * @param array<string, string> $formParams
+     *
+     * @return array<string, mixed>
+     */
+    private function formOptions(
+        array $formParams,
+        int $timeoutSeconds,
+        ?string $basicAuthUsername,
+        ?string $basicAuthPassword,
+        ?int $maxDurationSeconds,
+    ): array {
         $headers = ['Accept' => 'application/json'];
 
         if ($basicAuthUsername !== null) {
@@ -50,7 +91,7 @@ class OidcHttpClient
             $options['max_duration'] = $maxDurationSeconds;
         }
 
-        return $this->requestJson('POST', $url, $options);
+        return $options;
     }
 
     /**
@@ -85,6 +126,29 @@ class OidcHttpClient
      */
     private function requestJson(string $method, string $url, array $options): array
     {
+        [$content, $statusCode] = $this->send($method, $url, $options);
+        $decoded = json_decode($content, true);
+
+        $this->logResponse($method, $url, $statusCode, $decoded);
+
+        if ($statusCode >= 400) {
+            throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed with status %d.', $this->withoutQuery($url), $statusCode));
+        }
+
+        if (!\is_array($decoded)) {
+            throw new OidcHttpException(sprintf('OIDC HTTP response from "%s" was not valid JSON.', $this->withoutQuery($url)));
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     *
+     * @return array{0: string, 1: int} content and status code
+     */
+    private function send(string $method, string $url, array $options): array
+    {
         // Only ever logs field *names*, never values - a userinfo response in
         // particular is arbitrary IdP-supplied PII (email, address, phone,
         // birthdate, ...) with no fixed set of key names to denylist the way
@@ -118,27 +182,20 @@ class OidcHttpClient
                 'exceptionClass' => $exception::class,
             ]);
 
-            [$content, $statusCode] = $this->retryOnce($method, $url, $options);
+            return $this->retryOnce($method, $url, $options);
         }
 
-        $decoded = json_decode($content, true);
+        return [$content, $statusCode];
+    }
 
+    private function logResponse(string $method, string $url, int $statusCode, mixed $decoded): void
+    {
         $this->logger->log($statusCode >= 400 ? 'warning' : 'debug', 'sw6oidc: received IdP HTTP response.', [
             'method' => $method,
-            'url' => $logUrl,
+            'url' => $this->withoutQuery($url),
             'statusCode' => $statusCode,
             'bodyKeys' => \is_array($decoded) ? array_keys($decoded) : null,
         ]);
-
-        if ($statusCode >= 400) {
-            throw new OidcHttpException(sprintf('OIDC HTTP request to "%s" failed with status %d.', $logUrl, $statusCode));
-        }
-
-        if (!\is_array($decoded)) {
-            throw new OidcHttpException(sprintf('OIDC HTTP response from "%s" was not valid JSON.', $logUrl));
-        }
-
-        return $decoded;
     }
 
     private function withoutQuery(string $url): string
