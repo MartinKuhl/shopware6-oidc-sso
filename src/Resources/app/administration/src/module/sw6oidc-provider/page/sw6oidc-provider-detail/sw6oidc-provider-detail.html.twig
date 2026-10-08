@@ -126,6 +126,7 @@
                     />
                     <mt-password-field
                         v-model="provider.clientSecret"
+                        :error="providerClientSecretError"
                         :label="$t('sw6oidc.provider.detail.clientSecret')"
                         :help-text="$t('sw6oidc.provider.detail.clientSecretHelp')"
                         :placeholder="isNewProvider ? '' : $t('sw6oidc.provider.detail.clientSecretStoredPlaceholder')"

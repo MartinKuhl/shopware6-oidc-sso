@@ -44,6 +44,12 @@ const DISCOVERED_ENDPOINT_FIELDS = [
     'issuer',
 ];
 
+/** Save errors shown with a translated message instead of the server's English detail. */
+const SAVE_ERROR_SNIPPETS = {
+    SW6OIDC_SECRET_REQUIRED_FOR_ENDPOINT_CHANGE: 'errorSecretRequiredForEndpointChange',
+    SW6OIDC_CLIENT_SECRET_REQUIRED: 'errorClientSecretRequired',
+};
+
 /** Default params per transform function (also for rows imported without params, F-N16). */
 const TRANSFORM_DEFAULTS = {
     concat: { claims: [], separator: ' ' },
@@ -133,6 +139,7 @@ Component.register('sw6oidc-provider-detail', () => {
         computed: {
             // Field-level violations from Sw6OidcProviderWriteGuardSubscriber (SSRF, lockout guard).
             ...mapPropertyErrors('provider', [
+                'clientSecret',
                 'wellKnownConfigUrl',
                 'authorizeEndpoint',
                 'accessTokenEndpoint',
@@ -594,6 +601,7 @@ Component.register('sw6oidc-provider-detail', () => {
 
                 return this.providerRepository.save(this.provider, Shopware.Context.api).then(() => {
                     this.isLoading = false;
+                    this.createNotificationSuccess({ message: this.$t('sw6oidc.provider.detail.saveSuccess') });
                     this.removeWebhook = false;
                     this.loadFormContext(this.provider.id);
 
@@ -627,9 +635,11 @@ Component.register('sw6oidc-provider-detail', () => {
 
                     // Surface the server's own violation messages (SSRF block,
                     // lockout guard, ...) instead of only a generic failure.
-                    const details = errors
-                        .map((entry) => entry.detail)
-                        .filter(Boolean);
+                    const details = [...new Set(errors
+                        .map((entry) => (SAVE_ERROR_SNIPPETS[entry.code]
+                            ? this.$t(`sw6oidc.provider.detail.${SAVE_ERROR_SNIPPETS[entry.code]}`)
+                            : entry.detail))
+                        .filter(Boolean))];
 
                     this.createNotificationError({
                         message: details.length

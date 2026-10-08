@@ -379,15 +379,22 @@ class Sw6OidcProviderWriteGuardSubscriber implements EventSubscriberInterface, R
             return;
         }
 
+        $changed = [];
+
         foreach (self::CREDENTIAL_URL_FIELDS as $storageName => $propertyName) {
             if (\array_key_exists($storageName, $payload) && (string) $payload[$storageName] !== (string) ($current[$storageName] ?? '')) {
-                $violations->add($this->violation(
-                    'Changing this URL requires entering the client secret again.',
-                    $propertyName,
-                    $payload[$storageName],
-                    self::CODE_SECRET_REQUIRED,
-                ));
+                $changed[] = $propertyName;
             }
+        }
+
+        // One violation on the secret field, which is what the admin has to fill in.
+        if ($changed !== []) {
+            $violations->add($this->violation(
+                'Enter the client secret again: it will be sent to the changed URL(s) ' . implode(', ', $changed) . '.',
+                'clientSecret',
+                $changed,
+                self::CODE_SECRET_REQUIRED,
+            ));
         }
     }
 

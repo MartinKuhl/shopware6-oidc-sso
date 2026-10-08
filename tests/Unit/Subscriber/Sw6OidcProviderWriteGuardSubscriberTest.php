@@ -149,8 +149,25 @@ final class Sw6OidcProviderWriteGuardSubscriberTest extends TestCase
 
         $violation = $this->singleViolation($this->validate([$this->update($id, ['access_token_endpoint' => 'https://evil.example/token'])]));
         self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_SECRET_REQUIRED, $violation->getCode());
+        self::assertSame('/clientSecret', $violation->getPropertyPath());
 
         $this->assertNoViolations($this->validate([$this->update($id, ['access_token_endpoint' => 'https://evil.example/token', 'client_secret' => 'sw6oidc_v2:new'])]));
+    }
+
+    public function testSeveralChangedCredentialUrlsGiveOneViolationOnTheSecret(): void
+    {
+        $id = $this->db->provider(['access_token_endpoint' => 'https://idp.example/token']);
+
+        $violation = $this->singleViolation($this->validate([$this->update($id, [
+            'access_token_endpoint' => 'https://idp2.example/token',
+            'user_info_endpoint' => 'https://idp2.example/userinfo',
+            'revocation_endpoint' => 'https://idp2.example/revoke',
+            'well_known_config_url' => 'https://idp2.example/.well-known/openid-configuration',
+        ])]));
+
+        self::assertSame(Sw6OidcProviderWriteGuardSubscriber::CODE_SECRET_REQUIRED, $violation->getCode());
+        self::assertSame('/clientSecret', $violation->getPropertyPath());
+        self::assertSame(['accessTokenEndpoint', 'revocationEndpoint', 'userInfoEndpoint', 'wellKnownConfigUrl'], $violation->getInvalidValue());
     }
 
     /**
