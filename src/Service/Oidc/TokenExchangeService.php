@@ -9,12 +9,12 @@ use MartinKuhl\Sw6Oidc\Service\Security\Sw6OidcEncryptor;
 
 /**
  * Exchanges an authorization code (+ PKCE verifier) for tokens at the provider's
- * token endpoint. Confidential clients authenticate via HTTP Basic (RFC 6749 §2.3.1) — the
- * de facto default `token_endpoint_auth_method` for Authelia, Keycloak, and
- * most other IdPs — with client_id/client_secret omitted from the body to
- * avoid duplicating client authentication across two mechanisms; only public
- * clients (RFC 6749 §2.1) send client_id in the body with no Authorization
- * header, since they have no secret to authenticate with.
+ * token endpoint. A confidential client authenticates the way the provider's
+ * `token_endpoint_auth_method` says (RFC 6749 §2.3.1): HTTP Basic by default —
+ * the de facto default for Authelia, Keycloak, and most other IdPs — or
+ * client_id/client_secret in the body. Public clients (RFC 6749 §2.1) send
+ * client_id in the body with no Authorization header, since they have no
+ * secret to authenticate with. See ClientAuthentication.
  */
 class TokenExchangeService
 {
@@ -38,41 +38,28 @@ class TokenExchangeService
         string $redirectUri,
         string $codeVerifier,
     ): array {
+        $authentication = ClientAuthentication::forProvider($provider, $provider->getTokenEndpointAuthMethod(), $this->clientSecret($provider));
+
         $params = array_merge([
             'grant_type' => 'authorization_code',
             'code' => $code,
             'redirect_uri' => $redirectUri,
             'code_verifier' => $codeVerifier,
-        ], $this->clientIdBodyParam($provider));
+        ], $authentication->bodyParams);
 
         return $this->httpClient->postForm(
             (string) $provider->getAccessTokenEndpoint(),
             $params,
             $provider->getHttpTimeout(),
-            ...$this->basicAuthCredentials($provider),
+            $authentication->basicAuthUsername,
+            $authentication->basicAuthPassword,
         );
     }
 
-    /**
-     * Public clients have no secret to authenticate with, so the token
-     * endpoint can only identify them via a client_id body parameter (RFC
-     * 6749 §3.2.1). Confidential clients authenticate via the Authorization
-     * header instead and must not duplicate client_id in the body.
-     *
-     * @return array{client_id?: string}
-     */
-    private function clientIdBodyParam(Sw6OidcProviderEntity $provider): array
-    {
-        return $provider->isPublicClient() ? ['client_id' => $provider->getClientId()] : [];
-    }
-
-    /**
-     * @return array{0: string, 1: string}|array{}
-     */
-    private function basicAuthCredentials(Sw6OidcProviderEntity $provider): array
+    private function clientSecret(Sw6OidcProviderEntity $provider): ?string
     {
         if ($provider->isPublicClient()) {
-            return [];
+            return null;
         }
 
         // Still an envelope after hydration = undecryptable with the current
@@ -84,6 +71,6 @@ class TokenExchangeService
             throw ClientSecretUnavailableException::forProvider($provider->getId());
         }
 
-        return [$provider->getClientId(), $secret ?? ''];
+        return $secret;
     }
 }

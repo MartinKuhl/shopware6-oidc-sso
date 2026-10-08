@@ -63,6 +63,8 @@ class Sw6OidcProviderEntity extends Entity
     protected ?array $base64Claims = null;
     protected bool $revokeSuperadminOnSso = false;
     protected string $logoutStyle = Sw6OidcProviderDefinition::LOGOUT_STYLE_STANDARD;
+    protected string $tokenEndpointAuthMethod = Sw6OidcProviderDefinition::CLIENT_AUTH_METHOD_BASIC;
+    protected string $revocationEndpointAuthMethod = Sw6OidcProviderDefinition::CLIENT_AUTH_METHOD_BASIC;
     protected int $httpTimeout = 30;
     protected int $jwksCacheTtl = 86400;
     /** 'pass'|'fail'|'warning'|null (never tested) — set only by the live login test */
@@ -660,6 +662,26 @@ class Sw6OidcProviderEntity extends Entity
     public function setLogoutStyle(string $logoutStyle): void
     {
         $this->logoutStyle = $logoutStyle;
+    }
+
+    public function getTokenEndpointAuthMethod(): string
+    {
+        return $this->tokenEndpointAuthMethod;
+    }
+
+    public function setTokenEndpointAuthMethod(string $tokenEndpointAuthMethod): void
+    {
+        $this->tokenEndpointAuthMethod = $tokenEndpointAuthMethod;
+    }
+
+    public function getRevocationEndpointAuthMethod(): string
+    {
+        return $this->revocationEndpointAuthMethod;
+    }
+
+    public function setRevocationEndpointAuthMethod(string $revocationEndpointAuthMethod): void
+    {
+        $this->revocationEndpointAuthMethod = $revocationEndpointAuthMethod;
     }
 
     /**

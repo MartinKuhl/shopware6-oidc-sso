@@ -162,6 +162,7 @@
       <code><![CDATA[setPublicClient]]></code>
       <code><![CDATA[setRequireEmailVerified]]></code>
       <code><![CDATA[setRevocationEndpoint]]></code>
+      <code><![CDATA[setRevocationEndpointAuthMethod]]></code>
       <code><![CDATA[setRevokeSuperadminOnSso]]></code>
       <code><![CDATA[setRoleMappings]]></code>
       <code><![CDATA[setScope]]></code>
@@ -173,6 +174,7 @@
       <code><![CDATA[setSyncCustomerAddressOnSso]]></code>
       <code><![CDATA[setSyncCustomerGroupOnSso]]></code>
       <code><![CDATA[setSyncCustomerProfileOnSso]]></code>
+      <code><![CDATA[setTokenEndpointAuthMethod]]></code>
       <code><![CDATA[setUserInfoEndpoint]]></code>
       <code><![CDATA[setWellKnownConfigUrl]]></code>
     </PossiblyUnusedMethod>
@@ -397,6 +399,11 @@
   <file src="src/Migration/Migration1790800020DropProviderClaimEncoding.php">
     <UnusedClass>
       <code><![CDATA[Migration1790800020DropProviderClaimEncoding]]></code>
+    </UnusedClass>
+  </file>
+  <file src="src/Migration/Migration1790800021AddProviderClientAuthMethods.php">
+    <UnusedClass>
+      <code><![CDATA[Migration1790800021AddProviderClientAuthMethods]]></code>
     </UnusedClass>
   </file>
   <file src="src/ScheduledTask/HealthCheckAlertTaskHandler.php">

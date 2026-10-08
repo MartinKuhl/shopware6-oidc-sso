@@ -306,6 +306,13 @@ Component.register('sw6oidc-provider-detail', () => {
                 }));
             },
 
+            clientAuthMethodOptions() {
+                return ['client_secret_basic', 'client_secret_post'].map((value) => ({
+                    value,
+                    label: this.$t(`sw6oidc.provider.detail.clientAuthMethod.${value}`),
+                }));
+            },
+
             pkceFlowOptions() {
                 return ['S256', 'plain'].map((value) => ({ value, label: value }));
             },

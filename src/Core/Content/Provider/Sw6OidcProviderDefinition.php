@@ -48,6 +48,14 @@ class Sw6OidcProviderDefinition extends EntityDefinition
 
     public const LOGOUT_STYLES = [self::LOGOUT_STYLE_STANDARD, self::LOGOUT_STYLE_AUTHELIA_FORWARD_AUTH];
 
+    /** Client authentication via the Authorization header (RFC 6749 §2.3.1). */
+    public const CLIENT_AUTH_METHOD_BASIC = 'client_secret_basic';
+
+    /** Client authentication via client_id/client_secret in the form body (RFC 6749 §2.3.1). */
+    public const CLIENT_AUTH_METHOD_POST = 'client_secret_post';
+
+    public const CLIENT_AUTH_METHODS = [self::CLIENT_AUTH_METHOD_BASIC, self::CLIENT_AUTH_METHOD_POST];
+
     public const PKCE_FLOWS = ['S256', 'plain'];
 
     /** Encryption purpose of client_secret (Sw6OidcEncryptedFieldSerializer::purpose()). */
@@ -82,6 +90,8 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             'frontchannelAdminLogout' => false,
             'revokeSuperadminOnSso' => false,
             'logoutStyle' => self::LOGOUT_STYLE_STANDARD,
+            'tokenEndpointAuthMethod' => self::CLIENT_AUTH_METHOD_BASIC,
+            'revocationEndpointAuthMethod' => self::CLIENT_AUTH_METHOD_BASIC,
             'sortOrder' => 0,
             'httpTimeout' => 30,
             'jwksCacheTtl' => 86400,
@@ -103,11 +113,13 @@ class Sw6OidcProviderDefinition extends EntityDefinition
             (new Sw6OidcEncryptedField('client_secret', 'clientSecret', 1024))->addFlags(new AllowHtml(false), new ResetOnClone()),
             (new StringField('authorize_endpoint', 'authorizeEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('access_token_endpoint', 'accessTokenEndpoint', 1024))->addFlags(new ApiAware()),
+            (new StringField('token_endpoint_auth_method', 'tokenEndpointAuthMethod', 32))->addFlags(new ApiAware(), new Choice(self::CLIENT_AUTH_METHODS, true)),
             (new StringField('user_info_endpoint', 'userInfoEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('end_session_endpoint', 'endSessionEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('logout_style', 'logoutStyle', 32))->addFlags(new ApiAware(), new Choice(self::LOGOUT_STYLES, true)),
             (new StringField('post_logout_url', 'postLogoutUrl', 1024))->addFlags(new ApiAware()),
             (new StringField('revocation_endpoint', 'revocationEndpoint', 1024))->addFlags(new ApiAware()),
+            (new StringField('revocation_endpoint_auth_method', 'revocationEndpointAuthMethod', 32))->addFlags(new ApiAware(), new Choice(self::CLIENT_AUTH_METHODS, true)),
             (new StringField('jwks_endpoint', 'jwksEndpoint', 1024))->addFlags(new ApiAware()),
             (new StringField('issuer', 'issuer', 1024))->addFlags(new ApiAware()),
             (new StringField('well_known_config_url', 'wellKnownConfigUrl', 1024))->addFlags(new ApiAware()),

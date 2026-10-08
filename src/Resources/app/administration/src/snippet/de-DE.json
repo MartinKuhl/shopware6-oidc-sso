@@ -125,6 +125,14 @@
                 "authorizeEndpointHelp": "Der Authorize-Endpunkt des IdP, zu dem Kunde bzw. Administrator beim Login-Start weitergeleitet wird.",
                 "accessTokenEndpoint": "Access-Token-Endpunkt",
                 "accessTokenEndpointHelp": "Der Token-Endpunkt des IdP zum Einlösen des Autorisierungscodes gegen Tokens.",
+                "tokenEndpointAuthMethod": {
+                    "label": "Client-Authentifizierung am Token-Endpunkt",
+                    "help": "Wie sich der Shop am Token-Endpunkt mit Client-ID und Client-Secret ausweist. Muss zur token_endpoint_auth_method des Clients beim IdP passen. Gilt nicht für Public Clients."
+                },
+                "clientAuthMethod": {
+                    "client_secret_basic": "HTTP Basic (client_secret_basic)",
+                    "client_secret_post": "Im Request-Body (client_secret_post)"
+                },
                 "userInfoEndpoint": "Userinfo-Endpunkt",
                 "userInfoEndpointHelp": "Der Userinfo-Endpunkt des IdP für zusätzliche Claims nach dem Token-Austausch. Optional – leer lassen, wenn der IdP alles Nötige bereits im ID-Token liefert.",
                 "jwksEndpoint": "JWKS-Endpunkt",
@@ -139,6 +147,10 @@
                 "endSessionEndpointHelp": "Der End-Session-Endpunkt des IdP, über den beim Storefront- und Administration-Logout auch beim IdP abgemeldet wird. Leer lassen, falls nicht unterstützt (siehe Authelia-Hinweis in der Dokumentation).",
                 "revocationEndpoint": "Token-Revocation-Endpunkt",
                 "revocationEndpointHelp": "Der Token-Revocation-Endpunkt (RFC 7009) des IdP zum Widerruf des Access Tokens beim Logout. Optional – ein fehlgeschlagener Widerruf blockiert den lokalen Logout nie.",
+                "revocationEndpointAuthMethod": {
+                    "label": "Client-Authentifizierung am Revocation-Endpunkt",
+                    "help": "Wie sich der Shop beim Token-Widerruf ausweist. Muss zur revocation_endpoint_auth_method des Clients beim IdP passen (Authelia legt sie getrennt von der token_endpoint_auth_method fest). Gilt nicht für Public Clients."
+                },
                 "issuer": "Issuer",
                 "issuerHelp": "Der exakte Issuer-Wert („iss“), den der IdP in seinen Tokens setzt – wird bei jedem eingehenden ID-Token geprüft.",
                 "scope": "Scope",

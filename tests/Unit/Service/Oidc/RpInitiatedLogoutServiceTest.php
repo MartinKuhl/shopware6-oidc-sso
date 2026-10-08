@@ -5,6 +5,7 @@ namespace MartinKuhl\Sw6Oidc\Tests\Unit\Service\Oidc;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderDefinition;
 use MartinKuhl\Sw6Oidc\Core\Content\Provider\Sw6OidcProviderEntity;
 use MartinKuhl\Sw6Oidc\Service\Http\OidcHttpClient;
+use MartinKuhl\Sw6Oidc\Service\Oidc\LogoutContext;
 use MartinKuhl\Sw6Oidc\Service\Oidc\PostLogoutState;
 use MartinKuhl\Sw6Oidc\Service\Oidc\RpInitiatedLogoutService;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -41,9 +42,66 @@ final class RpInitiatedLogoutServiceTest extends TestCase
         self::assertSame('https://auth.example/logout?rd=' . rawurlencode('https://shop.example/account/login'), $url);
     }
 
-    private function service(): RpInitiatedLogoutService
+    public function testRevocationUsesHttpBasicByDefault(): void
     {
-        return new RpInitiatedLogoutService($this->createStub(OidcHttpClient::class), new NullLogger(), new PostLogoutState('app-secret'));
+        $httpClient = $this->createMock(OidcHttpClient::class);
+        $httpClient->expects(self::exactly(2))
+            ->method('postForm')
+            ->with(
+                'https://idp.example/revoke',
+                self::callback(static function (array $params): bool {
+                    self::assertArrayNotHasKey('client_id', $params);
+                    self::assertArrayNotHasKey('client_secret', $params);
+
+                    return true;
+                }),
+                3,
+                'shop-client',
+                'the-secret',
+                3,
+            )
+            ->willReturn([]);
+
+        $this->service($httpClient)->revokeTokens($this->revocationProvider(), new LogoutContext('a1000000000000000000000000000001', null, 'access', 'refresh'));
+    }
+
+    public function testRevocationWithClientSecretPostSendsTheCredentialsInTheBody(): void
+    {
+        $provider = $this->revocationProvider();
+        $provider->setRevocationEndpointAuthMethod(Sw6OidcProviderDefinition::CLIENT_AUTH_METHOD_POST);
+
+        $sent = [];
+        $httpClient = $this->createMock(OidcHttpClient::class);
+        $httpClient->expects(self::exactly(2))
+            ->method('postForm')
+            ->with('https://idp.example/revoke', self::anything(), 3, null, null, 3)
+            ->willReturnCallback(static function (string $url, array $params) use (&$sent): array {
+                $sent[] = $params;
+
+                return [];
+            });
+
+        $this->service($httpClient)->revokeTokens($provider, new LogoutContext('a1000000000000000000000000000001', null, 'access', 'refresh'));
+
+        self::assertSame([
+            ['token' => 'refresh', 'token_type_hint' => 'refresh_token', 'client_id' => 'shop-client', 'client_secret' => 'the-secret'],
+            ['token' => 'access', 'token_type_hint' => 'access_token', 'client_id' => 'shop-client', 'client_secret' => 'the-secret'],
+        ], $sent);
+    }
+
+    private function revocationProvider(): Sw6OidcProviderEntity
+    {
+        $provider = $this->provider('https://idp.example/logout', Sw6OidcProviderDefinition::LOGOUT_STYLE_STANDARD);
+        $provider->setRevocationEndpoint('https://idp.example/revoke');
+        $provider->setClientSecret('the-secret');
+        $provider->setHttpTimeout(10);
+
+        return $provider;
+    }
+
+    private function service(?OidcHttpClient $httpClient = null): RpInitiatedLogoutService
+    {
+        return new RpInitiatedLogoutService($httpClient ?? $this->createStub(OidcHttpClient::class),new NullLogger(), new PostLogoutState('app-secret'));
     }
 
     private function provider(string $endSessionEndpoint, string $logoutStyle): Sw6OidcProviderEntity

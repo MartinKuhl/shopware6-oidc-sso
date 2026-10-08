@@ -125,6 +125,14 @@
                 "authorizeEndpointHelp": "The IdP's authorization endpoint the customer or admin is redirected to at the start of login.",
                 "accessTokenEndpoint": "Access token endpoint",
                 "accessTokenEndpointHelp": "The IdP's token endpoint, used to exchange the authorization code for tokens.",
+                "tokenEndpointAuthMethod": {
+                    "label": "Token endpoint client authentication",
+                    "help": "How the shop sends its client ID and client secret to the token endpoint. Must match the client's token_endpoint_auth_method at the IdP. Not used for public clients."
+                },
+                "clientAuthMethod": {
+                    "client_secret_basic": "HTTP Basic (client_secret_basic)",
+                    "client_secret_post": "In the request body (client_secret_post)"
+                },
                 "userInfoEndpoint": "User info endpoint",
                 "userInfoEndpointHelp": "The IdP's userinfo endpoint, queried for additional claims after token exchange. Optional — leave blank if your IdP puts everything needed into the ID token.",
                 "jwksEndpoint": "JWKS endpoint",
@@ -139,6 +147,10 @@
                 "endSessionEndpointHelp": "The IdP's end-session endpoint, used to also log the user out at the IdP on Storefront and Administration logout. Leave blank if unsupported (see the Authelia note in the documentation).",
                 "revocationEndpoint": "Token revocation endpoint",
                 "revocationEndpointHelp": "The IdP's token revocation endpoint (RFC 7009), used to revoke the access token on logout. Optional — a failed revocation never blocks the local logout.",
+                "revocationEndpointAuthMethod": {
+                    "label": "Revocation endpoint client authentication",
+                    "help": "How the shop authenticates when revoking tokens. Must match the client's revocation_endpoint_auth_method at the IdP (Authelia sets it separately from token_endpoint_auth_method). Not used for public clients."
+                },
                 "issuer": "Issuer",
                 "issuerHelp": "The exact issuer (\"iss\") value the IdP puts in its tokens — checked against every incoming ID token.",
                 "scope": "Scope",

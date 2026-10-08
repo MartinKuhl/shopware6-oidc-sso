@@ -89,17 +89,6 @@ class RpInitiatedLogoutService
             return;
         }
 
-        // Same client-authentication convention as TokenExchangeService: a
-        // confidential client authenticates via HTTP Basic and omits
-        // client_id from the body; a public client has no secret, so it
-        // identifies itself via client_id in the body instead (RFC 7009 §2.1
-        // references the token endpoint's authentication methods).
-        $params = ['token' => $token, 'token_type_hint' => $tokenTypeHint];
-
-        if ($provider->isPublicClient()) {
-            $params['client_id'] = $provider->getClientId();
-        }
-
         $secret = $provider->isPublicClient() ? null : $provider->getUsableClientSecret();
 
         if (!$provider->isPublicClient() && $secret === null) {
@@ -109,15 +98,20 @@ class RpInitiatedLogoutService
             return;
         }
 
+        // RFC 7009 §2.1 uses the token endpoint's client authentication, but
+        // IdPs like Authelia register the method per endpoint, hence the
+        // provider's own `revocation_endpoint_auth_method`.
+        $authentication = ClientAuthentication::forProvider($provider, $provider->getRevocationEndpointAuthMethod(), $secret);
+
         try {
             $this->httpClient->postForm(
                 $revocationEndpoint,
-                $params,
+                ['token' => $token, 'token_type_hint' => $tokenTypeHint] + $authentication->bodyParams,
                 // Runs inside the user's logout request: an unreachable IdP
                 // may cost seconds, never twice the provider timeout (R3-L33).
                 min($provider->getHttpTimeout(), self::REVOCATION_TIMEOUT_SECONDS),
-                $provider->isPublicClient() ? null : $provider->getClientId(),
-                $secret,
+                $authentication->basicAuthUsername,
+                $authentication->basicAuthPassword,
                 self::REVOCATION_TIMEOUT_SECONDS,
             );
         } catch (\Throwable $exception) {

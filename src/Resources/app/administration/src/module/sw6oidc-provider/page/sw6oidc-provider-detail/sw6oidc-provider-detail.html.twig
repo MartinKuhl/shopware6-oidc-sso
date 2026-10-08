@@ -214,6 +214,13 @@
                         :help-text="$t('sw6oidc.provider.detail.accessTokenEndpointHelp')"
                         :disabled="!canEditTrust"
                     />
+                    <sw-single-select
+                        v-model:value="provider.tokenEndpointAuthMethod"
+                        :label="$t('sw6oidc.provider.detail.tokenEndpointAuthMethod.label')"
+                        :help-text="$t('sw6oidc.provider.detail.tokenEndpointAuthMethod.help')"
+                        :options="clientAuthMethodOptions"
+                        :disabled="!canEdit || provider.publicClient || undefined"
+                    />
                 </sw-container>
                 <sw-container
                     columns="1fr 1fr"
@@ -266,6 +273,13 @@
                         :label="$t('sw6oidc.provider.detail.revocationEndpoint')"
                         :help-text="$t('sw6oidc.provider.detail.revocationEndpointHelp')"
                         :disabled="!canEditTrust"
+                    />
+                    <sw-single-select
+                        v-model:value="provider.revocationEndpointAuthMethod"
+                        :label="$t('sw6oidc.provider.detail.revocationEndpointAuthMethod.label')"
+                        :help-text="$t('sw6oidc.provider.detail.revocationEndpointAuthMethod.help')"
+                        :options="clientAuthMethodOptions"
+                        :disabled="!canEdit || provider.publicClient || undefined"
                     />
                     <mt-switch
                         v-model="provider.frontchannelAdminLogout"
